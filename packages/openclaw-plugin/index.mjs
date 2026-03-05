@@ -150,6 +150,26 @@ export default function register(api, runtime = {}) {
                             await context.sendText(message);
                         } else if (api.sendText) {
                             await api.sendText(message);
+                        } else if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID) {
+                            // Guaranteed outbound method for Telegram
+                            const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+                            const response = await fetch(url, {
+                                method: "POST",
+                                headers: { "content-type": "application/json" },
+                                body: JSON.stringify({
+                                    chat_id: process.env.TELEGRAM_CHAT_ID,
+                                    text: message,
+                                    parse_mode: "Markdown",
+                                    disable_web_page_preview: false,
+                                }),
+                            });
+                            if (!response.ok) {
+                                const body = await response.text();
+                                console.error(`[agent-secrets] Telegram API error (${response.status}): ${body}`);
+                                console.log(`[agent-secrets] Fallback secret link:\n${message}`);
+                            } else {
+                                console.log(`[agent-secrets] Secret link delivered via Telegram API fallback.`);
+                            }
                         } else {
                             // Fallback: log it (useful for testing without a real channel)
                             console.log(`[agent-secrets] Secret link for user:\n${message}`);
