@@ -1,6 +1,7 @@
 export interface CreateSecretRequestInput {
   description: string;
-  publicKey: string;
+  publicKey?: string;
+  public_key?: string;
 }
 
 export interface CreateSecretRequestResult {
@@ -29,6 +30,17 @@ export class GatewaySpsClient {
   }
 
   async createSecretRequest(input: CreateSecretRequestInput): Promise<CreateSecretRequestResult> {
+    const publicKey = (input.publicKey ?? input.public_key ?? "").trim();
+    const description = input.description?.trim?.() ?? "";
+
+    if (!publicKey) {
+      throw new Error("createSecretRequest requires publicKey/public_key");
+    }
+
+    if (!description) {
+      throw new Error("createSecretRequest requires description");
+    }
+
     const response = await this.fetchImpl(`${this.baseUrl}/api/v2/secret/request`, {
       method: "POST",
       headers: {
@@ -36,8 +48,8 @@ export class GatewaySpsClient {
         "content-type": "application/json"
       },
       body: JSON.stringify({
-        public_key: input.publicKey,
-        description: input.description
+        public_key: publicKey,
+        description
       })
     });
 

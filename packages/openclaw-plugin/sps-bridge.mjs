@@ -96,7 +96,7 @@ export async function requestSecretFlow(params) {
 
         const request = await gatewayClient.createSecretRequest({
             description,
-            publicKey: keyPair.publicKey,
+            publicKey: keyPair.publicKey ?? keyPair.public_key,
         });
 
         // 3. Let the caller deliver the link to the user (Telegram, etc.)
