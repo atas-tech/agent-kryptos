@@ -5,6 +5,7 @@ import { SignJWT, exportJWK, generateKeyPair, type JWK } from "jose";
 
 export interface GatewayAuthFixture {
   jwksPath: string;
+  jwks: { keys: JWK[] };
   issueToken(options?: {
     agentId?: string;
     ttlSeconds?: number;
@@ -26,10 +27,12 @@ export async function createGatewayAuthFixture(): Promise<GatewayAuthFixture> {
   publicJwk.alg = "EdDSA";
   publicJwk.use = "sig";
 
-  await writeFile(jwksPath, JSON.stringify({ keys: [publicJwk as JWK] }, null, 2));
+  const jwks = { keys: [publicJwk as JWK] };
+  await writeFile(jwksPath, JSON.stringify(jwks, null, 2));
 
   return {
     jwksPath,
+    jwks,
     async issueToken(options = {}): Promise<string> {
       const agentId = options.agentId ?? "test-agent";
       const ttlSeconds = options.ttlSeconds ?? 300;

@@ -1,5 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/index.js";
+import { __resetJwksCacheForTests } from "../src/middleware/auth.js";
 import { createGatewayAuthFixture, type GatewayAuthFixture } from "./gateway-auth.fixture.js";
 
 async function createRequest(app: Awaited<ReturnType<typeof buildApp>>, jwt: string) {
@@ -31,17 +32,26 @@ function queryParam(urlText: string, key: string): string {
 describe("secret routes", () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalJwksFile = process.env.SPS_GATEWAY_JWKS_FILE;
+  const originalJwksUrl = process.env.SPS_GATEWAY_JWKS_URL;
+  const originalJwksTtl = process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS;
   let authFixture: GatewayAuthFixture;
 
   beforeEach(async () => {
     process.env.NODE_ENV = "test";
     authFixture = await createGatewayAuthFixture();
     process.env.SPS_GATEWAY_JWKS_FILE = authFixture.jwksPath;
+    process.env.SPS_GATEWAY_JWKS_URL = "";
+    process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = "";
+    __resetJwksCacheForTests();
   });
 
   afterEach(async () => {
     process.env.NODE_ENV = originalNodeEnv;
     process.env.SPS_GATEWAY_JWKS_FILE = originalJwksFile;
+    process.env.SPS_GATEWAY_JWKS_URL = originalJwksUrl;
+    process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = originalJwksTtl;
+    __resetJwksCacheForTests();
+    vi.restoreAllMocks();
     await authFixture.cleanup();
   });
 
@@ -133,6 +143,36 @@ describe("secret routes", () => {
     });
 
     expect(response.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("supports gateway auth via SPS_GATEWAY_JWKS_URL with cache reuse", async () => {
+    process.env.SPS_GATEWAY_JWKS_FILE = "";
+    process.env.SPS_GATEWAY_JWKS_URL = "https://gateway.example/.well-known/jwks.json";
+    process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = "60000";
+    __resetJwksCacheForTests();
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(authFixture.jwks), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
+    );
+
+    const app = await buildApp({
+      useInMemoryStore: true,
+      hmacSecret: "test-hmac",
+      baseUrl: "http://localhost:3100"
+    });
+
+    const jwt = await authFixture.issueToken({ agentId: "agent-url-jwks" });
+    const createdA = await createRequest(app, jwt);
+    const createdB = await createRequest(app, jwt);
+
+    expect(createdA.request_id).toHaveLength(64);
+    expect(createdB.request_id).toHaveLength(64);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
     await app.close();
   });
 

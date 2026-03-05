@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/index.js";
+import { __resetJwksCacheForTests } from "../src/middleware/auth.js";
 import { createGatewayAuthFixture, type GatewayAuthFixture } from "./gateway-auth.fixture.js";
 
 async function prepareSubmittedRequest(jwt: string) {
@@ -45,17 +46,25 @@ async function prepareSubmittedRequest(jwt: string) {
 describe("routes adversarial", () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalJwksFile = process.env.SPS_GATEWAY_JWKS_FILE;
+  const originalJwksUrl = process.env.SPS_GATEWAY_JWKS_URL;
+  const originalJwksTtl = process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS;
   let authFixture: GatewayAuthFixture;
 
   beforeEach(async () => {
     process.env.NODE_ENV = "test";
     authFixture = await createGatewayAuthFixture();
     process.env.SPS_GATEWAY_JWKS_FILE = authFixture.jwksPath;
+    process.env.SPS_GATEWAY_JWKS_URL = "";
+    process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = "";
+    __resetJwksCacheForTests();
   });
 
   afterEach(async () => {
     process.env.NODE_ENV = originalNodeEnv;
     process.env.SPS_GATEWAY_JWKS_FILE = originalJwksFile;
+    process.env.SPS_GATEWAY_JWKS_URL = originalJwksUrl;
+    process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = originalJwksTtl;
+    __resetJwksCacheForTests();
     await authFixture.cleanup();
   });
 

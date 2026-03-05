@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/index.js";
+import { __resetJwksCacheForTests } from "../src/middleware/auth.js";
 import { createGatewayAuthFixture, type GatewayAuthFixture } from "./gateway-auth.fixture.js";
 
 const runIntegration = process.env.SPS_REDIS_INTEGRATION === "1";
@@ -9,6 +10,8 @@ describeIntegration("redis integration", () => {
   let authFixture: GatewayAuthFixture | null = null;
   const originalNodeEnv = process.env.NODE_ENV;
   const originalJwksFile = process.env.SPS_GATEWAY_JWKS_FILE;
+  const originalJwksUrl = process.env.SPS_GATEWAY_JWKS_URL;
+  const originalJwksTtl = process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS;
 
   beforeAll(async () => {
     if (!process.env.REDIS_URL) {
@@ -18,11 +21,17 @@ describeIntegration("redis integration", () => {
     process.env.NODE_ENV = "integration";
     authFixture = await createGatewayAuthFixture();
     process.env.SPS_GATEWAY_JWKS_FILE = authFixture.jwksPath;
+    process.env.SPS_GATEWAY_JWKS_URL = "";
+    process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = "";
+    __resetJwksCacheForTests();
   });
 
   afterAll(async () => {
     process.env.NODE_ENV = originalNodeEnv;
     process.env.SPS_GATEWAY_JWKS_FILE = originalJwksFile;
+    process.env.SPS_GATEWAY_JWKS_URL = originalJwksUrl;
+    process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = originalJwksTtl;
+    __resetJwksCacheForTests();
     if (authFixture) {
       await authFixture.cleanup();
     }

@@ -39,16 +39,25 @@ async function ensureIdentity(identity, opts = {}) {
     if (_gatewayIdentity) return _gatewayIdentity;
 
     if (!opts.keyPath) {
-        _tempDir = await mkdtemp(path.join(os.tmpdir(), "sps-plugin-"));
-        opts.keyPath = path.join(_tempDir, "gateway-key.json");
+        const envKeyPath = process.env.SPS_GATEWAY_KEY_FILE || process.env.GATEWAY_KEY_PATH;
+        if (envKeyPath) {
+            opts.keyPath = envKeyPath;
+        } else {
+            _tempDir = await mkdtemp(path.join(os.tmpdir(), "sps-plugin-"));
+            opts.keyPath = path.join(_tempDir, "gateway-key.json");
+        }
     }
 
     _gatewayIdentity = await identity.loadOrCreateGatewayIdentity(opts);
 
     if (!process.env.SPS_GATEWAY_JWKS_FILE) {
-        _jwksPath = path.join(path.dirname(opts.keyPath), "jwks.json");
-        await identity.writeJwksFile(_gatewayIdentity, _jwksPath);
-        process.env.SPS_GATEWAY_JWKS_FILE = _jwksPath;
+        try {
+            _jwksPath = path.join(path.dirname(opts.keyPath), "jwks.json");
+            await identity.writeJwksFile(_gatewayIdentity, _jwksPath);
+            process.env.SPS_GATEWAY_JWKS_FILE = _jwksPath;
+        } catch (err) {
+            console.warn(`[sps-bridge] Could not write JWKS file alongside key: ${err.message}`);
+        }
     }
 
     return _gatewayIdentity;

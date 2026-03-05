@@ -1,25 +1,94 @@
 import { readFile } from "node:fs/promises";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { createLocalJWKSet, jwtVerify, type JWTPayload } from "jose";
+import { createLocalJWKSet, jwtVerify, type JSONWebKeySet, type JWTPayload } from "jose";
 import { verifyPayload } from "../services/crypto.js";
 import type { RequestScope } from "../types.js";
 
-let jwksCache: ReturnType<typeof createLocalJWKSet> | null = null;
-let jwksCachePath: string | null = null;
+interface JwksCacheEntry {
+  sourceKey: string;
+  verifier: ReturnType<typeof createLocalJWKSet>;
+  expiresAtMs: number;
+}
+
+let jwksCache: JwksCacheEntry | null = null;
+
+function getJwksCacheTtlMs(): number {
+  const raw = process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS;
+  if (!raw) {
+    return 60_000;
+  }
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return 60_000;
+  }
+
+  return Math.floor(parsed);
+}
+
+function getJwksSource(): { sourceKey: string; kind: "url" | "file"; value: string } | null {
+  const url = process.env.SPS_GATEWAY_JWKS_URL?.trim();
+  if (url) {
+    return { sourceKey: `url:${url}`, kind: "url", value: url };
+  }
+
+  const file = process.env.SPS_GATEWAY_JWKS_FILE?.trim();
+  if (file) {
+    return { sourceKey: `file:${file}`, kind: "file", value: file };
+  }
+
+  return null;
+}
+
+async function loadJwks(source: { kind: "url" | "file"; value: string }): Promise<JSONWebKeySet> {
+  if (source.kind === "file") {
+    return JSON.parse(await readFile(source.value, "utf8")) as JSONWebKeySet;
+  }
+
+  if (typeof globalThis.fetch !== "function") {
+    throw new Error("Global fetch is unavailable for SPS_GATEWAY_JWKS_URL");
+  }
+
+  const response = await globalThis.fetch(source.value, {
+    method: "GET",
+    headers: {
+      accept: "application/json"
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch JWKS: ${response.status}`);
+  }
+
+  return (await response.json()) as JSONWebKeySet;
+}
+
+export function __resetJwksCacheForTests(): void {
+  jwksCache = null;
+}
 
 async function getJwksVerifier() {
-  const path = process.env.SPS_GATEWAY_JWKS_FILE;
-  if (!path) {
+  const source = getJwksSource();
+  if (!source) {
     return null;
   }
 
-  if (!jwksCache || jwksCachePath !== path) {
-    const jwks = JSON.parse(await readFile(path, "utf8"));
-    jwksCache = createLocalJWKSet(jwks);
-    jwksCachePath = path;
+  const now = Date.now();
+  if (jwksCache && jwksCache.sourceKey === source.sourceKey && now < jwksCache.expiresAtMs) {
+    return jwksCache.verifier;
   }
 
-  return jwksCache;
+  const jwks = await loadJwks(source);
+  const verifier = createLocalJWKSet(jwks);
+  const ttlMs = getJwksCacheTtlMs();
+
+  jwksCache = {
+    sourceKey: source.sourceKey,
+    verifier,
+    expiresAtMs: now + ttlMs
+  };
+
+  return verifier;
 }
 
 function bearerToken(req: FastifyRequest): string | null {
@@ -43,13 +112,20 @@ export async function requireGatewayAuth(req: FastifyRequest, reply: FastifyRepl
     return null;
   }
 
+  let jwks: ReturnType<typeof createLocalJWKSet> | null = null;
   try {
-    const jwks = await getJwksVerifier();
-    if (!jwks) {
-      reply.code(500).send({ error: "Gateway JWK not configured" });
-      return null;
-    }
+    jwks = await getJwksVerifier();
+  } catch {
+    reply.code(500).send({ error: "Gateway JWK unavailable" });
+    return null;
+  }
 
+  if (!jwks) {
+    reply.code(500).send({ error: "Gateway JWK not configured" });
+    return null;
+  }
+
+  try {
     const { payload } = await jwtVerify(token, jwks, {
       issuer: "gateway",
       audience: "sps"
