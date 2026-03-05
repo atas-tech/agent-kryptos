@@ -52,6 +52,56 @@ async function testNoPlaintextExposure() {
     disposeStoredSecret("aws_token");
 }
 
+async function testUsesSendMessageWhenSendTextMissing() {
+    const api = createMockApi();
+    const outbound = [];
+
+    register(api, {
+        requestSecretFlowFn: async ({ onSecretLink }) => {
+            await onSecretLink("https://secrets.example/r/abc", "BLUE-FOX-42");
+            return Buffer.from("s-1", "utf8");
+        },
+        cleanupFn: async () => { },
+    });
+
+    const result = await api.state.tool.execute(
+        "id-3",
+        { description: "Need token", secret_name: "t1", channel_id: "telegram:123" },
+        { sendMessage: async (message) => outbound.push(message) },
+    );
+
+    assert.equal(outbound.length, 1, "Should use context.sendMessage when available");
+    assert.match(result?.content?.[0]?.text ?? "", /Secret received and stored securely in memory/);
+
+    disposeStoredSecret("t1");
+}
+
+async function testFailsWhenNoTransportAvailable() {
+    const api = createMockApi();
+    const captured = [];
+    const originalError = console.error;
+    try {
+        console.error = (...args) => {
+            captured.push(args.join(" "));
+        };
+
+        register(api, {
+            requestSecretFlowFn: async ({ onSecretLink }) => {
+                await onSecretLink("https://secrets.example/r/abc", "BLUE-FOX-42");
+                return Buffer.from("s-2", "utf8");
+            },
+            cleanupFn: async () => { },
+        });
+
+        const result = await api.state.tool.execute("id-4", { description: "Need token" }, {});
+        const output = result?.content?.[0]?.text ?? "";
+        assert.match(output, /Failed to retrieve secret: Could not deliver secure link to chat channel/);
+        assert.ok(captured.some((line) => line.includes("No outbound chat transport available")));
+    } finally {
+        console.error = originalError;
+    }
+}
+
 async function testShutdownDisposesSecrets() {
     const api = createMockApi();
 
@@ -76,6 +126,14 @@ const tests = [
     {
         name: "request_secret does not return plaintext and stores secret in memory",
         run: testNoPlaintextExposure,
+    },
+    {
+        name: "request_secret uses sendMessage when sendText is unavailable",
+        run: testUsesSendMessageWhenSendTextMissing,
+    },
+    {
+        name: "request_secret fails when no outbound transport is available",
+        run: testFailsWhenNoTransportAvailable,
     },
     {
         name: "shutdown hook disposes in-memory secrets",

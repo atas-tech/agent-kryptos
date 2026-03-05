@@ -64,6 +64,90 @@ function normalizeSecretName(value) {
     return trimmed;
 }
 
+function resolveChannelId(params, context) {
+    const fromParams = typeof params?.channel_id === "string" ? params.channel_id.trim() : "";
+    if (fromParams) return fromParams;
+
+    const candidates = [
+        context?.channel_id,
+        context?.channelId,
+        context?.chat_id,
+        context?.chatId,
+        context?.session?.channel_id,
+        context?.session?.channelId,
+    ];
+
+    for (const candidate of candidates) {
+        if (typeof candidate === "string" && candidate.trim()) {
+            return candidate.trim();
+        }
+    }
+
+    return "";
+}
+
+async function sendMessageToChannel(api, context, message, channelId) {
+    const attempted = [];
+    const targets = [
+        { label: "context.sendText", owner: context, fn: context?.sendText, args: [message] },
+        { label: "context.sendMessage", owner: context, fn: context?.sendMessage, args: [message] },
+        { label: "context.reply", owner: context, fn: context?.reply, args: [message] },
+        { label: "api.sendText", owner: api, fn: api?.sendText, args: [message] },
+        { label: "api.sendMessage", owner: api, fn: api?.sendMessage, args: [message] },
+    ];
+
+    if (channelId) {
+        targets.push(
+            { label: "context.sendMessage(channelId,message)", owner: context, fn: context?.sendMessage, args: [channelId, message] },
+            { label: "api.sendMessage(channelId,message)", owner: api, fn: api?.sendMessage, args: [channelId, message] },
+            { label: "api.chatAdapter.sendMessage(channelId,message)", owner: api?.chatAdapter, fn: api?.chatAdapter?.sendMessage, args: [channelId, message] },
+        );
+    }
+
+    for (const target of targets) {
+        if (typeof target.fn !== "function") continue;
+        attempted.push(target.label);
+        try {
+            await target.fn.call(target.owner, ...target.args);
+            return { ok: true, via: target.label };
+        } catch (err) {
+            console.warn(`[agent-secrets] ${target.label} failed: ${err?.message ?? String(err)}`);
+        }
+    }
+
+    return { ok: false, attempted };
+}
+
+async function sendTelegramFallback(message, channelId) {
+    if (!process.env.TELEGRAM_BOT_TOKEN) {
+        return { ok: false, reason: "missing TELEGRAM_BOT_TOKEN" };
+    }
+
+    const chatId = channelId || process.env.TELEGRAM_CHAT_ID;
+    if (!chatId) {
+        return { ok: false, reason: "missing TELEGRAM_CHAT_ID/channel_id" };
+    }
+
+    const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+    const response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+            chat_id: chatId,
+            text: message,
+            parse_mode: "Markdown",
+            disable_web_page_preview: false,
+        }),
+    });
+
+    if (!response.ok) {
+        const body = await response.text();
+        return { ok: false, reason: `telegram ${response.status}: ${body}` };
+    }
+
+    return { ok: true, via: "telegram-api-fallback" };
+}
+
 export function getStoredSecret(name = "default") {
     const value = _inMemorySecrets.get(name);
     return value ? Buffer.from(value) : null;
@@ -100,6 +184,10 @@ export default function register(api, runtime = {}) {
                 secret_name: {
                     type: "string",
                     description: "Optional key for where the runtime should store this secret (1-64 chars: letters, numbers, ., _, -). Defaults to 'default'.",
+                },
+                channel_id: {
+                    type: "string",
+                    description: "Optional explicit chat/channel ID for outbound link delivery when runtime context does not provide send helpers.",
                 },
             },
             required: ["description"],
@@ -145,35 +233,27 @@ export default function register(api, runtime = {}) {
                             "_Verify the confirmation code matches before entering your secret._",
                             "_The link expires in 3 minutes._",
                         ].join("\n");
-
-                        if (context?.sendText) {
-                            await context.sendText(message);
-                        } else if (api.sendText) {
-                            await api.sendText(message);
-                        } else if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID) {
-                            // Guaranteed outbound method for Telegram
-                            const url = `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`;
-                            const response = await fetch(url, {
-                                method: "POST",
-                                headers: { "content-type": "application/json" },
-                                body: JSON.stringify({
-                                    chat_id: process.env.TELEGRAM_CHAT_ID,
-                                    text: message,
-                                    parse_mode: "Markdown",
-                                    disable_web_page_preview: false,
-                                }),
-                            });
-                            if (!response.ok) {
-                                const body = await response.text();
-                                console.error(`[agent-secrets] Telegram API error (${response.status}): ${body}`);
-                                console.log(`[agent-secrets] Fallback secret link:\n${message}`);
-                            } else {
-                                console.log(`[agent-secrets] Secret link delivered via Telegram API fallback.`);
-                            }
-                        } else {
-                            // Fallback: log it (useful for testing without a real channel)
-                            console.log(`[agent-secrets] Secret link for user:\n${message}`);
+                        const channelId = resolveChannelId(params, context);
+                        const routed = await sendMessageToChannel(api, context, message, channelId);
+                        if (routed.ok) {
+                            console.log(`[agent-secrets] Secret link delivered via ${routed.via}.`);
+                            return;
                         }
+
+                        const telegram = await sendTelegramFallback(message, channelId);
+                        if (telegram.ok) {
+                            console.log("[agent-secrets] Secret link delivered via Telegram API fallback.");
+                            return;
+                        }
+
+                        const contextKeys = Object.keys(context ?? {});
+                        const apiKeys = Object.keys(api ?? {});
+                        console.error(
+                            `[agent-secrets] No outbound chat transport available. attempted=${routed.attempted.join(",")} telegram=${telegram.reason} contextKeys=${contextKeys.join(",")} apiKeys=${apiKeys.join(",")}`
+                        );
+                        throw new Error(
+                            "Could not deliver secure link to chat channel. Configure plugin chat API (sendText/sendMessage/reply), or set TELEGRAM_BOT_TOKEN and channel_id/TELEGRAM_CHAT_ID."
+                        );
                     },
                 });
 
