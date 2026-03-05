@@ -1,0 +1,23 @@
+{
+  "name": "agent-secrets",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:integration": "npm run test:integration --workspace=packages/sps-server",
+    "test:integration:docker": "bash scripts/test-integration-with-redis.sh",
+    "redis:up": "docker compose up -d redis",
+    "redis:down": "docker compose down --remove-orphans",
+    "demo:e2e": "npm run build && node scripts/demo-e2e.mjs",
+    "e2e:human": "npm run build && node scripts/e2e-human.mjs",
+    "e2e:telegram": "npm run build && node scripts/e2e-openclaw-telegram.mjs"
+  },
+  "dependencies": {
+    "hpke-js": "^1.7.0"
+  }
+}

@@ -1,0 +1,6 @@
+{
+    "id": "agent-secrets",
+    "name": "Secure Secret Provisioning",
+    "version": "0.1.0",
+    "description": "Zero-knowledge secret provisioning via HPKE encryption. Registers a request_secret tool for the agent."
+}
