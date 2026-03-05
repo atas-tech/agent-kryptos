@@ -13,7 +13,74 @@
 
 import { requestSecretFlow, cleanup } from "./sps-bridge.mjs";
 
-export default function register(api) {
+const SECRET_NAME_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
+const _inMemorySecrets = new Map();
+
+function disposeBuffer(value) {
+    if (Buffer.isBuffer(value)) {
+        value.fill(0);
+    }
+}
+
+function setInMemorySecret(name, value) {
+    const existing = _inMemorySecrets.get(name);
+    if (existing) {
+        disposeBuffer(existing);
+    }
+    _inMemorySecrets.set(name, Buffer.from(value));
+}
+
+function disposeAllInMemorySecrets() {
+    for (const value of _inMemorySecrets.values()) {
+        disposeBuffer(value);
+    }
+    _inMemorySecrets.clear();
+}
+
+async function persistSecret(api, context, name, value) {
+    const targets = [
+        { owner: context, fn: context?.setSecret },
+        { owner: context, fn: context?.storeSecret },
+        { owner: api, fn: api?.setSecret },
+        { owner: api, fn: api?.storeSecret },
+    ];
+
+    for (const target of targets) {
+        if (typeof target.fn === "function") {
+            await target.fn.call(target.owner, name, Buffer.from(value));
+            return "runtime";
+        }
+    }
+
+    setInMemorySecret(name, value);
+    return "plugin";
+}
+
+function normalizeSecretName(value) {
+    if (value == null) return "default";
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    if (!SECRET_NAME_PATTERN.test(trimmed)) return null;
+    return trimmed;
+}
+
+export function getStoredSecret(name = "default") {
+    const value = _inMemorySecrets.get(name);
+    return value ? Buffer.from(value) : null;
+}
+
+export function disposeStoredSecret(name = "default") {
+    const value = _inMemorySecrets.get(name);
+    if (value) {
+        disposeBuffer(value);
+        _inMemorySecrets.delete(name);
+    }
+}
+
+export default function register(api, runtime = {}) {
+    const runRequestSecretFlow = runtime.requestSecretFlowFn ?? requestSecretFlow;
+    const runCleanup = runtime.cleanupFn ?? cleanup;
+
     api.registerTool({
         name: "request_secret",
         description: [
@@ -21,6 +88,7 @@ export default function register(api) {
             "This sends the user a secure link where they can enter the secret.",
             "The secret is encrypted client-side and never visible to the server.",
             "IMPORTANT: NEVER ask the user to paste secrets directly in chat. Always use this tool.",
+            "The secret is stored in secure runtime memory and never returned in tool output.",
         ].join(" "),
         parameters: {
             type: "object",
@@ -28,6 +96,10 @@ export default function register(api) {
                 description: {
                     type: "string",
                     description: "Human-readable description of what the secret is for, e.g. 'GitHub deploy token for CI/CD pipeline'",
+                },
+                secret_name: {
+                    type: "string",
+                    description: "Optional key for where the runtime should store this secret (1-64 chars: letters, numbers, ., _, -). Defaults to 'default'.",
                 },
             },
             required: ["description"],
@@ -41,10 +113,20 @@ export default function register(api) {
                 };
             }
 
+            const secretName = normalizeSecretName(params.secret_name);
+            if (secretName == null) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "Error: secret_name must match [A-Za-z0-9._-] and be 1-64 characters.",
+                    }],
+                };
+            }
+
             try {
                 const spsBaseUrl = process.env.SPS_BASE_URL ?? "http://localhost:3100";
 
-                const secret = await requestSecretFlow({
+                const secret = await runRequestSecretFlow({
                     description,
                     spsBaseUrl,
                     onSecretLink: async (secretUrl, confirmationCode) => {
@@ -75,10 +157,22 @@ export default function register(api) {
                     },
                 });
 
+                let storedIn = "plugin";
+                try {
+                    storedIn = await persistSecret(api, context, secretName, secret);
+                } finally {
+                    disposeBuffer(secret);
+                }
+
                 return {
                     content: [{
                         type: "text",
-                        text: `Secret received successfully. The value is: ${secret}`,
+                        text: [
+                            "Secret received and stored securely in memory.",
+                            `secret_name: ${secretName}`,
+                            `storage: ${storedIn}`,
+                            "Continue the task without asking the user to share secrets in chat.",
+                        ].join("\n"),
                     }],
                 };
             } catch (err) {
@@ -108,11 +202,24 @@ export default function register(api) {
         api.registerHook(
             "shutdown",
             async () => {
-                await cleanup();
+                await runCleanup();
             },
             {
                 name: "agent-secrets.cleanup",
                 description: "Cleanup temporary gateway identity files",
+            },
+        );
+    }
+
+    if (api.registerHook) {
+        api.registerHook(
+            "shutdown",
+            async () => {
+                disposeAllInMemorySecrets();
+            },
+            {
+                name: "agent-secrets.dispose-secrets",
+                description: "Zero and dispose in-memory secret buffers",
             },
         );
     }

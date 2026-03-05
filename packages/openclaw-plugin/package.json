@@ -4,6 +4,14 @@
     "private": true,
     "type": "module",
     "main": "index.mjs",
+    "scripts": {
+        "test": "node tests/index.test.mjs"
+    },
+    "openclaw": {
+        "extensions": [
+            "./index.mjs"
+        ]
+    },
     "description": "Zero-knowledge secret provisioning via HPKE encryption. Registers a request_secret tool for the agent.",
     "keywords": [
         "openclaw",

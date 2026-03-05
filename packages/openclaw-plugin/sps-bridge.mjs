@@ -69,7 +69,7 @@ async function ensureIdentity(identity, opts = {}) {
  * @param {Function} params.onSecretLink - Callback with (secretUrl, confirmationCode) for sending to user
  * @param {object} [params.moduleOverrides] - Override loaded modules for testing
  * @param {object} [params.identityOptions] - Options for gateway identity
- * @returns {Promise<string>} The decrypted secret plaintext
+ * @returns {Promise<Buffer>} The decrypted secret plaintext bytes
  */
 export async function requestSecretFlow(params) {
     const {
@@ -114,8 +114,7 @@ export async function requestSecretFlow(params) {
         // 5. Retrieve + decrypt
         const payload = await agentClient.retrieveSecret(request.requestId);
         const plaintext = await modules.keyManager.decrypt(keyPair.privateKey, payload.enc, payload.ciphertext);
-
-        return plaintext.toString("utf8");
+        return Buffer.from(plaintext);
     } finally {
         // 6. Always destroy keypair
         modules.keyManager.destroyKeyPair(keyPair);
