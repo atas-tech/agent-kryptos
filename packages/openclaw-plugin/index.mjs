@@ -86,6 +86,81 @@ function resolveChannelId(params, context) {
     return "";
 }
 
+function resolveRuntimeChannelId(api) {
+    const runtime = api?.runtime;
+    const channel = runtime?.channel;
+    const candidates = [
+        channel?.channel_id,
+        channel?.channelId,
+        channel?.chat_id,
+        channel?.chatId,
+        channel?.current?.channel_id,
+        channel?.current?.channelId,
+        channel?.current?.chat_id,
+        channel?.current?.chatId,
+        channel?.session?.channel_id,
+        channel?.session?.channelId,
+        channel?.session?.chat_id,
+        channel?.session?.chatId,
+    ];
+
+    for (const candidate of candidates) {
+        if (typeof candidate === "string" && candidate.trim()) {
+            return candidate.trim();
+        }
+    }
+
+    return "";
+}
+
+async function sendViaRuntimeChannel(api, message, channelId) {
+    const runtime = api?.runtime;
+    const channel = runtime?.channel;
+    if (!channel || typeof channel !== "object") {
+        return { ok: false, attempted: [] };
+    }
+
+    const resolvedChannelId = channelId || resolveRuntimeChannelId(api);
+    const attempted = [];
+    const candidates = [
+        { label: "runtime.channel.sendText(message)", fn: channel.sendText, args: [message] },
+        { label: "runtime.channel.sendMessage(message)", fn: channel.sendMessage, args: [message] },
+        { label: "runtime.channel.reply(message)", fn: channel.reply, args: [message] },
+        { label: "runtime.channel.send({text})", fn: channel.send, args: [{ text: message }] },
+        { label: "runtime.channel.sendMessage({text})", fn: channel.sendMessage, args: [{ text: message }] },
+    ];
+
+    if (resolvedChannelId) {
+        candidates.push(
+            { label: "runtime.channel.sendText(channelId,message)", fn: channel.sendText, args: [resolvedChannelId, message] },
+            { label: "runtime.channel.sendMessage(channelId,message)", fn: channel.sendMessage, args: [resolvedChannelId, message] },
+            {
+                label: "runtime.channel.send({channelId,text})",
+                fn: channel.send,
+                args: [{ channelId: resolvedChannelId, text: message }],
+            },
+            {
+                label: "runtime.channel.sendMessage({channelId,text})",
+                fn: channel.sendMessage,
+                args: [{ channelId: resolvedChannelId, text: message }],
+            },
+        );
+    }
+
+    for (const c of candidates) {
+        if (typeof c.fn !== "function") continue;
+        attempted.push(c.label);
+        try {
+            await c.fn.call(channel, ...c.args);
+            return { ok: true, via: c.label };
+        } catch (err) {
+            console.warn(`[agent-secrets] ${c.label} failed: ${err?.message ?? String(err)}`);
+        }
+    }
+
+    return { ok: false, attempted };
+}
+
 async function sendMessageToChannel(api, context, message, channelId) {
     const attempted = [];
     const targets = [
@@ -240,6 +315,12 @@ export default function register(api, runtime = {}) {
                             return;
                         }
 
+                        const runtimeRouted = await sendViaRuntimeChannel(api, message, channelId);
+                        if (runtimeRouted.ok) {
+                            console.log(`[agent-secrets] Secret link delivered via ${runtimeRouted.via}.`);
+                            return;
+                        }
+
                         const telegram = await sendTelegramFallback(message, channelId);
                         if (telegram.ok) {
                             console.log("[agent-secrets] Secret link delivered via Telegram API fallback.");
@@ -248,8 +329,10 @@ export default function register(api, runtime = {}) {
 
                         const contextKeys = Object.keys(context ?? {});
                         const apiKeys = Object.keys(api ?? {});
+                        const runtimeKeys = Object.keys(api?.runtime ?? {});
+                        const runtimeChannelKeys = Object.keys(api?.runtime?.channel ?? {});
                         console.error(
-                            `[agent-secrets] No outbound chat transport available. attempted=${routed.attempted.join(",")} telegram=${telegram.reason} contextKeys=${contextKeys.join(",")} apiKeys=${apiKeys.join(",")}`
+                            `[agent-secrets] No outbound chat transport available. attempted=${routed.attempted.join(",")} runtimeAttempted=${runtimeRouted.attempted.join(",")} telegram=${telegram.reason} contextKeys=${contextKeys.join(",")} apiKeys=${apiKeys.join(",")} runtimeKeys=${runtimeKeys.join(",")} runtimeChannelKeys=${runtimeChannelKeys.join(",")}`
                         );
                         throw new Error(
                             "Could not deliver secure link to chat channel. Configure plugin chat API (sendText/sendMessage/reply), or set TELEGRAM_BOT_TOKEN and channel_id/TELEGRAM_CHAT_ID."

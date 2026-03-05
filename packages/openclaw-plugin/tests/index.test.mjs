@@ -102,6 +102,32 @@ async function testFailsWhenNoTransportAvailable() {
     }
 }
 
+async function testUsesRuntimeChannelWhenOtherTransportsMissing() {
+    const api = createMockApi();
+    const outbound = [];
+
+    api.runtime = {
+        channel: {
+            sendText: async (message) => outbound.push(message),
+        },
+    };
+
+    register(api, {
+        requestSecretFlowFn: async ({ onSecretLink }) => {
+            await onSecretLink("https://secrets.example/r/abc", "BLUE-FOX-42");
+            return Buffer.from("s-3", "utf8");
+        },
+        cleanupFn: async () => { },
+    });
+
+    const result = await api.state.tool.execute("id-5", { description: "Need token" }, {});
+
+    assert.equal(outbound.length, 1, "Should use api.runtime.channel.sendText when available");
+    assert.match(result?.content?.[0]?.text ?? "", /Secret received and stored securely in memory/);
+
+    disposeStoredSecret("default");
+}
+
 async function testShutdownDisposesSecrets() {
     const api = createMockApi();
 
@@ -134,6 +160,10 @@ const tests = [
     {
         name: "request_secret fails when no outbound transport is available",
         run: testFailsWhenNoTransportAvailable,
+    },
+    {
+        name: "request_secret uses api.runtime.channel when other transports are unavailable",
+        run: testUsesRuntimeChannelWhenOtherTransportsMissing,
     },
     {
         name: "shutdown hook disposes in-memory secrets",
