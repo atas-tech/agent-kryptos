@@ -1,0 +1,15 @@
+{
+    "name": "@agent-secrets/openclaw-plugin",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "main": "index.mjs",
+    "description": "Zero-knowledge secret provisioning via HPKE encryption. Registers a request_secret tool for the agent.",
+    "keywords": [
+        "openclaw",
+        "plugin",
+        "secrets",
+        "hpke"
+    ],
+    "dependencies": {}
+}
