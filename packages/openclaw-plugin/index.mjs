@@ -12,6 +12,7 @@
  */
 
 import { requestSecretFlow, cleanup } from "./sps-bridge.mjs";
+import { spawn } from "node:child_process";
 
 const SECRET_NAME_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 const _inMemorySecrets = new Map();
@@ -111,6 +112,121 @@ function resolveRuntimeChannelId(api) {
     }
 
     return "";
+}
+
+function resolveChannelName(params, context, channelId) {
+    const fromParams = typeof params?.channel === "string" ? params.channel.trim() : "";
+    if (fromParams) return fromParams;
+
+    const fromContext = [
+        context?.channel,
+        context?.channel_name,
+        context?.session?.channel,
+        context?.session?.channel_name,
+    ];
+    for (const candidate of fromContext) {
+        if (typeof candidate === "string" && candidate.trim()) {
+            return candidate.trim();
+        }
+    }
+
+    if (typeof channelId === "string" && channelId.includes(":")) {
+        return channelId.split(":")[0].trim();
+    }
+
+    const fromEnv = process.env.OPENCLAW_MESSAGE_CHANNEL?.trim();
+    if (fromEnv) return fromEnv;
+
+    return "";
+}
+
+function resolveMessageTarget(params, context, channelId) {
+    const explicit = [
+        params?.target,
+        params?.chat_id,
+        context?.target,
+        context?.chat_id,
+        context?.chatId,
+        process.env.OPENCLAW_MESSAGE_TARGET,
+    ];
+    for (const candidate of explicit) {
+        if (typeof candidate === "string" && candidate.trim()) {
+            return candidate.trim();
+        }
+    }
+
+    if (typeof channelId === "string" && channelId.trim()) {
+        const trimmed = channelId.trim();
+        if (trimmed.includes(":")) {
+            return trimmed.split(":").slice(1).join(":").trim();
+        }
+        return trimmed;
+    }
+
+    return "";
+}
+
+async function runExecFile(execFileFn, file, args, timeoutMs = 15000) {
+    return new Promise((resolve, reject) => {
+        const child = execFileFn(file, args, { stdio: ["ignore", "pipe", "pipe"] });
+        let stdout = "";
+        let stderr = "";
+        let finished = false;
+
+        const timer = setTimeout(() => {
+            if (!finished) {
+                child.kill("SIGKILL");
+            }
+        }, timeoutMs);
+
+        child.stdout?.on("data", (chunk) => {
+            stdout += String(chunk);
+        });
+        child.stderr?.on("data", (chunk) => {
+            stderr += String(chunk);
+        });
+        child.on("error", (err) => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(timer);
+            reject(err);
+        });
+        child.on("close", (code) => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(timer);
+            if (code === 0) {
+                resolve({ stdout, stderr, code });
+            } else {
+                reject(new Error(`exit=${code} stderr=${stderr.trim() || "(empty)"}`));
+            }
+        });
+    });
+}
+
+async function sendViaOpenClawCli(params) {
+    const {
+        message,
+        channel,
+        target,
+        execFileFn = spawn,
+        timeoutMs = Number(process.env.OPENCLAW_CLI_TIMEOUT_MS ?? 15000),
+    } = params;
+
+    if (!target) {
+        return { ok: false, reason: "missing CLI target (channel_id/chat_id/OPENCLAW_MESSAGE_TARGET)" };
+    }
+    if (!channel) {
+        return { ok: false, reason: "missing CLI channel (params.channel/context.channel/OPENCLAW_MESSAGE_CHANNEL)" };
+    }
+
+    const args = ["message", "send", "--channel", channel, "--target", target, "--message", message];
+    try {
+        await runExecFile(execFileFn, "openclaw", args, timeoutMs);
+        return { ok: true, via: "openclaw-cli" };
+    } catch (err) {
+        return { ok: false, reason: err?.message ?? String(err) };
+    }
 }
 
 async function sendViaRuntimeChannel(api, message, channelId) {
@@ -239,6 +355,7 @@ export function disposeStoredSecret(name = "default") {
 export default function register(api, runtime = {}) {
     const runRequestSecretFlow = runtime.requestSecretFlowFn ?? requestSecretFlow;
     const runCleanup = runtime.cleanupFn ?? cleanup;
+    const execFileFn = runtime.execFileFn ?? spawn;
 
     api.registerTool({
         name: "request_secret",
@@ -264,8 +381,20 @@ export default function register(api, runtime = {}) {
                     type: "string",
                     description: "Optional explicit chat/channel ID for outbound link delivery when runtime context does not provide send helpers.",
                 },
+                channel: {
+                    type: "string",
+                    description: "Optional channel name for CLI fallback (e.g. telegram).",
+                },
+                target: {
+                    type: "string",
+                    description: "Optional explicit target (chat id or @username) for OpenClaw CLI fallback.",
+                },
             },
             required: ["description"],
+            oneOf: [
+                { required: ["channel_id"] },
+                { required: ["channel", "target"] },
+            ],
         },
 
         async execute(_id, params, context) {
@@ -282,6 +411,18 @@ export default function register(api, runtime = {}) {
                     content: [{
                         type: "text",
                         text: "Error: secret_name must match [A-Za-z0-9._-] and be 1-64 characters.",
+                    }],
+                };
+            }
+
+            const explicitChannelId = typeof params.channel_id === "string" ? params.channel_id.trim() : "";
+            const explicitChannel = typeof params.channel === "string" ? params.channel.trim() : "";
+            const explicitTarget = typeof params.target === "string" ? params.target.trim() : "";
+            if (!explicitChannelId && !(explicitChannel && explicitTarget)) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "Error: request_secret requires routing params. Pass either `channel_id` (e.g. `telegram:123456789`) OR both `channel` and `target`.",
                     }],
                 };
             }
@@ -309,6 +450,9 @@ export default function register(api, runtime = {}) {
                             "_The link expires in 3 minutes._",
                         ].join("\n");
                         const channelId = resolveChannelId(params, context);
+                        const channelName = resolveChannelName(params, context, channelId);
+                        const target = resolveMessageTarget(params, context, channelId);
+
                         const routed = await sendMessageToChannel(api, context, message, channelId);
                         if (routed.ok) {
                             console.log(`[agent-secrets] Secret link delivered via ${routed.via}.`);
@@ -318,6 +462,17 @@ export default function register(api, runtime = {}) {
                         const runtimeRouted = await sendViaRuntimeChannel(api, message, channelId);
                         if (runtimeRouted.ok) {
                             console.log(`[agent-secrets] Secret link delivered via ${runtimeRouted.via}.`);
+                            return;
+                        }
+
+                        const cli = await sendViaOpenClawCli({
+                            message,
+                            channel: channelName,
+                            target,
+                            execFileFn,
+                        });
+                        if (cli.ok) {
+                            console.log("[agent-secrets] Secret link delivered via OpenClaw CLI fallback.");
                             return;
                         }
 
@@ -332,10 +487,10 @@ export default function register(api, runtime = {}) {
                         const runtimeKeys = Object.keys(api?.runtime ?? {});
                         const runtimeChannelKeys = Object.keys(api?.runtime?.channel ?? {});
                         console.error(
-                            `[agent-secrets] No outbound chat transport available. attempted=${routed.attempted.join(",")} runtimeAttempted=${runtimeRouted.attempted.join(",")} telegram=${telegram.reason} contextKeys=${contextKeys.join(",")} apiKeys=${apiKeys.join(",")} runtimeKeys=${runtimeKeys.join(",")} runtimeChannelKeys=${runtimeChannelKeys.join(",")}`
+                            `[agent-secrets] No outbound chat transport available. attempted=${routed.attempted.join(",")} runtimeAttempted=${runtimeRouted.attempted.join(",")} cli=${cli.reason} telegram=${telegram.reason} contextKeys=${contextKeys.join(",")} apiKeys=${apiKeys.join(",")} runtimeKeys=${runtimeKeys.join(",")} runtimeChannelKeys=${runtimeChannelKeys.join(",")} channel=${channelName} target=${target}`
                         );
                         throw new Error(
-                            "Could not deliver secure link to chat channel. Configure plugin chat API (sendText/sendMessage/reply), or set TELEGRAM_BOT_TOKEN and channel_id/TELEGRAM_CHAT_ID."
+                            "Could not deliver secure link to chat channel. Configure plugin chat API (sendText/sendMessage/reply), OpenClaw CLI target/channel, or TELEGRAM_BOT_TOKEN with channel_id/TELEGRAM_CHAT_ID."
                         );
                     },
                 });

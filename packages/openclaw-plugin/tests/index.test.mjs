@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import register, { disposeStoredSecret, getStoredSecret } from "../index.mjs";
 
 function createMockApi() {
@@ -18,6 +20,23 @@ function createMockApi() {
     };
 }
 
+function createMockChild(exitCode = 0, stderrText = "") {
+    const child = new EventEmitter();
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+
+    setImmediate(() => {
+        if (stderrText) {
+            child.stderr.write(stderrText);
+        }
+        child.stdout.end();
+        child.stderr.end();
+        child.emit("close", exitCode);
+    });
+
+    return child;
+}
+
 async function testNoPlaintextExposure() {
     const api = createMockApi();
     const outbound = [];
@@ -34,7 +53,7 @@ async function testNoPlaintextExposure() {
 
     const result = await api.state.tool.execute(
         "id-1",
-        { description: "AWS deployment token", secret_name: "aws_token" },
+        { description: "AWS deployment token", secret_name: "aws_token", channel_id: "telegram:111" },
         { sendText: async (message) => outbound.push(message) },
     );
 
@@ -50,6 +69,39 @@ async function testNoPlaintextExposure() {
     assert.equal(stored.toString("utf8"), "super-secret-value");
 
     disposeStoredSecret("aws_token");
+}
+
+async function testUsesOpenClawCliFallback() {
+    const api = createMockApi();
+    const calls = [];
+
+    register(api, {
+        requestSecretFlowFn: async ({ onSecretLink }) => {
+            await onSecretLink("https://secrets.example/r/abc", "BLUE-FOX-42");
+            return Buffer.from("cli-secret", "utf8");
+        },
+        cleanupFn: async () => { },
+        execFileFn: (file, args) => {
+            calls.push({ file, args });
+            return createMockChild(0);
+        },
+    });
+
+    const result = await api.state.tool.execute(
+        "id-cli",
+        {
+            description: "Need token",
+            channel_id: "telegram:123456789",
+            secret_name: "cli_key",
+        },
+        {},
+    );
+
+    assert.equal(calls.length, 1, "CLI fallback should be attempted exactly once");
+    assert.equal(calls[0].file, "openclaw");
+    assert.deepEqual(calls[0].args.slice(0, 6), ["message", "send", "--channel", "telegram", "--target", "123456789"]);
+    assert.match(result?.content?.[0]?.text ?? "", /Secret received and stored securely in memory/);
+    disposeStoredSecret("cli_key");
 }
 
 async function testUsesSendMessageWhenSendTextMissing() {
@@ -91,12 +143,13 @@ async function testFailsWhenNoTransportAvailable() {
                 return Buffer.from("s-2", "utf8");
             },
             cleanupFn: async () => { },
+            execFileFn: () => createMockChild(1, "mock cli failure"),
         });
 
         const result = await api.state.tool.execute("id-4", { description: "Need token" }, {});
         const output = result?.content?.[0]?.text ?? "";
-        assert.match(output, /Failed to retrieve secret: Could not deliver secure link to chat channel/);
-        assert.ok(captured.some((line) => line.includes("No outbound chat transport available")));
+        assert.match(output, /Error: request_secret requires routing params/);
+        assert.equal(captured.length, 0, "Should fail before transport attempts when routing params are missing");
     } finally {
         console.error = originalError;
     }
@@ -120,7 +173,7 @@ async function testUsesRuntimeChannelWhenOtherTransportsMissing() {
         cleanupFn: async () => { },
     });
 
-    const result = await api.state.tool.execute("id-5", { description: "Need token" }, {});
+    const result = await api.state.tool.execute("id-5", { description: "Need token", channel_id: "telegram:555" }, {});
 
     assert.equal(outbound.length, 1, "Should use api.runtime.channel.sendText when available");
     assert.match(result?.content?.[0]?.text ?? "", /Secret received and stored securely in memory/);
@@ -136,7 +189,7 @@ async function testShutdownDisposesSecrets() {
         cleanupFn: async () => { },
     });
 
-    await api.state.tool.execute("id-2", { description: "DB password" }, {});
+    await api.state.tool.execute("id-2", { description: "DB password", channel_id: "telegram:222" }, {});
     assert.ok(getStoredSecret("default"));
 
     for (const hook of api.state.hooks) {
@@ -152,6 +205,10 @@ const tests = [
     {
         name: "request_secret does not return plaintext and stores secret in memory",
         run: testNoPlaintextExposure,
+    },
+    {
+        name: "request_secret uses OpenClaw CLI fallback",
+        run: testUsesOpenClawCliFallback,
     },
     {
         name: "request_secret uses sendMessage when sendText is unavailable",
