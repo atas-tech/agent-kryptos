@@ -153,26 +153,24 @@ This uses `Math.random()` which is **not cryptographically secure**. While the s
 
 ---
 
-### M-2: No CSP (Content-Security-Policy) Header on Browser UI
+### M-2: No CSP (Content-Security-Policy) Header
 
-**File**: [index.ts](file:///home/hvo/Projects/agentSecrets/packages/sps-server/src/index.ts#L74-L79)
+The Vite-built HTML page has no `Content-Security-Policy` header. While the deployment architecture separates the SPA from the API, CSP is still critical for preventing XSS attacks on the secret input page. If an XSS vulnerability existed in the SPA frontend, an attacker could extract the secret before encryption.
 
-The HTML pages served at `/r/:id` have no `Content-Security-Policy` header. While `Referrer-Policy: no-referrer` is set, CSP is critical for preventing XSS attacks on the secret input page. If an XSS vulnerability existed, an attacker could steal the secret before encryption.
-
-**Recommendation**: Add a strict CSP header:
-```
-Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'
+**Recommendation**: Add a strict CSP header via standard `<meta>` tag in `index.html` or at the CDN/Hosting Edge.
+```html
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' http://localhost:3100 https://api.yourdomain.com; frame-ancestors 'none'">
 ```
 
 ---
 
-### M-3: Static Asset Serving Could Expose Unintended Files
+### M-3: Static Asset Serving Could Expose Unintended Files (RESOLVED)
 
-**File**: [index.ts](file:///home/hvo/Projects/agentSecrets/packages/sps-server/src/index.ts#L81-L103)
+*(Note: Resolved as of the frontend decoupling. The `sps-server` no longer serves static assets.)*
 
-The `/ui/*` route serves arbitrary files from the `browser-ui` directory. While there is a path traversal check (`assetPath.startsWith(browserUiDir)`), this check uses `path.normalize` which is correct. However, the content-type detection is based on file extension only, and the catch-all `application/octet-stream` for unknown extensions could serve unintended files (e.g., `package.json`, `node_modules` content).
+Previously, the `/ui/*` route served arbitrary files from the `browser-ui` directory. While there was a path traversal check, the content-type detection was based on file extension only.
 
-**Recommendation**: Implement an allowlist of permitted file extensions or serve only from a specific `public/` subdirectory.
+**Resolution**: The `browser-ui` is now a standalone Vite single-page application. The `sps-server` API no longer has any static file serving routes (`get("/ui/*")` removed). This vulnerability has been entirely mitigated by architectural decoupling.
 
 ---
 

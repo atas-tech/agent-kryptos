@@ -70,18 +70,19 @@ async function run() {
     await writeJwksFile(identity, jwksPath);
     process.env.SPS_GATEWAY_JWKS_FILE = jwksPath;
 
-    // 2. Start real SPS server
+    // 2. Start real SPS server on an ephemeral port
     const host = "127.0.0.1";
-    const port = Number(process.env.PORT ?? 3100);
-    const baseUrl = `http://${host}:${port}`;
 
+    // We bind to 0 to get an ephemeral port, so we don't clash with
+    // a dev server running in another tab.
     const app = await buildApp({
         useInMemoryStore: true,
         hmacSecret: "e2e-human-hmac-secret",
-        baseUrl,
+        uiBaseUrl: process.env.VITE_SPS_UI_URL ?? "http://localhost:5173",
     });
 
-    await app.listen({ host, port });
+    const address = await app.listen({ host, port: 0 });
+    const baseUrl = address; // The actual bound address (e.g. http://127.0.0.1:45321)
     log("SPS", `Server listening on ${CYAN}${baseUrl}${RESET}`);
 
     // 3. Generate agent HPKE keypair
@@ -126,7 +127,8 @@ async function run() {
             throw new Error("Could not extract secret URL from chat message");
         }
 
-        const secretUrl = linkMatch[1];
+        let secretUrl = linkMatch[1];
+        secretUrl += `&api_url=${encodeURIComponent(baseUrl)}`;
 
         // 6. Extract confirmation code
         const codeMatch = chatMessage.match(/Confirmation code:\s*(\S+)/);

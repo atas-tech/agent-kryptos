@@ -37,12 +37,14 @@ agentSecrets/
 │   │       ├── routes.test.ts      # Endpoint unit tests
 │   │       └── crypto.test.ts      # HMAC + code generation tests
 │   │
-│   ├── browser-ui/                 # Client-side encryption page
-│   │   ├── index.html              # Single-page secret input form
-│   │   ├── style.css               # Responsive styling
-│   │   ├── app.js                  # HPKE encryption logic
-│   │   └── vendor/
-│   │       └── hpke.js             # Vendored hpke-js bundle
+│   ├── browser-ui/                 # Standalone Vite single-page application
+│   │   ├── package.json            # Vite + dependencies
+│   │   ├── vite.config.js          # Vite configuration
+│   │   ├── index.html              # App entry point
+│   │   ├── src/                    # Source files
+│   │   │   ├── app.js              # UI + state logic
+│   │   │   ├── crypto.js           # HPKE encryption wrapper
+│   │   │   └── style.css           # Styling
 │   │
 │   ├── agent-skill/                # Agent-side skill package
 │   │   ├── package.json
@@ -93,8 +95,8 @@ Fastify server with Redis-backed storage. All data auto-expires via Redis TTL (1
 
 - Fastify server on configurable port (default `3100`)
 - Registers routes, Redis connection, CORS for browser-ui
-- Sets `Referrer-Policy: no-referrer` on all API and UI responses to prevent leaking `?sig=` tokens via referrer headers
-- **UI routing**: `GET /r/:id` serves `browser-ui/index.html` as a static file (wildcard catch). The JS in the page parses `:id` from `window.location` and fetches `/api/v2/secret/metadata/:id`. This keeps API routes (`/api/v2/*`) cleanly separated from the page-serving route (`/r/*`).
+- Sets `Referrer-Policy: no-referrer` on all API responses to prevent leaking `?sig=` tokens via referrer headers.
+- **Frontend Decoupling**: The backend no longer serves static UI files. It relies on a standalone frontend application configured via `SPS_UI_BASE_URL` (default `http://localhost:5173`) to generate links.
 
 #### [NEW] [secrets.ts](packages/sps-server/src/routes/secrets.ts)
 
@@ -160,39 +162,37 @@ end
 
 ### 3. Browser Encryption UI (`packages/browser-ui/`)
 
-Self-contained, zero-dependency web page served by the SPS.
+Standalone Single-Page Application (SPA) built with Vite. It interacts with the SPS backend via absolute URLs (configured via `VITE_SPS_API_URL`).
 
 #### [NEW] [index.html](packages/browser-ui/index.html)
 
 - Clean, minimal form: confirmation code display, textarea for secret, submit button
 - States: loading → verify code → enter secret → encrypting → success → expired/error
-- No external CDN, fonts, or scripts — fully self-contained
+- Uses ES modules via Vite.
 
-#### [NEW] [style.css](packages/browser-ui/style.css)
+#### [NEW] [src/style.css](packages/browser-ui/src/style.css)
 
 - Dark theme, responsive (mobile-first for Telegram/WhatsApp users)
 - Security-focused UX: lock icon, confirmation code prominently displayed
-- Subtle animations for state transitions
 
-#### [NEW] [app.js](packages/browser-ui/app.js)
+#### [NEW] [src/app.js](packages/browser-ui/src/app.js)
 
 ```
-1. Parse URL: extract request_id from path, metadata_sig and submit_sig from query params
+1. Parse URL: extract request_id from query `?id=...`, metadata_sig and submit_sig
 2. Fetch /api/v2/secret/metadata/:id?sig=metadata_sig → {public_key, confirmation_code}
 3. Display confirmation_code prominently
 4. On submit:
    a. Import public key (deserialize from base64)
    b. HPKE.Seal(public_key, TextEncoder.encode(secret))
    c. POST /api/v2/secret/submit/:id?sig=submit_sig {enc: base64, ciphertext: base64}
-   d. Show success state
+   d. Hide the input box and show success state
 5. Handle errors: 403 (invalid sig), 409 (already submitted), 410 (expired)
 ```
 
-#### [NEW] [vendor/hpke.js](packages/browser-ui/vendor/hpke.js)
+#### [NEW] [src/crypto.js](packages/browser-ui/src/crypto.js)
 
-- Vendored build of `@hpke/core` (or `hpke-js`)
-- Pinned to specific audited version, committed to repo
-- ES module bundle, no dependencies
+- Standard ES module importing `@hpke/core`
+- Handled via Vite's bundling pipeline instead of a custom build script.
 
 ---
 
@@ -308,10 +308,12 @@ npm test --workspace=packages/gateway
 - `egress-filter.test.ts`: Allowlisted URLs pass, non-allowlisted redacted, mixed content partially redacted. **Adversarial**: homograph attacks (`sеcrets.yourdomain.com` with Cyrillic), markdown-wrapped URLs `[click](http://evil.com)`, URL-encoded bypasses, split-text tricks.
 - `identity.test.ts`: **JWT claim validation failures** — expired `exp`, wrong `aud`, missing `role`, tampered signature → all rejected.
 
-### End-to-End Test (Browser)
+### End-to-End Test (Manual)
 
-1. Start SPS server: `npm run dev --workspace=packages/sps-server`
-2. Open browser to `http://localhost:3100/r/{test_request_id}`
+1. Start SPS server: `cd packages/sps-server && npm run dev`
+2. Start Frontend UI: `cd packages/browser-ui && npm run dev`
+3. Trigger a request via the CLI or Agent
+4. Open the generated Vite URL (e.g., `http://localhost:5173/?id={test_request_id}&...`)
 3. Verify confirmation code is displayed
 4. Enter test secret, click submit
 5. Verify success state is shown

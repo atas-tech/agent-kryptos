@@ -31,7 +31,7 @@ export interface SecretRoutesOptions extends FastifyPluginOptions {
   hmacSecret: string;
   requestTtlSeconds?: number;
   submittedTtlSeconds?: number;
-  baseUrl?: string;
+  uiBaseUrl?: string;
 }
 
 function nowSeconds(): number {
@@ -41,7 +41,7 @@ function nowSeconds(): number {
 export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRoutesOptions): Promise<void> {
   const requestTtl = opts.requestTtlSeconds ?? 180;
   const submittedTtl = opts.submittedTtlSeconds ?? 60;
-  const baseUrl = opts.baseUrl ?? `http://127.0.0.1:${process.env.PORT ?? "3100"}`;
+  const uiBaseUrl = opts.uiBaseUrl ?? process.env.SPS_UI_BASE_URL ?? "http://localhost:5173";
 
   app.post<{ Body: { public_key: string; description: string } }>(
     "/request",
@@ -59,49 +59,49 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
       }
     },
     async (req, reply) => {
-    const payload = await requireGatewayAuth(req, reply);
-    if (!payload) {
-      return;
-    }
+      const payload = await requireGatewayAuth(req, reply);
+      if (!payload) {
+        return;
+      }
 
-    if (!req.body.description.trim()) {
-      return reply.code(400).send({ error: "description must not be blank" });
-    }
+      if (!req.body.description.trim()) {
+        return reply.code(400).send({ error: "description must not be blank" });
+      }
 
-    const requestId = generateRequestId();
-    const confirmationCode = generateConfirmationCode();
-    const createdAt = nowSeconds();
-    const expiresAt = createdAt + requestTtl;
+      const requestId = generateRequestId();
+      const confirmationCode = generateConfirmationCode();
+      const createdAt = nowSeconds();
+      const expiresAt = createdAt + requestTtl;
 
-    await opts.store.setRequest(
-      {
+      await opts.store.setRequest(
+        {
+          requestId,
+          publicKey: req.body.public_key,
+          description: req.body.description,
+          confirmationCode,
+          status: "pending",
+          createdAt,
+          expiresAt
+        },
+        requestTtl
+      );
+
+      const sigs = generateScopedSigs(requestId, expiresAt, opts.hmacSecret);
+      const secretUrl = `${uiBaseUrl}/?id=${requestId}&metadata_sig=${encodeURIComponent(sigs.metadataSig)}&submit_sig=${encodeURIComponent(sigs.submitSig)}`;
+
+      logAudit({
+        event: "request_created",
         requestId,
-        publicKey: req.body.public_key,
-        description: req.body.description,
-        confirmationCode,
-        status: "pending",
-        createdAt,
-        expiresAt
-      },
-      requestTtl
-    );
+        agentId: payload.sub,
+        action: "request",
+        ip: req.ip
+      });
 
-    const sigs = generateScopedSigs(requestId, expiresAt, opts.hmacSecret);
-    const secretUrl = `${baseUrl}/r/${requestId}?metadata_sig=${encodeURIComponent(sigs.metadataSig)}&submit_sig=${encodeURIComponent(sigs.submitSig)}`;
-
-    logAudit({
-      event: "request_created",
-      requestId,
-      agentId: payload.sub,
-      action: "request",
-      ip: req.ip
-    });
-
-    return reply.code(201).send({
-      request_id: requestId,
-      confirmation_code: confirmationCode,
-      secret_url: secretUrl
-    });
+      return reply.code(201).send({
+        request_id: requestId,
+        confirmation_code: confirmationCode,
+        secret_url: secretUrl
+      });
     }
   );
 
@@ -114,22 +114,22 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
       }
     },
     async (req, reply) => {
-    const auth = requireBrowserSig(req, reply, "metadata", opts.hmacSecret);
-    if (!auth) {
-      return;
-    }
+      const auth = requireBrowserSig(req, reply, "metadata", opts.hmacSecret);
+      if (!auth) {
+        return;
+      }
 
-    const record = await opts.store.getRequest(req.params.id);
-    if (!record) {
-      return reply.code(410).send({ error: "Request expired" });
-    }
+      const record = await opts.store.getRequest(req.params.id);
+      if (!record) {
+        return reply.code(410).send({ error: "Request expired" });
+      }
 
-    return reply.send({
-      public_key: record.publicKey,
-      description: record.description,
-      confirmation_code: record.confirmationCode,
-      expiry: auth.exp
-    });
+      return reply.send({
+        public_key: record.publicKey,
+        description: record.description,
+        confirmation_code: record.confirmationCode,
+        expiry: auth.exp
+      });
     }
   );
 
@@ -151,43 +151,43 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
       }
     },
     async (req, reply) => {
-    const auth = requireBrowserSig(req, reply, "submit", opts.hmacSecret);
-    if (!auth) {
-      return;
-    }
+      const auth = requireBrowserSig(req, reply, "submit", opts.hmacSecret);
+      if (!auth) {
+        return;
+      }
 
-    const record = await opts.store.getRequest(req.params.id);
-    if (!record) {
-      return reply.code(410).send({ error: "Request expired" });
-    }
+      const record = await opts.store.getRequest(req.params.id);
+      if (!record) {
+        return reply.code(410).send({ error: "Request expired" });
+      }
 
-    if (record.status === "submitted") {
-      return reply.code(409).send({ error: "Already submitted" });
-    }
+      if (record.status === "submitted") {
+        return reply.code(409).send({ error: "Already submitted" });
+      }
 
-    const next = await opts.store.updateRequest(
-      req.params.id,
-      {
-        status: "submitted",
-        enc: req.body.enc,
-        ciphertext: req.body.ciphertext,
-        expiresAt: nowSeconds() + submittedTtl
-      },
-      submittedTtl
-    );
+      const next = await opts.store.updateRequest(
+        req.params.id,
+        {
+          status: "submitted",
+          enc: req.body.enc,
+          ciphertext: req.body.ciphertext,
+          expiresAt: nowSeconds() + submittedTtl
+        },
+        submittedTtl
+      );
 
-    if (!next) {
-      return reply.code(410).send({ error: "Request expired" });
-    }
+      if (!next) {
+        return reply.code(410).send({ error: "Request expired" });
+      }
 
-    logAudit({
-      event: "secret_submitted",
-      requestId: req.params.id,
-      action: "submit",
-      ip: req.ip
-    });
+      logAudit({
+        event: "secret_submitted",
+        requestId: req.params.id,
+        action: "submit",
+        ip: req.ip
+      });
 
-    return reply.code(201).send({ status: "submitted" });
+      return reply.code(201).send({ status: "submitted" });
     }
   );
 
@@ -199,37 +199,37 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
       }
     },
     async (req, reply) => {
-    const payload = await requireGatewayAuth(req, reply);
-    if (!payload) {
-      return;
-    }
+      const payload = await requireGatewayAuth(req, reply);
+      if (!payload) {
+        return;
+      }
 
-    const current = await opts.store.getRequest(req.params.id);
-    if (!current) {
-      return reply.code(410).send({ error: "Not available" });
-    }
+      const current = await opts.store.getRequest(req.params.id);
+      if (!current) {
+        return reply.code(410).send({ error: "Not available" });
+      }
 
-    if (current.status !== "submitted") {
-      return reply.code(409).send({ error: "Not submitted yet" });
-    }
+      if (current.status !== "submitted") {
+        return reply.code(409).send({ error: "Not submitted yet" });
+      }
 
-    const retrieved = await opts.store.atomicRetrieveAndDelete(req.params.id);
-    if (!retrieved || !retrieved.enc || !retrieved.ciphertext) {
-      return reply.code(410).send({ error: "Not available" });
-    }
+      const retrieved = await opts.store.atomicRetrieveAndDelete(req.params.id);
+      if (!retrieved || !retrieved.enc || !retrieved.ciphertext) {
+        return reply.code(410).send({ error: "Not available" });
+      }
 
-    logAudit({
-      event: "secret_retrieved",
-      requestId: req.params.id,
-      agentId: payload.sub,
-      action: "retrieve",
-      ip: req.ip
-    });
+      logAudit({
+        event: "secret_retrieved",
+        requestId: req.params.id,
+        agentId: payload.sub,
+        action: "retrieve",
+        ip: req.ip
+      });
 
-    return reply.send({
-      enc: retrieved.enc,
-      ciphertext: retrieved.ciphertext
-    });
+      return reply.send({
+        enc: retrieved.enc,
+        ciphertext: retrieved.ciphertext
+      });
     }
   );
 
@@ -241,17 +241,17 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
       }
     },
     async (req, reply) => {
-    const payload = await requireGatewayAuth(req, reply);
-    if (!payload) {
-      return;
-    }
+      const payload = await requireGatewayAuth(req, reply);
+      if (!payload) {
+        return;
+      }
 
-    const record = await opts.store.getRequest(req.params.id);
-    if (!record) {
-      return reply.code(410).send({ status: "expired" });
-    }
+      const record = await opts.store.getRequest(req.params.id);
+      if (!record) {
+        return reply.code(410).send({ status: "expired" });
+      }
 
-    return reply.send({ status: record.status });
+      return reply.send({ status: record.status });
     }
   );
 
@@ -263,22 +263,22 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
       }
     },
     async (req, reply) => {
-    const payload = await requireGatewayAuth(req, reply);
-    if (!payload) {
-      return;
-    }
+      const payload = await requireGatewayAuth(req, reply);
+      if (!payload) {
+        return;
+      }
 
-    await opts.store.deleteRequest(req.params.id);
+      await opts.store.deleteRequest(req.params.id);
 
-    logAudit({
-      event: "request_revoked",
-      requestId: req.params.id,
-      agentId: payload.sub,
-      action: "revoke",
-      ip: req.ip
-    });
+      logAudit({
+        event: "request_revoked",
+        requestId: req.params.id,
+        agentId: payload.sub,
+        action: "revoke",
+        ip: req.ip
+      });
 
-    return reply.code(204).send();
+      return reply.code(204).send();
     }
   );
 }

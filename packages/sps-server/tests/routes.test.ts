@@ -226,18 +226,6 @@ describe("secret routes", () => {
     await app.close();
   });
 
-  it("serves nested UI assets with referrer policy", async () => {
-    const app = await buildApp({ useInMemoryStore: true, hmacSecret: "test-hmac" });
-    const response = await app.inject({
-      method: "GET",
-      url: "/ui/vendor/hpke.js"
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(response.headers["referrer-policy"]).toBe("no-referrer");
-    expect(response.headers["content-type"]).toContain("application/javascript");
-    await app.close();
-  });
 
   it("rejects in-memory store in production mode", async () => {
     const originalNodeEnvInner = process.env.NODE_ENV;

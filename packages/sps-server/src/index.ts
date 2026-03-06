@@ -10,8 +10,6 @@ import type { RequestStore } from "./types.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const browserUiDir = path.resolve(__dirname, "../../browser-ui");
-
 export interface BuildAppOptions {
   store?: RequestStore;
   hmacSecret?: string;
@@ -67,40 +65,10 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       hmacSecret,
       requestTtlSeconds: 180,
       submittedTtlSeconds: 60,
-      baseUrl: options.baseUrl ?? process.env.SPS_PUBLIC_BASE_URL
+      uiBaseUrl: process.env.SPS_UI_BASE_URL
     });
   }, { prefix: "/api/v2/secret" });
 
-  app.get("/r/:id", async (_req, reply) => {
-    const htmlPath = path.join(browserUiDir, "index.html");
-    const html = await readFile(htmlPath, "utf8");
-    reply.type("text/html; charset=utf-8");
-    return reply.send(html);
-  });
-
-  app.get("/ui/*", async (req, reply) => {
-    const asset = (req.params as { "*": string })["*"];
-    const assetPath = path.normalize(path.join(browserUiDir, asset));
-    if (!assetPath.startsWith(browserUiDir)) {
-      return reply.code(404).send({ error: "Not found" });
-    }
-
-    try {
-      const content = await readFile(assetPath);
-      if (asset.endsWith(".css")) {
-        reply.type("text/css; charset=utf-8");
-      } else if (asset.endsWith(".js")) {
-        reply.type("application/javascript; charset=utf-8");
-      } else if (asset.endsWith(".html")) {
-        reply.type("text/html; charset=utf-8");
-      } else {
-        reply.type("application/octet-stream");
-      }
-      return reply.send(content);
-    } catch {
-      return reply.code(404).send({ error: "Not found" });
-    }
-  });
 
   app.get("/healthz", async () => ({ ok: true }));
 
