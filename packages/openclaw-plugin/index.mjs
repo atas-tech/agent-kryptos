@@ -391,10 +391,6 @@ export default function register(api, runtime = {}) {
                 },
             },
             required: ["description"],
-            oneOf: [
-                { required: ["channel_id"] },
-                { required: ["channel", "target"] },
-            ],
         },
 
         async execute(_id, params, context) {
