@@ -1,5 +1,5 @@
 /**
- * OpenClaw Plugin: agent-secrets
+ * OpenClaw Plugin: agent-kryptos
  *
  * Registers a `request_secret` tool that enables the agent to securely
  * request secrets from the user via an encrypted browser link.
@@ -270,7 +270,7 @@ async function sendViaRuntimeChannel(api, message, channelId) {
             await c.fn.call(channel, ...c.args);
             return { ok: true, via: c.label };
         } catch (err) {
-            console.warn(`[agent-secrets] ${c.label} failed: ${err?.message ?? String(err)}`);
+            console.warn(`[agent-kryptos] ${c.label} failed: ${err?.message ?? String(err)}`);
         }
     }
 
@@ -302,7 +302,7 @@ async function sendMessageToChannel(api, context, message, channelId) {
             await target.fn.call(target.owner, ...target.args);
             return { ok: true, via: target.label };
         } catch (err) {
-            console.warn(`[agent-secrets] ${target.label} failed: ${err?.message ?? String(err)}`);
+            console.warn(`[agent-kryptos] ${target.label} failed: ${err?.message ?? String(err)}`);
         }
     }
 
@@ -434,7 +434,7 @@ export default function register(api, runtime = {}) {
                     description,
                     spsBaseUrl,
                     onSecretLink: async (secretUrl, confirmationCode) => {
-                        console.log(`[agent-secrets] Delivering secret link: ${secretUrl}`);
+                        console.log(`[agent-kryptos] Delivering secret link: ${secretUrl}`);
 
                         const useRawLink = params.raw_link === true || process.env.OPENCLAW_SECRETS_RAW_LINK === "true" || process.env.OPENCLAW_SECRETS_RAW_LINK === "1";
 
@@ -464,13 +464,13 @@ export default function register(api, runtime = {}) {
 
                         const routed = await sendMessageToChannel(api, context, message, channelId);
                         if (routed.ok) {
-                            console.log(`[agent-secrets] Secret link delivered via ${routed.via}.`);
+                            console.log(`[agent-kryptos] Secret link delivered via ${routed.via}.`);
                             return;
                         }
 
                         const runtimeRouted = await sendViaRuntimeChannel(api, message, channelId);
                         if (runtimeRouted.ok) {
-                            console.log(`[agent-secrets] Secret link delivered via ${runtimeRouted.via}.`);
+                            console.log(`[agent-kryptos] Secret link delivered via ${runtimeRouted.via}.`);
                             return;
                         }
 
@@ -481,13 +481,13 @@ export default function register(api, runtime = {}) {
                             execFileFn,
                         });
                         if (cli.ok) {
-                            console.log("[agent-secrets] Secret link delivered via OpenClaw CLI fallback.");
+                            console.log("[agent-kryptos] Secret link delivered via OpenClaw CLI fallback.");
                             return;
                         }
 
                         const telegram = await sendTelegramFallback(message, channelId);
                         if (telegram.ok) {
-                            console.log("[agent-secrets] Secret link delivered via Telegram API fallback.");
+                            console.log("[agent-kryptos] Secret link delivered via Telegram API fallback.");
                             return;
                         }
 
@@ -496,7 +496,7 @@ export default function register(api, runtime = {}) {
                         const runtimeKeys = Object.keys(api?.runtime ?? {});
                         const runtimeChannelKeys = Object.keys(api?.runtime?.channel ?? {});
                         console.error(
-                            `[agent-secrets] No outbound chat transport available. attempted=${routed.attempted.join(",")} runtimeAttempted=${runtimeRouted.attempted.join(",")} cli=${cli.reason} telegram=${telegram.reason} contextKeys=${contextKeys.join(",")} apiKeys=${apiKeys.join(",")} runtimeKeys=${runtimeKeys.join(",")} runtimeChannelKeys=${runtimeChannelKeys.join(",")} channel=${channelName} target=${target}`
+                            `[agent-kryptos] No outbound chat transport available. attempted=${routed.attempted.join(",")} runtimeAttempted=${runtimeRouted.attempted.join(",")} cli=${cli.reason} telegram=${telegram.reason} contextKeys=${contextKeys.join(",")} apiKeys=${apiKeys.join(",")} runtimeKeys=${runtimeKeys.join(",")} runtimeChannelKeys=${runtimeChannelKeys.join(",")} channel=${channelName} target=${target}`
                         );
                         throw new Error(
                             "Could not deliver secure link to chat channel. Configure plugin chat API (sendText/sendMessage/reply), OpenClaw CLI target/channel, or TELEGRAM_BOT_TOKEN with channel_id/TELEGRAM_CHAT_ID."
@@ -552,7 +552,7 @@ export default function register(api, runtime = {}) {
                 await runCleanup();
             },
             {
-                name: "agent-secrets.cleanup",
+                name: "agent-kryptos.cleanup",
                 description: "Cleanup temporary gateway identity files",
             },
         );
@@ -565,7 +565,7 @@ export default function register(api, runtime = {}) {
                 disposeAllInMemorySecrets();
             },
             {
-                name: "agent-secrets.dispose-secrets",
+                name: "agent-kryptos.dispose-secrets",
                 description: "Zero and dispose in-memory secret buffers",
             },
         );

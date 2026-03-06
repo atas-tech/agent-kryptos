@@ -1,5 +1,5 @@
 {
-  "name": "@agent-secrets/agent-skill",
+  "name": "@agent-kryptos/agent-skill",
   "version": "0.1.0",
   "private": true,
   "type": "module",

@@ -1,6 +1,6 @@
 # OpenClaw + Telegram Integration Test Plan
 
-Build an OpenClaw plugin (`openclaw-plugin-agent-secrets`) and an agent skill that together enable an OpenClaw agent to securely request secrets via Telegram. This plan covers what to build, how to wire it, and how to test the full flow.
+Build an OpenClaw plugin (`openclaw-plugin-agent-kryptos`) and an agent skill that together enable an OpenClaw agent to securely request secrets via Telegram. This plan covers what to build, how to wire it, and how to test the full flow.
 
 ## User Review Required
 
@@ -22,7 +22,7 @@ sequenceDiagram
     participant User as Telegram User
     participant TG as OpenClaw Gateway<br/>(Telegram channel)
     participant Agent as OpenClaw Agent<br/>(Pi agent)
-    participant Plugin as agent-secrets plugin<br/>(request_secret tool)
+    participant Plugin as agent-kryptos plugin<br/>(request_secret tool)
     participant SPS as SPS Server<br/>(localhost:3100)
     participant Browser as User's Browser
 
@@ -55,7 +55,7 @@ This is the primary integration piece — an OpenClaw plugin that registers a `r
 Plugin manifest file:
 ```json
 {
-  "id": "agent-secrets",
+  "id": "agent-kryptos",
   "name": "Secure Secret Provisioning",
   "version": "0.1.0",
   "description": "Zero-knowledge secret provisioning via HPKE encryption"
@@ -88,13 +88,13 @@ Configuration via environment variables:
 
 ---
 
-### 2. Agent Skill for OpenClaw (`packages/openclaw-plugin/skills/agent-secrets/SKILL.md`)
+### 2. Agent Skill for OpenClaw (`packages/openclaw-plugin/skills/agent-kryptos/SKILL.md`)
 
 A `SKILL.md` placed in the plugin's skills directory (or the agent workspace `skills/` folder):
 
 ```yaml
 ---
-name: agent-secrets
+name: agent-kryptos
 description: Securely request credentials and API keys from the user via encrypted link
 ---
 ```
@@ -151,7 +151,7 @@ For the full test with a real OpenClaw deployment:
        "list": [{
          "id": "main",
          "tools": {
-           "allow": ["agent-secrets"]
+           "allow": ["agent-kryptos"]
          }
        }]
      }

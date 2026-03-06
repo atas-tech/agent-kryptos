@@ -97,7 +97,7 @@ export async function requestSecretFlow(params) {
 
     try {
         // 2. Create secret request via Gateway SPS client
-        const gatewayToken = await modules.identity.issueJwt(gwIdentity, "agent-secrets-plugin");
+        const gatewayToken = await modules.identity.issueJwt(gwIdentity, "agent-kryptos-plugin");
         const gatewayClient = new modules.GatewaySpsClient({
             baseUrl: spsBaseUrl,
             gatewayBearerToken: gatewayToken,
@@ -112,7 +112,7 @@ export async function requestSecretFlow(params) {
         await onSecretLink(request.secretUrl, request.confirmationCode);
 
         // 4. Poll until submitted
-        const agentToken = await modules.identity.issueJwt(gwIdentity, "agent-secrets-agent");
+        const agentToken = await modules.identity.issueJwt(gwIdentity, "agent-kryptos-agent");
         const agentClient = new modules.SpsClient({
             baseUrl: spsBaseUrl,
             gatewayBearerToken: agentToken,

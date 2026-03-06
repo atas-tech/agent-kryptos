@@ -15,7 +15,7 @@ Build a zero-knowledge secret provisioning system enabling Human → Agent secur
 ### Project Structure
 
 ```
-agentSecrets/
+agent-kryptos/
 ├── package.json                    # Root workspace config
 ├── tsconfig.base.json              # Shared TS config
 ├── packages/

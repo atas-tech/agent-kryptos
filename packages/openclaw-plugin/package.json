@@ -1,5 +1,5 @@
 {
-    "name": "@agent-secrets/openclaw-plugin",
+    "name": "@agent-kryptos/openclaw-plugin",
     "version": "0.1.0",
     "private": true,
     "type": "module",

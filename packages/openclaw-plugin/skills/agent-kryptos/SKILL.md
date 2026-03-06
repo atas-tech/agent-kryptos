@@ -1,6 +1,6 @@
 ---
-name: agent-secrets
-description: Securely request credentials and API keys from the user via encrypted link
+name: agent-kryptos
+description: Provides a mechanism for the agent to securely request secrets (API keys, credentials, PII) from human operators via an out-of-band delivery mechanism without storing secrets in chat context.
 ---
 
 # Secure Secret Provisioning

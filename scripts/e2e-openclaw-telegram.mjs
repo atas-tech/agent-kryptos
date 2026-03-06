@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * E2E Integration Test: agentSecrets + Telegram
+ * E2E Integration Test: agent-kryptos + Telegram
  *
  * Tests the full secret provisioning flow by sending a real Telegram message
  * with the secret link, then waiting for a human to submit via the Browser UI.
@@ -97,7 +97,7 @@ async function sendTelegramMessage(text) {
 async function run() {
     console.log();
     console.log(`${BOLD}═══════════════════════════════════════════════════════${RESET}`);
-    console.log(`${BOLD}  🔐 agentSecrets — Telegram E2E Integration Test${RESET}`);
+    console.log(`${BOLD}  🔐 agent-kryptos — Telegram E2E Integration Test${RESET}`);
     console.log(`${BOLD}═══════════════════════════════════════════════════════${RESET}`);
     console.log();
 

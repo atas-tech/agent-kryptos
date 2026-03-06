@@ -1,5 +1,5 @@
 {
-  "name": "@agent-secrets/browser-ui",
+  "name": "@agent-kryptos/browser-ui",
   "version": "0.1.0",
   "private": true,
   "type": "module",

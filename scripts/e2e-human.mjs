@@ -13,7 +13,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { exec } from "node:child_process";
+import { exec, spawn } from "node:child_process";
 import { buildApp } from "../packages/sps-server/dist/index.js";
 import { GatewaySpsClient } from "../packages/gateway/dist/sps-client.js";
 import { RequestSecretInterceptor } from "../packages/gateway/dist/interceptor.js";
@@ -36,6 +36,15 @@ function log(label, message) {
     console.log(`${DIM}${time}${RESET} ${BOLD}[${label}]${RESET} ${message}`);
 }
 
+async function isServerRunning(url) {
+    try {
+        await fetch(url);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 function openBrowser(url) {
     const platform = os.platform();
     const cmd =
@@ -56,7 +65,7 @@ function openBrowser(url) {
 async function run() {
     console.log();
     console.log(`${BOLD}═══════════════════════════════════════════════════════${RESET}`);
-    console.log(`${BOLD}  🔐 agentSecrets — Interactive E2E Test${RESET}`);
+    console.log(`${BOLD}  🔐 agent-kryptos — Interactive E2E Test${RESET}`);
     console.log(`${BOLD}═══════════════════════════════════════════════════════${RESET}`);
     console.log();
 
@@ -70,6 +79,34 @@ async function run() {
     await writeJwksFile(identity, jwksPath);
     process.env.SPS_GATEWAY_JWKS_FILE = jwksPath;
 
+    // 1.5. Ensure Browser UI is running
+    const uiBaseUrl = process.env.VITE_SPS_UI_URL ?? "http://localhost:5173";
+    let uiProcess;
+    
+    if (!(await isServerRunning(uiBaseUrl)) && uiBaseUrl.includes("localhost:5173")) {
+        log("SETUP", `${YELLOW}Browser UI server not detected at ${uiBaseUrl}. Starting it...${RESET}`);
+        
+        // Don't ignore stdio completely, so we can capture errors if it fails to start
+        uiProcess = spawn("npm", ["run", "dev", "--workspace=packages/browser-ui"], { stdio: "pipe" });
+        uiProcess.stderr.on('data', (data) => console.error(`${DIM}[VITE ERR] ${data}${RESET}`));
+        
+        let started = false;
+        for (let i = 0; i < 30; i++) {
+            await new Promise((r) => setTimeout(r, 500));
+            // Also try 127.0.0.1 if localhost fetch fails due to IPv6 Node bindings
+            if (await isServerRunning(uiBaseUrl) || await isServerRunning("http://127.0.0.1:5173")) {
+                log("SETUP", `${GREEN}Browser UI server started.${RESET}`);
+                started = true;
+                break;
+            }
+        }
+        
+        if (!started) {
+            uiProcess.kill();
+            throw new Error(`Browser UI failed to start at ${uiBaseUrl} after 15 seconds. Please check the logs above or run "npm run dev --workspace=packages/browser-ui" manually.`);
+        }
+    }
+
     // 2. Start real SPS server on an ephemeral port
     const host = "127.0.0.1";
 
@@ -78,7 +115,7 @@ async function run() {
     const app = await buildApp({
         useInMemoryStore: true,
         hmacSecret: "e2e-human-hmac-secret",
-        uiBaseUrl: process.env.VITE_SPS_UI_URL ?? "http://localhost:5173",
+        uiBaseUrl,
     });
 
     const address = await app.listen({ host, port: 0 });
@@ -209,6 +246,9 @@ async function run() {
     } finally {
         destroyKeyPair(keyPair);
         await app.close();
+        if (uiProcess) {
+            uiProcess.kill();
+        }
         await rm(tempDir, { recursive: true, force: true });
         log("CLEANUP", "Server stopped, temp files removed.");
     }
