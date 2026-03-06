@@ -6,15 +6,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="referrer" content="no-referrer" />
   <title>Secure Secret Input</title>
-  <title>Secure Secret Input</title>
+</head>
 
 <body>
   <main class="card">
     <h1>Secure Secret Input</h1>
     <p id="status">Loading request...</p>
     <p id="code" class="code"></p>
-    <label for="secret">Secret</label>
-    <textarea id="secret" rows="6" autocomplete="off" spellcheck="false"></textarea>
+
+    <label id="secret-label" for="secret-single">Secret</label>
+    <input id="secret-single" type="password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+    <textarea id="secret-multi" rows="8" hidden autocomplete="off" autocorrect="off" autocapitalize="off"
+      spellcheck="false"></textarea>
+
+    <div id="secret-controls" class="secret-controls">
+      <button id="toggle-visibility" type="button" class="secondary">Show</button>
+      <label class="inline-toggle" for="multiline-toggle">
+        <input id="multiline-toggle" type="checkbox" />
+        <span>Multiline secret (PEM/JSON)</span>
+      </label>
+    </div>
+
     <button id="submit" type="button">Encrypt and Submit</button>
   </main>
   <script type="module" src="/src/app.js"></script>

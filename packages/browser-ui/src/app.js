@@ -1,6 +1,8 @@
 import { sealBase64 } from "./crypto.js";
 import "./style.css";
 
+const AUTO_HIDE_MS = 20000;
+
 function getContext() {
   const params = new URLSearchParams(window.location.search);
   return {
@@ -11,18 +13,94 @@ function getContext() {
   };
 }
 
+function setEntryEnabled(enabled, ui) {
+  ui.secretSingle.disabled = !enabled;
+  ui.secretMulti.disabled = !enabled;
+  ui.multilineToggle.disabled = !enabled;
+  ui.toggleVisibility.disabled = !enabled || ui.multilineToggle.checked;
+  ui.submitButton.disabled = !enabled;
+}
 
 async function init() {
   const status = document.getElementById("status");
   const code = document.getElementById("code");
   const submitButton = document.getElementById("submit");
-  const secretInput = document.getElementById("secret");
-  const secretLabel = document.querySelector('label[for="secret"]');
+  const secretSingle = document.getElementById("secret-single");
+  const secretMulti = document.getElementById("secret-multi");
+  const secretLabel = document.getElementById("secret-label");
+  const secretControls = document.getElementById("secret-controls");
+  const toggleVisibility = document.getElementById("toggle-visibility");
+  const multilineToggle = document.getElementById("multiline-toggle");
+
+  const ui = {
+    submitButton,
+    secretSingle,
+    secretMulti,
+    multilineToggle,
+    toggleVisibility
+  };
+
+  let autoHideTimer = null;
+  let isSingleVisible = false;
+  let isSuccess = false;
+
+  function clearAutoHideTimer() {
+    if (autoHideTimer) {
+      clearTimeout(autoHideTimer);
+      autoHideTimer = null;
+    }
+  }
+
+  function setSingleVisibility(visible, autoHide = true) {
+    isSingleVisible = visible;
+    secretSingle.type = visible ? "text" : "password";
+    toggleVisibility.textContent = visible ? "Hide" : "Show";
+
+    clearAutoHideTimer();
+    if (visible && autoHide) {
+      autoHideTimer = setTimeout(() => {
+        setSingleVisibility(false, false);
+      }, AUTO_HIDE_MS);
+    }
+  }
+
+  function currentSecretValue() {
+    return multilineToggle.checked ? secretMulti.value : secretSingle.value;
+  }
+
+  function setInputMode(multiline) {
+    const current = currentSecretValue();
+    if (multiline) {
+      secretMulti.value = current;
+      secretSingle.hidden = true;
+      secretMulti.hidden = false;
+      toggleVisibility.disabled = true;
+      setSingleVisibility(false, false);
+      secretMulti.focus();
+      return;
+    }
+
+    secretSingle.value = current;
+    secretSingle.hidden = false;
+    secretMulti.hidden = true;
+    toggleVisibility.disabled = false;
+    setSingleVisibility(false, false);
+    secretSingle.focus();
+  }
+
+  toggleVisibility.addEventListener("click", () => {
+    if (multilineToggle.checked) return;
+    setSingleVisibility(!isSingleVisible, true);
+  });
+
+  multilineToggle.addEventListener("change", () => {
+    setInputMode(multilineToggle.checked);
+  });
 
   const ctx = getContext();
   if (!ctx.requestId || !ctx.metadataSig || !ctx.submitSig) {
     status.textContent = "Invalid link.";
-    submitButton.disabled = true;
+    setEntryEnabled(false, ui);
     return;
   }
 
@@ -31,16 +109,20 @@ async function init() {
   const metadataRes = await fetch(`${resolvedApiUrl}/api/v2/secret/metadata/${ctx.requestId}?sig=${encodeURIComponent(ctx.metadataSig)}`);
   if (!metadataRes.ok) {
     status.textContent = "Request expired or invalid.";
-    submitButton.disabled = true;
+    setEntryEnabled(false, ui);
     return;
   }
 
   const metadata = await metadataRes.json();
   code.textContent = metadata.confirmation_code;
-  status.textContent = "Enter your secret and submit.";
+  status.textContent = "Enter your secret and submit. Single-line entries are masked by default.";
+  setEntryEnabled(true, ui);
+  setSingleVisibility(false, false);
+  setInputMode(false);
 
   submitButton.addEventListener("click", async () => {
-    if (!secretInput.value) {
+    const secretValue = currentSecretValue();
+    if (!secretValue) {
       status.textContent = "Secret cannot be empty.";
       return;
     }
@@ -49,7 +131,7 @@ async function init() {
     status.textContent = "Encrypting...";
 
     try {
-      const payload = await sealBase64(metadata.public_key, secretInput.value);
+      const payload = await sealBase64(metadata.public_key, secretValue);
       const submitRes = await fetch(`${resolvedApiUrl}/api/v2/secret/submit/${ctx.requestId}?sig=${encodeURIComponent(ctx.submitSig)}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -57,11 +139,15 @@ async function init() {
       });
 
       if (submitRes.ok) {
+        isSuccess = true;
         status.textContent = "Secret submitted successfully. You may safely close this window.";
         status.style.color = "#4ade80"; // Success color
-        secretInput.style.display = "none";
+        secretSingle.style.display = "none";
+        secretMulti.style.display = "none";
+        secretControls.style.display = "none";
         submitButton.style.display = "none";
         if (secretLabel) secretLabel.style.display = "none";
+        clearAutoHideTimer();
         return;
       }
 
@@ -80,7 +166,7 @@ async function init() {
       status.textContent = "Encryption failed.";
     } finally {
       // Only re-enable if we didn't succeed (so they can try again)
-      if (status.textContent !== "Secret submitted successfully. You may safely close this window.") {
+      if (!isSuccess) {
         submitButton.disabled = false;
       }
     }

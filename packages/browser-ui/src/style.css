@@ -33,12 +33,26 @@ body {
 textarea {
   width: 100%;
   margin-top: 0.5rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
   background: #0b1320;
   color: var(--text);
   border: 1px solid #2a3f56;
   border-radius: 8px;
   padding: 0.75rem;
+  font: inherit;
+}
+
+input[type="password"],
+input[type="text"] {
+  width: 100%;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  background: #0b1320;
+  color: var(--text);
+  border: 1px solid #2a3f56;
+  border-radius: 8px;
+  padding: 0.75rem;
+  font: inherit;
 }
 
 button {
@@ -51,6 +65,33 @@ button {
   cursor: pointer;
 }
 
+button.secondary {
+  background: #1f2a38;
+  color: var(--text);
+  border: 1px solid #2f4259;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.secret-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.inline-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
 .code {
   color: #7dd3fc;
   font-weight: 700;
@@ -59,4 +100,11 @@ button {
 
 #status {
   color: var(--muted);
+}
+
+@media (max-width: 560px) {
+  .secret-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
