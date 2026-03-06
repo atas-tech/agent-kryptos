@@ -430,6 +430,7 @@ export default function register(api, runtime = {}) {
                     description,
                     spsBaseUrl,
                     onSecretLink: async (secretUrl, confirmationCode) => {
+                        console.log(`[agent-secrets] Delivering secret link: ${secretUrl}`);
                         // Send the link to the user via the current chat channel.
                         // context.sendText is the OpenClaw outbound — it routes to
                         // whichever channel (Telegram, WhatsApp, etc.) the conversation
@@ -441,6 +442,8 @@ export default function register(api, runtime = {}) {
                             `**Confirmation code:** \`${confirmationCode}\``,
                             "",
                             `👉 [Open secure link](${secretUrl})`,
+                            "",
+                            `Raw link: ${secretUrl}`,
                             "",
                             "_Verify the confirmation code matches before entering your secret._",
                             "_The link expires in 3 minutes._",

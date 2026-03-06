@@ -14,6 +14,7 @@ export interface BuildAppOptions {
   store?: RequestStore;
   hmacSecret?: string;
   baseUrl?: string;
+  uiBaseUrl?: string; // Add this for consistency
   useInMemoryStore?: boolean;
 }
 
@@ -65,7 +66,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       hmacSecret,
       requestTtlSeconds: 180,
       submittedTtlSeconds: 60,
-      uiBaseUrl: process.env.SPS_UI_BASE_URL
+      uiBaseUrl: options.uiBaseUrl ?? options.baseUrl ?? process.env.SPS_UI_BASE_URL
     });
   }, { prefix: "/api/v2/secret" });
 
