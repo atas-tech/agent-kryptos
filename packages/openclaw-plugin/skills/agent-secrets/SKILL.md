@@ -23,6 +23,8 @@ When you need an API key:
 - They click the link, verify the confirmation code, and enter the secret
 - The tool returns the decrypted value for you to use
 
+_Note: If a user mentions that they cannot click the link or that the link is missing/broken (which happens in some chat UIs that strip Markdown), you should call `request_secret` again with `"raw_link": true` to provide a plaintext URL._
+
 ## What happens behind the scenes
 
 - An HPKE keypair is generated (X25519 + ChaCha20-Poly1305)

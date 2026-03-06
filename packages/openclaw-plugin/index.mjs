@@ -389,6 +389,10 @@ export default function register(api, runtime = {}) {
                     type: "string",
                     description: "Optional explicit target (chat id or @username) for OpenClaw CLI fallback.",
                 },
+                raw_link: {
+                    type: "boolean",
+                    description: "Optional. Set to true if the chat client does not support Markdown links properly.",
+                },
             },
             required: ["description"],
         },
@@ -431,23 +435,29 @@ export default function register(api, runtime = {}) {
                     spsBaseUrl,
                     onSecretLink: async (secretUrl, confirmationCode) => {
                         console.log(`[agent-secrets] Delivering secret link: ${secretUrl}`);
-                        // Send the link to the user via the current chat channel.
-                        // context.sendText is the OpenClaw outbound — it routes to
-                        // whichever channel (Telegram, WhatsApp, etc.) the conversation
-                        // is happening on.
-                        const message = [
+
+                        const useRawLink = params.raw_link === true || process.env.OPENCLAW_SECRETS_RAW_LINK === "true" || process.env.OPENCLAW_SECRETS_RAW_LINK === "1";
+
+                        const messageLines = [
                             "🔐 **Secure secret requested**",
                             "",
                             `**Purpose:** ${description}`,
                             `**Confirmation code:** \`${confirmationCode}\``,
                             "",
                             `👉 [Open secure link](${secretUrl})`,
-                            "",
-                            `Raw link: ${secretUrl}`,
+                        ];
+
+                        if (useRawLink) {
+                            messageLines.push("", `Raw link: ${secretUrl}`);
+                        }
+
+                        messageLines.push(
                             "",
                             "_Verify the confirmation code matches before entering your secret._",
-                            "_The link expires in 3 minutes._",
-                        ].join("\n");
+                            "_The link expires in 3 minutes._"
+                        );
+
+                        const message = messageLines.join("\n");
                         const channelId = resolveChannelId(params, context);
                         const channelName = resolveChannelName(params, context, channelId);
                         const target = resolveMessageTarget(params, context, channelId);
