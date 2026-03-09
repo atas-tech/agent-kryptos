@@ -1,17 +1,6 @@
 name: Build And Push Images
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - .github/workflows/build-and-push-images.yml
-      - .dockerignore
-      - package.json
-      - package-lock.json
-      - tsconfig.base.json
-      - packages/**
   workflow_dispatch:
 
 permissions:

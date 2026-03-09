@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Agent Kryptos Browser UI</Name>
+  <Repository>ghcr.io/tuthan/agent-kryptos-browser-ui:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>bridge</Network>
+  <MyIP />
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/tuthan/agent-kryptos</Support>
+  <Project>https://github.com/tuthan/agent-kryptos</Project>
+  <Overview>Static browser UI for Agent Kryptos. The API URL is baked into the image at GitHub Actions build time via VITE_SPS_API_URL.</Overview>
+  <Category>Network:Web</Category>
+  <WebUI>http://[IP]:[PORT:8080]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/tuthan/agent-kryptos/main/deploy/unraid/agent-kryptos-browser-ui.xml</TemplateURL>
+  <Icon />
+  <ExtraParams />
+  <PostArgs />
+  <CPUset />
+  <DateInstalled />
+  <DonateText />
+  <DonateLink />
+  <Requires>The UI image must be built with VITE_SPS_API_URL pointing at your public SPS API URL before deployment.</Requires>
+  <Config Name="Host Port" Target="8080" Default="8080" Mode="tcp" Description="Browser UI host port" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+</Container>
