@@ -393,6 +393,10 @@ export default function register(api, runtime = {}) {
                     type: "boolean",
                     description: "Optional. Set to true if the chat client does not support Markdown links properly.",
                 },
+                re_request: {
+                    type: "boolean",
+                    description: "Optional. Set to true if a previously stored secret is now missing (e.g. after restart), asking the user to re-enter it.",
+                },
             },
             required: ["description"],
         },
@@ -437,9 +441,10 @@ export default function register(api, runtime = {}) {
                         console.log(`[agent-kryptos] Delivering secret link: ${secretUrl}`);
 
                         const useRawLink = params.raw_link === true || process.env.OPENCLAW_SECRETS_RAW_LINK === "true" || process.env.OPENCLAW_SECRETS_RAW_LINK === "1";
+                        const isReRequest = params.re_request === true;
 
                         const messageLines = [
-                            "🔐 **Secure secret requested**",
+                            isReRequest ? "🔐 **Re-enter your secret to continue**" : "🔐 **Secure secret requested**",
                             "",
                             `**Purpose:** ${description}`,
                             `**Confirmation code:** \`${confirmationCode}\``,

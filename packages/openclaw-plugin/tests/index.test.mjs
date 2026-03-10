@@ -201,10 +201,40 @@ async function testShutdownDisposesSecrets() {
     assert.equal(getStoredSecret("default"), null);
 }
 
+async function testReRequestFormat() {
+    const api = createMockApi();
+    const outbound = [];
+
+    register(api, {
+        requestSecretFlowFn: async ({ onSecretLink }) => {
+            await onSecretLink("https://secrets.example/r/xyz", "RED-BULL-99");
+            return Buffer.from("super-secret-value-2", "utf8");
+        },
+        cleanupFn: async () => { },
+    });
+
+    await api.state.tool.execute(
+        "id-rereq",
+        { description: "DB Password", secret_name: "db_pass", channel_id: "telegram:111", re_request: true },
+        { sendText: async (message) => outbound.push(message) },
+    );
+
+    assert.equal(outbound.length, 1, "Should send one user-facing link message");
+    const sentMessage = outbound[0];
+    assert.ok(sentMessage.includes("Re-enter your secret to continue"), "Message should contain the re-request prompt");
+    assert.ok(!sentMessage.includes("Secure secret requested"), "Message should NOT contain the default prompt");
+
+    disposeStoredSecret("db_pass");
+}
+
 const tests = [
     {
         name: "request_secret does not return plaintext and stores secret in memory",
         run: testNoPlaintextExposure,
+    },
+    {
+        name: "request_secret formats message correctly for re_request: true",
+        run: testReRequestFormat,
     },
     {
         name: "request_secret uses OpenClaw CLI fallback",

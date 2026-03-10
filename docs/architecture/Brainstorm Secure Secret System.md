@@ -189,17 +189,17 @@ POST   /api/v2/secret/accept/:id     → Agent B accepts
 ## 6. Implementation Roadmap
 
 ### Phase 1: Core MVP 🎯
-- [ ] SPS backend (Node.js + Redis)
-- [ ] HPKE encryption/decryption (vendored `hpke-js`)
-- [ ] OpenClaw UI native `secret_request` widget
-- [ ] Hardened Device Flow adapter (Telegram/WhatsApp)
-- [ ] Gateway: LLM-blind URL + code generation
-- [ ] Gateway: Egress URL filtering (DLP)
-- [ ] Agent skill: key generation, secret retrieval, in-memory store
-- [ ] Lazy re-request flow
-- [ ] Gateway-signed agent identity (lightweight fallback)
-- [ ] Single-use request IDs with 3-min TTL
-- [ ] Audit logging
+- [x] SPS backend (Node.js + Redis)
+- [x] HPKE encryption/decryption (vendored `hpke-js`)
+- [~] OpenClaw UI native `secret_request` widget (Skipped — using standalone Browser UI fallback)
+- [x] Hardened Device Flow adapter (Telegram/WhatsApp)
+- [x] Gateway: LLM-blind URL + code generation
+- [x] Gateway: Egress URL filtering (DLP)
+- [x] Agent skill: key generation, secret retrieval, in-memory store
+- [x] Lazy re-request flow
+- [x] Gateway-signed agent identity (lightweight fallback)
+- [x] Single-use request IDs with 3-min TTL
+- [x] Audit logging
 
 ### Phase 2: Agent-to-Agent + Identity
 - [ ] SPIFFE/SPIRE integration

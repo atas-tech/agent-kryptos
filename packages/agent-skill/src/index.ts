@@ -12,6 +12,13 @@ export interface AgentSecretRuntimeOptions {
   fetchImpl?: typeof fetch;
 }
 
+export class SecretMissingError extends Error {
+  constructor(secretName: string) {
+    super(`Secret '${secretName}' is missing from memory. Use the 'request_secret' tool with 're_request: true' to ask the user to re-enter it.`);
+    this.name = 'SecretMissingError';
+  }
+}
+
 export class AgentSecretRuntime {
   readonly store = new SecretStore();
 
@@ -23,6 +30,14 @@ export class AgentSecretRuntime {
       gatewayBearerToken: options.gatewayBearerToken,
       fetchImpl: options.fetchImpl
     });
+  }
+
+  checkSecretOrThrow(secretName: string): Buffer {
+    const value = this.store.get(secretName);
+    if (!value) {
+      throw new SecretMissingError(secretName);
+    }
+    return value;
   }
 
   async requestAndStoreSecret(secretName: string, description: string): Promise<{ requestId: string; confirmationCode: string; secretUrl: string }> {
