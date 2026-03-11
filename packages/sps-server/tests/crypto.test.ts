@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { generateConfirmationCode, generateRequestId, signPayload, verifyPayload } from "../src/services/crypto.js";
+import {
+  generateConfirmationCode,
+  generateRequestId,
+  signFulfillmentToken,
+  signPayload,
+  verifyFulfillmentToken,
+  verifyPayload
+} from "../src/services/crypto.js";
 
 describe("crypto", () => {
   it("generates request ids", () => {
@@ -28,5 +35,32 @@ describe("crypto", () => {
     expect(verifyPayload("abc", "metadata", token, "secret", now)).toEqual({ ok: true, exp: now + 30 });
     expect(verifyPayload("abc", "submit", token, "secret", now)).toEqual({ ok: false, reason: "invalid" });
     expect(verifyPayload("abc", "metadata", token, "wrong", now)).toEqual({ ok: false, reason: "invalid" });
+  });
+
+  it("signs and verifies fulfillment tokens", async () => {
+    const expiresAt = Math.floor(Date.now() / 1000) + 60;
+    const token = await signFulfillmentToken(
+      {
+        exchange_id: "a".repeat(64),
+        requester_id: "agent:requester",
+        secret_name: "stripe.api_key.prod",
+        purpose: "charge-order",
+        policy_hash: "b".repeat(64),
+        approval_reference: null
+      },
+      "secret",
+      expiresAt
+    );
+
+    await expect(verifyFulfillmentToken(token, "secret")).resolves.toEqual({
+      exchange_id: "a".repeat(64),
+      requester_id: "agent:requester",
+      secret_name: "stripe.api_key.prod",
+      purpose: "charge-order",
+      policy_hash: "b".repeat(64),
+      approval_reference: null
+    });
+
+    await expect(verifyFulfillmentToken(token, "wrong")).rejects.toThrow();
   });
 });

@@ -48,4 +48,29 @@ describe("identity", () => {
     const parsed = JSON.parse(raw) as { keys: Array<{ kid: string }> };
     expect(parsed.keys[0]?.kid).toBe(first.kid);
   });
+
+  it("issues distinct per-agent JWT subjects", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "gateway-identity-"));
+    tempDirs.push(dir);
+
+    const keyPath = path.join(dir, "gateway-key.json");
+    const identity = await loadOrCreateGatewayIdentity({ keyPath });
+    const verifier = createLocalJWKSet(getJWKS(identity));
+
+    const requesterToken = await issueJwt(identity, "agent:crm-bot", 120);
+    const fulfillerToken = await issueJwt(identity, "agent:payment-bot", 120);
+
+    const requester = await jwtVerify(requesterToken, verifier, {
+      issuer: "gateway",
+      audience: "sps"
+    });
+    const fulfiller = await jwtVerify(fulfillerToken, verifier, {
+      issuer: "gateway",
+      audience: "sps"
+    });
+
+    expect(requester.payload.sub).toBe("agent:crm-bot");
+    expect(fulfiller.payload.sub).toBe("agent:payment-bot");
+    expect(requester.payload.sub).not.toBe(fulfiller.payload.sub);
+  });
 });

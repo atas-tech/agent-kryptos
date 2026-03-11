@@ -1,4 +1,4 @@
-import { decrypt, destroyKeyPair, generateKeyPair } from "./key-manager.js";
+import { decrypt, destroyKeyPair, encrypt, generateKeyPair } from "./key-manager.js";
 import { SecretStore } from "./secret-store.js";
 import { SpsClient } from "./sps-client.js";
 
@@ -10,6 +10,14 @@ export interface AgentSecretRuntimeOptions {
   spsBaseUrl: string;
   gatewayBearerToken: string;
   fetchImpl?: typeof fetch;
+}
+
+export interface RequestExchangeParams {
+  secretName: string;
+  purpose: string;
+  fulfillerHint: string;
+  deliverToken: (fulfillmentToken: string) => Promise<void>;
+  reservedTimeoutMs?: number;
 }
 
 export class SecretMissingError extends Error {
@@ -63,5 +71,48 @@ export class AgentSecretRuntime {
     } finally {
       destroyKeyPair(keyPair);
     }
+  }
+
+  async requestAndStoreExchangeSecret(params: RequestExchangeParams): Promise<{ exchangeId: string; fulfilledBy: string | null }> {
+    const keyPair = await generateKeyPair();
+
+    try {
+      const created = await this.client.createExchangeRequest({
+        publicKey: keyPair.publicKey,
+        secretName: params.secretName,
+        purpose: params.purpose,
+        fulfillerHint: params.fulfillerHint
+      });
+
+      await params.deliverToken(created.fulfillmentToken);
+      await this.client.pollExchangeStatus(created.exchangeId, 1000, 180000, params.reservedTimeoutMs ?? 30000);
+
+      const retrieved = await this.client.retrieveExchange(created.exchangeId);
+      const plaintext = await decrypt(keyPair.privateKey, retrieved.enc, retrieved.ciphertext);
+      this.store.storeSecret(params.secretName, plaintext);
+
+      return {
+        exchangeId: created.exchangeId,
+        fulfilledBy: retrieved.fulfilledBy
+      };
+    } finally {
+      destroyKeyPair(keyPair);
+    }
+  }
+
+  async fulfillExchange(fulfillmentToken: string): Promise<{ exchangeId: string; secretName: string }> {
+    const reservation = await this.client.fulfillExchange(fulfillmentToken);
+    const secret = this.store.get(reservation.secretName);
+    if (!secret) {
+      throw new SecretMissingError(reservation.secretName);
+    }
+
+    const sealed = await encrypt(reservation.requesterPublicKey, secret);
+    await this.client.submitExchange(reservation.exchangeId, sealed);
+
+    return {
+      exchangeId: reservation.exchangeId,
+      secretName: reservation.secretName
+    };
   }
 }

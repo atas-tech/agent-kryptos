@@ -1,5 +1,6 @@
 import { createHmac, randomBytes } from "node:crypto";
-import type { RequestScope } from "../types.js";
+import { jwtVerify, SignJWT } from "jose";
+import type { PolicyDecision, RequestScope } from "../types.js";
 
 const ADJECTIVES = [
   "BLUE",
@@ -27,6 +28,15 @@ interface CanonicalPayload {
   requestId: string;
   exp: number;
   scope: RequestScope;
+}
+
+export interface FulfillmentTokenClaims {
+  exchange_id: string;
+  requester_id: string;
+  secret_name: string;
+  purpose: string;
+  policy_hash: string;
+  approval_reference?: string | null;
 }
 
 function canonicalize(payload: CanonicalPayload): string {
@@ -87,5 +97,59 @@ export function generateScopedSigs(requestId: string, exp: number, secret: strin
   return {
     metadataSig: signPayload({ requestId, exp, scope: "metadata" }, secret),
     submitSig: signPayload({ requestId, exp, scope: "submit" }, secret)
+  };
+}
+
+function fulfillmentSecret(secret: string): Uint8Array {
+  return new TextEncoder().encode(secret);
+}
+
+export async function signFulfillmentToken(
+  claims: FulfillmentTokenClaims,
+  secret: string,
+  expiresAt: number
+): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  return new SignJWT({
+    exchange_id: claims.exchange_id,
+    requester_id: claims.requester_id,
+    secret_name: claims.secret_name,
+    purpose: claims.purpose,
+    policy_hash: claims.policy_hash,
+    approval_reference: claims.approval_reference ?? null
+  })
+    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setIssuer("sps")
+    .setAudience("agent-fulfill")
+    .setIssuedAt(now)
+    .setExpirationTime(expiresAt)
+    .sign(fulfillmentSecret(secret));
+}
+
+export async function verifyFulfillmentToken(token: string, secret: string): Promise<FulfillmentTokenClaims> {
+  const { payload } = await jwtVerify(token, fulfillmentSecret(secret), {
+    issuer: "sps",
+    audience: "agent-fulfill"
+  });
+
+  const exchangeId = typeof payload.exchange_id === "string" ? payload.exchange_id : null;
+  const requesterId = typeof payload.requester_id === "string" ? payload.requester_id : null;
+  const secretName = typeof payload.secret_name === "string" ? payload.secret_name : null;
+  const purpose = typeof payload.purpose === "string" ? payload.purpose : null;
+  const policyHash = typeof payload.policy_hash === "string" ? payload.policy_hash : null;
+  const approvalReference =
+    typeof payload.approval_reference === "string" ? payload.approval_reference : payload.approval_reference === null ? null : undefined;
+
+  if (!exchangeId || !requesterId || !secretName || !purpose || !policyHash) {
+    throw new Error("Invalid fulfillment token payload");
+  }
+
+  return {
+    exchange_id: exchangeId,
+    requester_id: requesterId,
+    secret_name: secretName,
+    purpose,
+    policy_hash: policyHash,
+    approval_reference: approvalReference
   };
 }
