@@ -4,7 +4,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
+import { registerExchangeRoutes } from "./routes/exchange.js";
 import { registerSecretRoutes } from "./routes/secrets.js";
+import { ExchangePolicyEngine, type ExchangePolicyRule, type SecretRegistryEntry } from "./services/policy.js";
 import { InMemoryRequestStore, RedisRequestStore, createRedisClient } from "./services/redis.js";
 import type { RequestStore } from "./types.js";
 
@@ -16,6 +18,36 @@ export interface BuildAppOptions {
   baseUrl?: string;
   uiBaseUrl?: string; // Add this for consistency
   useInMemoryStore?: boolean;
+  secretRegistry?: SecretRegistryEntry[];
+  exchangePolicyRules?: ExchangePolicyRule[];
+}
+
+function policyRulesFromEnv(): ExchangePolicyRule[] {
+  const raw = process.env.SPS_EXCHANGE_POLICY_JSON?.trim();
+  if (!raw) {
+    return [];
+  }
+
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) {
+    throw new Error("SPS_EXCHANGE_POLICY_JSON must be a JSON array");
+  }
+
+  return parsed as ExchangePolicyRule[];
+}
+
+function secretRegistryFromEnv(): SecretRegistryEntry[] {
+  const raw = process.env.SPS_SECRET_REGISTRY_JSON?.trim();
+  if (!raw) {
+    return [];
+  }
+
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) {
+    throw new Error("SPS_SECRET_REGISTRY_JSON must be a JSON array");
+  }
+
+  return parsed as SecretRegistryEntry[];
 }
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -60,6 +92,11 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     }
   }
 
+  const policyEngine = new ExchangePolicyEngine(
+    options.secretRegistry ?? secretRegistryFromEnv(),
+    options.exchangePolicyRules ?? policyRulesFromEnv()
+  );
+
   await app.register(async (secretRoutesApp) => {
     await registerSecretRoutes(secretRoutesApp, {
       store,
@@ -70,6 +107,16 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     });
   }, { prefix: "/api/v2/secret" });
 
+  await app.register(async (exchangeRoutesApp) => {
+    await registerExchangeRoutes(exchangeRoutesApp, {
+      store,
+      hmacSecret,
+      policyEngine,
+      requestTtlSeconds: 180,
+      submittedTtlSeconds: 60,
+      revokedTtlSeconds: 300
+    });
+  }, { prefix: "/api/v2/secret/exchange" });
 
   app.get("/healthz", async () => ({ ok: true }));
 

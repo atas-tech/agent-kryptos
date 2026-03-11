@@ -1,8 +1,12 @@
 import { Redis } from "ioredis";
-import type { RequestStore, StoredRequest } from "../types.js";
+import type { RequestStore, StoredExchange, StoredRequest } from "../types.js";
 
-function keyFor(requestId: string): string {
+function keyForRequest(requestId: string): string {
   return `sps:request:${requestId}`;
+}
+
+function keyForExchange(exchangeId: string): string {
+  return `sps:exchange:${exchangeId}`;
 }
 
 export class RedisRequestStore implements RequestStore {
@@ -13,11 +17,11 @@ export class RedisRequestStore implements RequestStore {
   }
 
   async setRequest(data: StoredRequest, ttlSeconds: number): Promise<void> {
-    await this.redis.set(keyFor(data.requestId), JSON.stringify(data), "EX", ttlSeconds);
+    await this.redis.set(keyForRequest(data.requestId), JSON.stringify(data), "EX", ttlSeconds);
   }
 
   async getRequest(requestId: string): Promise<StoredRequest | null> {
-    const raw = await this.redis.get(keyFor(requestId));
+    const raw = await this.redis.get(keyForRequest(requestId));
     return raw ? (JSON.parse(raw) as StoredRequest) : null;
   }
 
@@ -29,13 +33,13 @@ export class RedisRequestStore implements RequestStore {
 
     const next = { ...current, ...patch };
     if (typeof ttlSeconds === "number") {
-      await this.redis.set(keyFor(requestId), JSON.stringify(next), "EX", ttlSeconds);
+      await this.redis.set(keyForRequest(requestId), JSON.stringify(next), "EX", ttlSeconds);
     } else {
-      const pttl = await this.redis.pttl(keyFor(requestId));
+      const pttl = await this.redis.pttl(keyForRequest(requestId));
       if (pttl > 0) {
-        await this.redis.set(keyFor(requestId), JSON.stringify(next), "PX", pttl);
+        await this.redis.set(keyForRequest(requestId), JSON.stringify(next), "PX", pttl);
       } else {
-        await this.redis.set(keyFor(requestId), JSON.stringify(next));
+        await this.redis.set(keyForRequest(requestId), JSON.stringify(next));
       }
     }
 
@@ -54,7 +58,7 @@ export class RedisRequestStore implements RequestStore {
       end
     `;
 
-    const raw = await this.redis.eval(script, 1, keyFor(requestId));
+    const raw = await this.redis.eval(script, 1, keyForRequest(requestId));
     if (typeof raw !== "string") {
       return null;
     }
@@ -63,13 +67,157 @@ export class RedisRequestStore implements RequestStore {
   }
 
   async deleteRequest(requestId: string): Promise<boolean> {
-    return (await this.redis.del(keyFor(requestId))) > 0;
+    return (await this.redis.del(keyForRequest(requestId))) > 0;
+  }
+
+  async setExchange(data: StoredExchange, ttlSeconds: number): Promise<void> {
+    await this.redis.set(keyForExchange(data.exchangeId), JSON.stringify(data), "EX", ttlSeconds);
+  }
+
+  async getExchange(exchangeId: string): Promise<StoredExchange | null> {
+    const raw = await this.redis.get(keyForExchange(exchangeId));
+    return raw ? (JSON.parse(raw) as StoredExchange) : null;
+  }
+
+  async revokeExchange(exchangeId: string, ttlSeconds: number): Promise<StoredExchange | null> {
+    const current = await this.getExchange(exchangeId);
+    if (!current) {
+      return null;
+    }
+
+    const next: StoredExchange = {
+      ...current,
+      status: "revoked"
+    };
+
+    await this.redis.set(keyForExchange(exchangeId), JSON.stringify(next), "EX", ttlSeconds);
+    return next;
+  }
+
+  async reserveExchange(exchangeId: string, fulfillerId: string): Promise<StoredExchange | null> {
+    const script = `
+      local key = KEYS[1]
+      local fulfiller_id = ARGV[1]
+      local ttl = redis.call('PTTL', key)
+      if ttl <= 0 then
+        return nil
+      end
+
+      local raw = redis.call('GET', key)
+      if not raw then
+        return nil
+      end
+
+      local data = cjson.decode(raw)
+      if data["status"] ~= "pending" then
+        return nil
+      end
+
+      data["status"] = "reserved"
+      data["fulfilledBy"] = fulfiller_id
+      local encoded = cjson.encode(data)
+      redis.call('SET', key, encoded, 'PX', ttl)
+      return encoded
+    `;
+
+    const raw = await this.redis.eval(script, 1, keyForExchange(exchangeId), fulfillerId);
+    if (typeof raw !== "string") {
+      return null;
+    }
+
+    return JSON.parse(raw) as StoredExchange;
+  }
+
+  async submitExchange(
+    exchangeId: string,
+    fulfillerId: string,
+    enc: string,
+    ciphertext: string,
+    expiresAt: number,
+    ttlSeconds: number
+  ): Promise<StoredExchange | null> {
+    const script = `
+      local key = KEYS[1]
+      local fulfiller_id = ARGV[1]
+      local enc = ARGV[2]
+      local ciphertext = ARGV[3]
+      local expires_at = tonumber(ARGV[4])
+      local ttl_ms = tonumber(ARGV[5])
+
+      local raw = redis.call('GET', key)
+      if not raw then
+        return nil
+      end
+
+      local data = cjson.decode(raw)
+      if data["status"] ~= "reserved" then
+        return nil
+      end
+      if data["fulfilledBy"] ~= fulfiller_id then
+        return nil
+      end
+
+      data["status"] = "submitted"
+      data["enc"] = enc
+      data["ciphertext"] = ciphertext
+      data["expiresAt"] = expires_at
+      local encoded = cjson.encode(data)
+      redis.call('SET', key, encoded, 'PX', ttl_ms)
+      return encoded
+    `;
+
+    const raw = await this.redis.eval(
+      script,
+      1,
+      keyForExchange(exchangeId),
+      fulfillerId,
+      enc,
+      ciphertext,
+      String(expiresAt),
+      String(ttlSeconds * 1000)
+    );
+    if (typeof raw !== "string") {
+      return null;
+    }
+
+    return JSON.parse(raw) as StoredExchange;
+  }
+
+  async atomicRetrieveExchange(exchangeId: string, requesterId: string): Promise<StoredExchange | null> {
+    const script = `
+      local key = KEYS[1]
+      local requester_id = ARGV[1]
+      local raw = redis.call('GET', key)
+      if not raw then
+        return nil
+      end
+
+      local data = cjson.decode(raw)
+      if data["requesterId"] ~= requester_id then
+        return nil
+      end
+      if data["status"] ~= "submitted" then
+        return nil
+      end
+
+      redis.call('DEL', key)
+      return raw
+    `;
+
+    const raw = await this.redis.eval(script, 1, keyForExchange(exchangeId), requesterId);
+    if (typeof raw !== "string") {
+      return null;
+    }
+
+    return JSON.parse(raw) as StoredExchange;
   }
 }
 
 export class InMemoryRequestStore implements RequestStore {
   private readonly data = new Map<string, StoredRequest>();
   private readonly timers = new Map<string, NodeJS.Timeout>();
+  private readonly exchanges = new Map<string, StoredExchange>();
+  private readonly exchangeTimers = new Map<string, NodeJS.Timeout>();
 
   async setRequest(data: StoredRequest, ttlSeconds: number): Promise<void> {
     this.data.set(data.requestId, data);
@@ -117,6 +265,86 @@ export class InMemoryRequestStore implements RequestStore {
     }
     this.timers.clear();
     this.data.clear();
+    for (const timer of this.exchangeTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.exchangeTimers.clear();
+    this.exchanges.clear();
+  }
+
+  async setExchange(data: StoredExchange, ttlSeconds: number): Promise<void> {
+    this.exchanges.set(data.exchangeId, data);
+    this.scheduleExchangeExpiry(data.exchangeId, ttlSeconds);
+  }
+
+  async getExchange(exchangeId: string): Promise<StoredExchange | null> {
+    return this.exchanges.get(exchangeId) ?? null;
+  }
+
+  async revokeExchange(exchangeId: string, ttlSeconds: number): Promise<StoredExchange | null> {
+    const current = this.exchanges.get(exchangeId);
+    if (!current) {
+      return null;
+    }
+
+    const next: StoredExchange = {
+      ...current,
+      status: "revoked"
+    };
+    this.exchanges.set(exchangeId, next);
+    this.scheduleExchangeExpiry(exchangeId, ttlSeconds);
+    return next;
+  }
+
+  async reserveExchange(exchangeId: string, fulfillerId: string): Promise<StoredExchange | null> {
+    const current = this.exchanges.get(exchangeId);
+    if (!current || current.status !== "pending") {
+      return null;
+    }
+
+    const next: StoredExchange = {
+      ...current,
+      status: "reserved",
+      fulfilledBy: fulfillerId
+    };
+    this.exchanges.set(exchangeId, next);
+    return next;
+  }
+
+  async submitExchange(
+    exchangeId: string,
+    fulfillerId: string,
+    enc: string,
+    ciphertext: string,
+    expiresAt: number,
+    ttlSeconds: number
+  ): Promise<StoredExchange | null> {
+    const current = this.exchanges.get(exchangeId);
+    if (!current || current.status !== "reserved" || current.fulfilledBy !== fulfillerId) {
+      return null;
+    }
+
+    const next: StoredExchange = {
+      ...current,
+      status: "submitted",
+      enc,
+      ciphertext,
+      expiresAt
+    };
+    this.exchanges.set(exchangeId, next);
+    this.scheduleExchangeExpiry(exchangeId, ttlSeconds);
+    return next;
+  }
+
+  async atomicRetrieveExchange(exchangeId: string, requesterId: string): Promise<StoredExchange | null> {
+    const current = this.exchanges.get(exchangeId);
+    if (!current || current.requesterId !== requesterId || current.status !== "submitted") {
+      return null;
+    }
+
+    this.clearExchangeExpiry(exchangeId);
+    this.exchanges.delete(exchangeId);
+    return current;
   }
 
   private scheduleExpiry(requestId: string, ttlSeconds: number): void {
@@ -134,6 +362,24 @@ export class InMemoryRequestStore implements RequestStore {
     if (timer) {
       clearTimeout(timer);
       this.timers.delete(requestId);
+    }
+  }
+
+  private scheduleExchangeExpiry(exchangeId: string, ttlSeconds: number): void {
+    this.clearExchangeExpiry(exchangeId);
+    const timer = setTimeout(() => {
+      this.exchanges.delete(exchangeId);
+      this.exchangeTimers.delete(exchangeId);
+    }, ttlSeconds * 1000);
+    timer.unref();
+    this.exchangeTimers.set(exchangeId, timer);
+  }
+
+  private clearExchangeExpiry(exchangeId: string): void {
+    const timer = this.exchangeTimers.get(exchangeId);
+    if (timer) {
+      clearTimeout(timer);
+      this.exchangeTimers.delete(exchangeId);
     }
   }
 }

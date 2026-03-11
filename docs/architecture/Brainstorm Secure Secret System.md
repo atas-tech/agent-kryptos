@@ -35,7 +35,16 @@ sequenceDiagram
     Agent->>Agent: HPKE.Open → in-memory only → destroy keys
 ```
 
-### Agent → Agent Flow
+### Human → Agent and Agent → Agent Coexistence
+
+Human → Agent remains the baseline flow and is not replaced by Agent → Agent.  
+Phase 2 extends SPS with a second, pull-based exchange flow for autonomous agents:
+
+- **Human → Agent**: user enters or re-enters a secret for one agent
+- **Agent → Agent**: requester agent asks another agent that already has the secret
+- Both flows use the same HPKE model, in-memory-only storage, audit logging, and single-use retrieval
+
+### Agent → Agent Flow (Pull-Based Only)
 
 ```mermaid
 sequenceDiagram
@@ -43,13 +52,16 @@ sequenceDiagram
     participant SPS as 🔒 SPS
     participant A as 🤖 Agent A (has secret)
 
-    B->>SPS: POST /request {public_key, spiffe_id, signed_jwt}
-    SPS->>SPS: Verify SPIFFE identity + trust ring
-    SPS-->>B: {request_id}
-    B->>A: agentToAgent: "Need Stripe key, request_id: X"
-    A->>SPS: GET /metadata/:id → verify B's identity + get public key
-    A->>SPS: POST /submit/:id {HPKE.Seal(B_pubkey, secret)}
-    B->>SPS: GET /retrieve/:id → HPKE.Open → in-memory
+    B->>SPS: POST /exchange/request {public_key, secret_name, purpose}
+    SPS->>SPS: Verify B identity + policy snapshot
+    SPS-->>B: {exchange_id, fulfillment_token}
+    B->>A: agentToAgent: "Need secret_name, token: T"
+    A->>SPS: POST /exchange/fulfill {token: T}
+    SPS->>SPS: Verify A identity + token + policy
+    SPS-->>A: {exchange_id, B_identity, B_public_key, secret_name, expiry}
+    A->>A: Confirm local secret exists for secret_name
+    A->>SPS: POST /exchange/submit/:id {HPKE.Seal(B_pubkey, secret)}
+    B->>SPS: GET /exchange/retrieve/:id → HPKE.Open → in-memory
 ```
 
 ---
@@ -115,15 +127,29 @@ sequenceDiagram
 
 | Deployment | Identity Method |
 |-----------|----------------|
-| **Production/Multi-agent** | SPIFFE/SPIRE — SVIDs verified against trust bundle |
-| **Local-first/Single-agent** | Gateway-signed Ed25519 keys (chain: Gateway root → Agent key → Ephemeral HPKE key) |
+| **Production / multi-host / internet-reachable** | SPIFFE/SPIRE — SVIDs verified against trust bundle |
+| **Local/dev / single-operator** | Gateway-signed Ed25519 keys (chain: Gateway root → Agent key → Ephemeral HPKE key) |
+
+**Important**: "Local/dev" does **not** mean same machine. It means one trust domain under one operator using the gateway as the root of trust. This can still run across Docker, a LAN, Tailscale, or even the internet for testing, but it is **not** the production trust model.
 
 Trust Rings enforced via SPIFFE ID namespaces:
 ```
-spiffe://myorg.local/ring/finance/crm-bot      ← same ring, free sharing
-spiffe://myorg.local/ring/finance/payment-bot   ← same ring, free sharing  
-spiffe://myorg.local/ring/devops/deploy-bot     ← cross-ring = human approval
+spiffe://myorg.local/ring/finance/crm-bot
+spiffe://myorg.local/ring/finance/payment-bot
+spiffe://myorg.local/ring/devops/deploy-bot
 ```
+
+Trust rings are a **policy input**, not blanket authorization.  
+Authorization is evaluated on:
+
+- `secret_name`
+- requester identity
+- fulfiller identity
+- ring relationship
+- purpose
+- approval state
+
+Same-ring requests may be auto-approved for specific secret classes, but never "free sharing" for all secrets.
 
 ### 💾 Secret Storage: In-Memory Only
 
@@ -144,27 +170,365 @@ This ties friction to the user's current intent — no spam on restart.
 
 ### 📦 Scope: Single-Tenant MVP
 
-Multi-tenancy deferred. Focus Phase 1 on: HPKE correctness, SPIRE attestation in local dev, in-memory zeroing reliability.
+Multi-tenancy deferred. Phase 1 establishes the Human → Agent baseline. Phase 2 reuses the same SPS core for Agent → Agent exchange without removing the human flow.
 
 ---
 
 ## 4. SPS API
 
 ```
-POST   /api/v2/secret/request        → {public_key, agent_id, spiffe_id, ttl, description}
-GET    /api/v2/secret/metadata/:id   → {public_key, description, expiry}
-POST   /api/v2/secret/submit/:id     → {enc, ciphertext}
-GET    /api/v2/secret/retrieve/:id   → {enc, ciphertext, metadata}
-DELETE /api/v2/secret/revoke/:id     → Cancel request
-GET    /api/v2/secret/status/:id     → {status: pending|submitted|retrieved|expired}
+POST   /api/v2/secret/request                 → Human → Agent request {public_key, agent_id, ttl, description}
+GET    /api/v2/secret/metadata/:id            → Browser gets public key + confirmation metadata
+POST   /api/v2/secret/submit/:id              → Browser submits ciphertext
+GET    /api/v2/secret/retrieve/:id            → Agent retrieves once
+DELETE /api/v2/secret/revoke/:id              → Cancel request
+GET    /api/v2/secret/status/:id              → {status: pending|submitted|retrieved|expired}
 
-# Agent-to-Agent (Phase 2)
-POST   /api/v2/secret/delegate       → Agent A offers to share
-GET    /api/v2/secret/delegations     → List pending offers
-POST   /api/v2/secret/accept/:id     → Agent B accepts
+# Agent-to-Agent Exchange (Phase 2)
+POST   /api/v2/secret/exchange/request        → B creates pull request {public_key, secret_name, purpose, fulfiller_hint?}
+POST   /api/v2/secret/exchange/fulfill        → A presents fulfillment_token, SPS validates policy, returns B metadata
+POST   /api/v2/secret/exchange/submit/:id     → A submits HPKE ciphertext for B
+GET    /api/v2/secret/exchange/retrieve/:id   → B retrieves once
+GET    /api/v2/secret/exchange/status/:id     → {status: pending|reserved|submitted|retrieved|revoked|expired|denied}
+DELETE /api/v2/secret/exchange/revoke/:id     → B cancels exchange
 ```
 
-**Auth**: SPIFFE SVID (production) · Gateway-signed JWT (local) · Session token (browser)
+**Auth**:
+
+- Human → Agent browser path: Session token / scoped browser signature
+- Agent → SPS path in local/dev: Gateway-signed JWT with **per-agent `sub` claim** (e.g., `sub: "agent:crm-bot"`). Each agent must receive a JWT with a unique `sub` so SPS can enforce requester/fulfiller ownership binding. The current single shared `gatewayBearerToken` with `role: "gateway"` is insufficient for A2A — Phase 2A must extend the gateway to issue agent-specific tokens.
+- Agent → SPS path in production: SPIFFE SVID or equivalent workload identity
+
+#### Local/Dev Agent JWT Bootstrap
+
+Phase 2A uses a simple bootstrap path for local/dev agents:
+
+- gateway mints a short-lived JWT for a specific agent identity
+- the token is injected into the agent process via environment variable or test harness configuration
+- no local HTTP minting endpoint is required in Phase 2A
+
+This avoids a bootstrap authentication loop in local environments. A runtime token issuance channel belongs in Phase 2B alongside real transport and workload identity.
+
+### Agent → Agent Exchange Record Requirements
+
+For Agent → Agent, SPS must store more than ciphertext state. Each exchange record must bind:
+
+- `exchange_id`
+- `requester_id` (Agent B)
+- `allowed_fulfiller_id` or policy selector
+- `secret_name`
+- `purpose`
+- `requester_public_key`
+- `policy_decision`
+- `created_at` / `expires_at`
+- `status`
+
+Without this binding, SPS cannot safely enforce "only B retrieves" and "only authorized A fulfills."
+
+### Fulfillment Token
+
+The `fulfillment_token` is an SPS-signed capability passed from B to A over the existing agent channel. It binds:
+
+- `exchange_id`
+- `requester_id`
+- `secret_name`
+- `purpose`
+- `expiry`
+- `policy version / approval reference`
+
+A must present this token back to SPS before seeing B's public key. This prevents a bare `exchange_id` from becoming an ambient capability.
+
+### Concrete Agent → Agent Contract Draft
+
+#### Secret Naming
+
+`secret_name` is a stable logical identifier, not a raw value and not a freeform prompt string.
+
+Examples:
+
+- `stripe.api_key.prod`
+- `github.app.private_key.main`
+- `aws.role.deploy.prod`
+
+Rules:
+
+- lowercase dot-separated namespace
+- stable across agent restarts and deployments
+- versioned only when semantics change, not on every rotation
+- policy is attached to `secret_name`, not inferred from natural language
+
+#### Exchange Status Model
+
+`exchange.status` values:
+
+- `pending`: created by B, not yet fulfilled
+- `reserved`: an authorized Agent A claimed the exchange and is the only agent allowed to submit
+- `submitted`: ciphertext uploaded by A, waiting for B retrieval
+- `retrieved`: consumed by B
+- `revoked`: cancelled by B or administrator
+- `expired`: TTL elapsed
+- `denied`: policy or approval denied fulfillment
+
+**Reservation lease (Phase 2A):** There is no separate reservation timeout. Once reserved, the exchange remains reserved until its original exchange TTL expires. If A crashes after reserving, B must wait for expiry (or manually revoke) and then re-request. Since `fulfiller_hint` is required in Phase 2A (single intended fulfiller), there is no alternate-fulfiller retry path. A reservation lease with reclaim semantics may be considered in Phase 2B alongside multi-fulfiller support.
+
+#### Revocation Strategy
+
+Revoked exchanges use **soft-delete with tombstone + short TTL**:
+
+- On revoke, set `status: "revoked"` and reset TTL to **300s** (5 minutes)
+- The tombstone prevents fulfill/submit/retrieve from succeeding during the TTL window
+- After TTL expires, Redis auto-evicts the key
+- Audit log retains the revocation event permanently, independent of Redis state
+- This preserves forensic traceability without requiring permanent storage
+- The 300s tombstone may outlive the original request TTL intentionally; this is acceptable because the tombstone is internal-only and exists to block delayed fulfill/submit attempts
+
+> [!IMPORTANT]
+> **Anti-enumeration scope**: The tombstone is **internal state only**. Unauthorized probes (non-owner retrieve, non-owner status) for revoked exchanges must return the same generic "not available" response as missing, expired, or consumed exchanges. However, **authorized control-plane actions** (`DELETE /revoke` by the authenticated requester or admin) return a real success response (`200` with `{ "status": "revoked" }`) because the caller has already proven ownership.
+
+#### `POST /api/v2/secret/exchange/request`
+
+Agent B creates an exchange request.
+
+Request body:
+
+```json
+{
+  "public_key": "<base64-hpke-public-key>",
+  "secret_name": "stripe.api_key.prod",
+  "purpose": "charge-customer-order",
+  "fulfiller_hint": "spiffe://myorg.local/ring/finance/payment-bot"
+}
+```
+
+`fulfiller_hint` rules:
+
+- `Phase 2A`: required in practice; no broadcast-to-many semantics
+- if omitted in a future phase, SPS must still resolve to one authorized fulfiller before reservation
+- a raw token broadcast to many agents is not supported in v1
+- optional `fulfiller_hint` is deferred until agent discovery / delivery semantics are defined outside SPS
+
+Response body:
+
+```json
+{
+  "exchange_id": "<64-char-hex>",
+  "status": "pending",
+  "expires_at": 1760000000,
+  "fulfillment_token": "<signed-token>",
+  "policy": {
+    "mode": "allow",
+    "approval_required": false
+  }
+}
+```
+
+Server behavior:
+
+- authenticate B
+- validate `secret_name`
+- evaluate policy and record a **bound policy snapshot** (including `policy_hash`) with the exchange
+- bind requester identity to the exchange record
+- mint `fulfillment_token` containing `policy_hash`
+
+#### `POST /api/v2/secret/exchange/fulfill`
+
+Agent A presents the token and asks SPS whether it may fulfill.
+
+Request body:
+
+```json
+{
+  "fulfillment_token": "<signed-token>"
+}
+```
+
+Response body:
+
+```json
+{
+  "exchange_id": "<64-char-hex>",
+  "status": "reserved",
+  "fulfilled_by": "spiffe://myorg.local/ring/finance/payment-bot",
+  "requester_id": "spiffe://myorg.local/ring/finance/crm-bot",
+  "requester_public_key": "<base64-hpke-public-key>",
+  "secret_name": "stripe.api_key.prod",
+  "purpose": "charge-customer-order",
+  "expires_at": 1760000000,
+  "policy": {
+    "mode": "allow",
+    "approval_required": false,
+    "approval_reference": null
+  }
+}
+```
+
+Server behavior:
+
+- authenticate A
+- verify token signature and expiry
+- verify exchange is still `pending`
+- **verify `policy_hash` from token matches the current policy hash** for this `(secret_name, requester, fulfiller)` tuple — if policy changed since the exchange was created, reject with `409` (B must re-request under the new policy)
+- verify A matches `allowed_fulfiller_id` from the bound exchange record
+- atomically reserve the exchange to A and persist `fulfilled_by`
+- return only the metadata needed for local fulfillment
+
+Concurrency rule:
+
+- first successful `/exchange/fulfill` wins and moves `pending -> reserved`
+- later fulfill attempts for the same exchange return `409`
+- replaying the same `fulfillment_token` after the exchange becomes `reserved`, `submitted`, `revoked`, or `expired` must fail and must not reopen the exchange
+
+#### Reserved State Behavior
+
+Phase 2A has no separate reservation lease.
+
+- once reserved, the exchange remains `reserved` until submit, revoke, or normal expiry
+- because `fulfiller_hint` is required in Phase 2A, there is no alternate-fulfiller retry path
+- requester B should treat a long-lived `reserved` state as stalled and fail fast locally rather than waiting for full expiry
+- requester B may issue a best-effort revoke on stall cleanup
+
+#### `POST /api/v2/secret/exchange/submit/:id`
+
+Agent A encrypts locally to B's HPKE public key and submits ciphertext.
+
+Request body:
+
+```json
+{
+  "enc": "<base64-hpke-enc>",
+  "ciphertext": "<base64-hpke-ciphertext>"
+}
+```
+
+Response body:
+
+```json
+{
+  "status": "submitted",
+  "retrieve_by": 1760000060,
+  "fulfilled_by": "spiffe://myorg.local/ring/finance/payment-bot"
+}
+```
+
+Server behavior:
+
+- authenticate A
+- verify A is the reserved fulfiller for this exchange
+- require current status `reserved`
+- store ciphertext with short retrieval TTL
+- atomically move `reserved -> submitted`
+
+Concurrency rule:
+
+- `/exchange/submit/:id` must be compare-and-set on both status and `fulfilled_by`
+- a second agent or a replay from a non-reserved agent gets `409` and cannot overwrite ciphertext
+
+#### `GET /api/v2/secret/exchange/retrieve/:id`
+
+Only Agent B may retrieve. Retrieval is single-use and atomic.
+
+Response body:
+
+```json
+{
+  "enc": "<base64-hpke-enc>",
+  "ciphertext": "<base64-hpke-ciphertext>",
+  "secret_name": "stripe.api_key.prod",
+  "fulfilled_by": "spiffe://myorg.local/ring/finance/payment-bot"
+}
+```
+
+Server behavior:
+
+- authenticate B
+- verify B is `requester_id`
+- require current status `submitted`
+- atomically return + delete ciphertext
+- if the exchange does not exist, is no longer available, or does not belong to B, return the same generic "not available" response to reduce exchange enumeration
+
+### Audit Requirements for Agent → Agent
+
+SPS cannot validate whether the fulfilled secret is semantically correct. If Agent A is compromised, it can submit malicious but well-formed ciphertext. This is an authorization and trust problem, not a confidentiality failure.
+
+To make incident response possible, A2A audit logs must record:
+
+- `exchange_id`
+- `secret_name`
+- `requester_id`
+- `fulfilled_by`
+- `fulfilled_at`
+- `retrieved_by`
+- `retrieved_at`
+- `policy_rule_id`
+- `approval_reference`
+- optional ciphertext digest for forensics
+
+This makes the exact fulfiller identity visible when tracing a poisoned or incorrect secret.
+
+#### Policy Decision Shape
+
+The policy engine decision attached to the exchange should be explicit and serializable:
+
+```json
+{
+  "mode": "allow",
+  "approval_required": false,
+  "rule_id": "finance.same-ring.stripe-prod",
+  "requester_ring": "finance",
+  "fulfiller_ring": "finance",
+  "secret_name": "stripe.api_key.prod",
+  "reason": "same-ring exchange allowed for this secret"
+}
+```
+
+If human approval is required:
+
+```json
+{
+  "mode": "pending_approval",
+  "approval_required": true,
+  "approval_reference": "apr_01J...",
+  "rule_id": "cross-ring.stripe-prod",
+  "reason": "cross-ring exchange requires human approval"
+}
+```
+
+#### Fulfillment Token Claims
+
+Minimum claims:
+
+```json
+{
+  "iss": "sps",
+  "aud": "agent-fulfill",
+  "exchange_id": "<64-char-hex>",
+  "requester_id": "spiffe://myorg.local/ring/finance/crm-bot",
+  "secret_name": "stripe.api_key.prod",
+  "purpose": "charge-customer-order",
+  "exp": 1760000000,
+  "policy_hash": "<sha256>",
+  "approval_reference": null
+}
+```
+
+Notes:
+
+- token must be signed by SPS, not by B
+- token is not itself permission to retrieve; it is only permission for A to ask SPS about fulfillment
+- **`policy_hash` enables staleness detection**: SPS computes the current policy hash at fulfill time and compares it to the token's `policy_hash`. A mismatch means the policy changed after the exchange was created — SPS rejects fulfillment and B must re-request. This gives emergency revocation for free: update the policy, and all unfulfilled exchanges with stale hashes become unfulfillable.
+- token replay is tolerated only in the sense that SPS state makes it harmless; once the exchange leaves `pending`, replay must fail without changing state
+
+#### Local/Dev vs Production Enforcement
+
+- `Phase 2A`: same contract, agent auth via gateway-signed JWT, policy can start with static allowlists by `secret_name`
+- `Phase 2B`: same contract, agent auth via SPIFFE/SPIRE, policy can use trust rings plus approval workflows
+
+This keeps the wire contract stable while tightening the trust model later.
+
+#### Transport Boundary
+
+- `Phase 2A`: fulfillment token delivery uses a **stub transport** (in-process handoff or test harness). No production agent-to-agent messaging channel required. Integration tests pass the token directly between two agent instances.
+- `Phase 2B`: production agent-to-agent transport (OpenClaw runtime channel or equivalent) ships alongside SPIFFE identity, since real transport requires authenticated agent endpoints.
 
 ---
 
@@ -179,9 +543,9 @@ POST   /api/v2/secret/accept/:id     → Agent B accepts
 | 5 | Native UI / Hardened Device Flow | Prompt injection → phishing |
 | 6 | **LLM Blindness** | LLM never sees URL or confirmation code |
 | 7 | **Gateway Egress Filtering** | LLM-injected malicious URLs redacted |
-| 8 | SPIFFE/SPIRE identity | Agent impersonation |
+| 8 | SPIFFE/SPIRE identity or local signed workload identity | Agent impersonation |
 | 9 | In-memory only + zeroing | Disk forensics, crash dumps |
-| 10 | Audit logging + human notifications | Non-repudiation, rogue agents |
+| 10 | Audit logging + human notifications / approvals | Non-repudiation, rogue agents |
 | 11 | TEE execution (optional) | Host OS compromise |
 
 ---
@@ -201,11 +565,23 @@ POST   /api/v2/secret/accept/:id     → Agent B accepts
 - [x] Single-use request IDs with 3-min TTL
 - [x] Audit logging
 
-### Phase 2: Agent-to-Agent + Identity
+### Phase 2A: Pull-Based Agent-to-Agent (Local/Dev)
+- [x] Stable `secret_name` registry and classification
+- [x] Pull-based exchange API in dedicated `routes/exchange.ts` (`/exchange/request`, `/exchange/fulfill`, `/exchange/submit`, `/exchange/retrieve`)
+- [x] Exchange record owner binding (`requester_id`, `allowed_fulfiller`, `purpose`, `policy_decision`)
+- [x] Soft-delete revocation with tombstone + 5-min TTL
+- [x] SPS-signed fulfillment token
+- [x] Gateway-signed local workload identity for A2A
+- [x] Same-ring allowlists for named secrets
+- [x] Stub transport for fulfillment token delivery (in-process / test harness)
+- [x] Human → Agent mode remains unchanged and continues to support lazy re-request
+
+### Phase 2B: Production Networked Agent-to-Agent
 - [ ] SPIFFE/SPIRE integration
-- [ ] Trust ring policy engine
-- [ ] Delegation API
-- [ ] Cross-ring human approval workflow
+- [ ] Trust ring policy engine with per-secret authorization rules
+- [ ] Cross-ring human approval workflow bound to a specific exchange
+- [ ] Production agent-to-agent transport (OpenClaw runtime channel or equivalent)
+- [ ] Revocation, rotation, and approval audit artifacts for multi-host/internet deployments
 
 ### Phase 3: Enterprise
 - [ ] Capability token proxy (SPS → API Gateway)

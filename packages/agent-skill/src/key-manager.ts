@@ -49,6 +49,21 @@ export async function decrypt(privateKey: Buffer, encB64: string, ciphertextB64:
   return arrayBufferToBuffer(plaintext);
 }
 
+export async function encrypt(publicKeyB64: string, plaintext: Buffer): Promise<{ enc: string; ciphertext: string }> {
+  const recipientPublicKey = await suite.kem.deserializePublicKey(base64ToArrayBuffer(publicKeyB64));
+  const { enc, ct } = await suite.seal(
+    {
+      recipientPublicKey
+    },
+    bufferToArrayBuffer(plaintext)
+  );
+
+  return {
+    enc: arrayBufferToBuffer(enc).toString("base64"),
+    ciphertext: arrayBufferToBuffer(ct).toString("base64")
+  };
+}
+
 export function destroyKeyPair(keyPair: KeyPair): void {
   keyPair.privateKey.fill(0);
 }

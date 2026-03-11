@@ -106,6 +106,27 @@ function bearerToken(req: FastifyRequest): string | null {
 }
 
 export async function requireGatewayAuth(req: FastifyRequest, reply: FastifyReply): Promise<JWTPayload | null> {
+  return verifyGatewayLikeToken(req, reply);
+}
+
+export async function requireAgentAuth(
+  req: FastifyRequest,
+  reply: FastifyReply
+): Promise<(JWTPayload & { sub: string }) | null> {
+  const payload = await verifyGatewayLikeToken(req, reply);
+  if (!payload) {
+    return null;
+  }
+
+  if (typeof payload.sub !== "string" || !payload.sub.trim()) {
+    reply.code(401).send({ error: "Invalid agent identity" });
+    return null;
+  }
+
+  return payload as JWTPayload & { sub: string };
+}
+
+async function verifyGatewayLikeToken(req: FastifyRequest, reply: FastifyReply): Promise<JWTPayload | null> {
   const token = bearerToken(req);
   if (!token) {
     reply.code(401).send({ error: "Missing bearer token" });
