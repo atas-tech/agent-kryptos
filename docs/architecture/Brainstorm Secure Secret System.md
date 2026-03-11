@@ -158,7 +158,7 @@ Same-ring requests may be auto-approved for specific secret classes, but never "
 - No disk writes. Agent crash = lazy re-request via HITL.
 - Secrets in non-serializable objects, excluded from logs/prompts/stack traces.
 - `Buffer.alloc()` with explicit zeroing on disposal.
-- OS keychain integration deferred to **Phase 3** (opt-in).
+- OS keychain integration deferred to **Phase 5** (opt-in).
 
 ### 🔄 Re-Request UX: Lazy (Wait Until Needed)
 
@@ -604,9 +604,39 @@ This keeps the wire contract stable while tightening the trust model later.
 - [x] Revocation history and operator-visible exchange lifecycle audit records
 - [x] Rotation / re-request lineage linking refreshed exchanges for the same logical secret
 
-### Phase 3: Enterprise
+### Phase 3A: Hosted Managed Platform
+- [ ] Hosted deployment: UI at `https://secret.atas.tech/`, API at `https://sps.atas.tech/`
+- [ ] Shared hosted service with workspace-isolated customer environments; each workspace/org is the primary trust, policy, and billing boundary in Phase 3A
+- [ ] Self-service signup for humans and agents with validation gates, free-trial support, and risk-based review; agents may either create a tightly limited trial workspace or enroll into an existing workspace
+- [ ] Multi-user support with RBAC (admin, operator, viewer) for provisioning and audit visibility, with workspace-scoped users and agents plus owner/team bindings that ship in Phase 3A but can remain disabled in simple deployments
+- [ ] Simple onboarding flow for humans (one-click connect, guided setup wizard, email verification, challenge checks)
+- [ ] Agent onboarding supports both paths: validated self-service creation of a tightly limited trial workspace, or self-enrollment into an existing workspace with workspace-scoped bootstrap credentials or approval-gated registration; includes well-known endpoint discovery, MCP server integration, and concurrent support for OpenClaw and similar agent runtimes
+- [ ] Autonomous agent-to-agent exchange only within one customer workspace/org, with policy boundaries for same-owner, same-team, and cross-team sharing
+- [ ] Trial / verified / paid workspace states with quota, policy, and feature gating
+- [ ] Traditional billing: Stripe subscriptions and subscription tiers
+- [ ] Automatic workspace activation or upgrade after verified human payment settlement
+- [ ] Usage analytics dashboard (deployment-level request counts, exchange metrics, user activity, error rates)
+- [ ] Basic hosted-service protections: rate limits, signup abuse controls, auth hardening, operator controls, and audit visibility
+- [ ] Agent-specific signup protections: strict trial quotas, runtime/manifest metadata validation, risk scoring, quarantine/manual review for suspicious signups, and no cross-workspace A2A for trial agents
+
+### Phase 3B: Billing, SDKs & Community
+- [ ] x402 (HTTP 402) autonomous agent payments on top of hosted billing/quota infrastructure, with automatic upgrade after verified settlement
+- [ ] Language SDKs: Python, Go (Node.js SDK is already `agent-skill`, just needs publishing)
+- [ ] Docker Compose community guide (builds goodwill while SaaS matures; full self-hosted polish deferred to Phase 4)
+- [ ] Comprehensive API documentation and integration guides
+
+### Phase 4: Expansion & Go-to-Market
+- [ ] Self-hosted version: polished Docker Compose + build-from-source with monitoring, upgrade guides
+- [ ] Expand messaging platform support: WhatsApp, iMessage, Zalo, and other platforms OpenClaw supports
+- [ ] Human-to-human secure sharing as a separate product layer on top of SPS primitives, with dedicated UI/UX, policy, and abuse controls
+- [ ] CLI tool for quick secret operations without browser UI (`kryptos share` / `kryptos get`)
+- [ ] SEO, landing page, and marketing strategy
+
+### Phase 5: Enterprise, Multi-Tenant & Compliance
+- [ ] Multi-tenant architecture with tenant-scoped identities, policies, audit logs, rate limits, and billing boundaries
+- [ ] Public SaaS abuse controls: CAPTCHA, ToS enforcement, anomaly detection, and anti-abuse review tooling
+- [ ] Cross-workspace / cross-org autonomous A2A authorization and federation between unrelated customer environments
 - [ ] Capability token proxy (SPS → API Gateway)
 - [ ] OS keychain integration (opt-in)
-- [ ] Multi-tenancy
 - [ ] HSM/Cloud KMS, OAuth 2.0 token exchange
 - [ ] TEE support, NIST compliance

@@ -349,7 +349,7 @@ Implement pull-based Agent → Agent exchange without breaking the existing Huma
 - No broadcast-to-many fulfiller semantics
 - No SPIFFE/SPIRE requirement in Phase 2A
 - No Kubernetes or cluster control-plane dependency
-- No Phase 3 capability proxy or token exchange work
+- No Phase 5 capability proxy or token exchange work
 - No optional `fulfiller_hint` support until agent discovery and delivery semantics are defined
 - No production agent-to-agent transport — Phase 2A uses a stub transport (in-process / test harness)
 
