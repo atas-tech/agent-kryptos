@@ -9,6 +9,21 @@
     "configSchema": {
         "type": "object",
         "additionalProperties": false,
-        "properties": {}
+        "properties": {
+            "SPS_BASE_URL": {
+                "type": "string",
+                "description": "Base URL of the Secret Provisioning Service (e.g., http://localhost:3100)",
+                "default": "http://localhost:3100"
+            },
+            "AGENT_KRYPTOS_AGENT_ID": {
+                "type": "string",
+                "description": "Stable unique identity for this agent in the Kryptos system",
+                "default": "agent-kryptos-agent"
+            },
+            "OPENCLAW_AGENT_TARGETS_JSON": {
+                "type": "string",
+                "description": "Optional mapping of agent IDs to session targets for fulfillment delivery"
+            }
+        }
     }
 }
