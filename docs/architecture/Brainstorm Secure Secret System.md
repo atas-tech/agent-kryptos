@@ -102,7 +102,7 @@ sequenceDiagram
     GW->>SPS: POST /request {public_key, agent_id}
     SPS-->>GW: {request_id, confirmation_code: "BLUE-FOX-42"}
     GW->>GW: Generate HMAC-signed URL
-    GW->>Chat: Push: "🔐 Secret needed: Stripe API key\nOpen: https://secrets.yourdomain.com/r/abc123\nVerification: BLUE-FOX-42"
+    GW->>Chat: Push: "🔐 Secret needed: Stripe API key\nOpen: https://secret.atas.tech/r/abc123\nVerification: BLUE-FOX-42"
     GW-->>LLM: "secret_request pending"
     User->>Browser: Opens URL
     Browser->>Browser: Displays "BLUE-FOX-42" — user confirms match
@@ -120,7 +120,7 @@ sequenceDiagram
 | Control | Implementation |
 |---------|---------------|
 | **1. LLM Blindness** | LLM only emits `request_secret` tool call. Gateway generates URL, HMAC signature, and confirmation code. LLM receives only `"secret_request pending"`. |
-| **2. Egress URL Filtering** | Gateway regex-scans all outbound messages. Any URL not matching `https://secrets.yourdomain.com/*` is **redacted or dropped** and flagged as a security breach. |
+| **2. Egress URL Filtering** | Gateway regex-scans all outbound messages. In the hosted deployment, any URL not matching `https://secret.atas.tech/*` is **redacted or dropped** and flagged as a security breach. Self-hosted or dedicated deployments must pin the allowlist to their configured secret UI origin. |
 | **3. Strict TTL** | URL + confirmation code expire in **3 minutes**. Request ID invalidated immediately on ciphertext submission. Max 1 active request per agent per secret type. |
 
 ### 🪪 Agent Identity: SPS-Trusted JWTs First, Optional SPIFFE
@@ -128,13 +128,16 @@ sequenceDiagram
 | Deployment | Identity Method |
 |-----------|----------------|
 | **Default / single-operator / multi-host** | SPS-trusted JWTs with stable per-agent `sub` values, validated by issuer/audience/JWKS |
+| **Hosted pooled SaaS** | SPS-trusted sessions or JWTs with mandatory `workspace_id`, stable subject claims, and role/actor metadata validated by SPS |
 | **Optional advanced deployment** | SPIFFE-compatible issuer or workload identity provider, if the operator already runs one |
 
 **Important**: the intended architecture is still one coordinating SPS server. "Single-operator" does **not** mean same machine. It can run across Docker, a LAN, Tailscale, or public hosts as long as SPS is the trust anchor and agents present distinct identities.
 
 Current repo state: SPS validates agent JWTs from one or more configured issuers via issuer/audience/JWKS settings. The auth path can also enforce SPIFFE-shaped claims if an operator wants that, but SPIFFE is optional and not required for the normal single-server deployment model.
 
-Trust rings are enforced from agent identity and policy metadata. They do not require SPIFFE URIs. Example stable IDs:
+In hosted deployments, subject uniqueness is tenant-scoped: the principal key is `(workspace_id, sub)`, not `sub` by itself.
+
+Trust rings are enforced from agent identity and policy metadata. They do not require SPIFFE URIs. In hosted deployments they are evaluated inside one workspace/org boundary, never across workspaces. Example stable IDs:
 ```
 agent:finance:crm-bot
 agent:finance:payment-bot
@@ -200,15 +203,18 @@ GET    /api/v2/secret/exchange/admin/approval/:id/history      → admin-only ap
 
 **Auth**:
 
-- Human → Agent browser path: Session token / scoped browser signature
+- Human → Agent browser path: Session token / scoped browser signature. In hosted mode, the browser session must also carry `workspace_id` and user role context.
 - Agent → SPS path in local/dev: Gateway-signed JWT with **per-agent `sub` claim** (e.g., `sub: "agent:crm-bot"`). Each agent must receive a JWT with a unique `sub` so SPS can enforce requester/fulfiller ownership binding. The current single shared `gatewayBearerToken` with `role: "gateway"` is insufficient for A2A — Phase 2A must extend the gateway to issue agent-specific tokens.
-- Agent → SPS path in production: JWT or equivalent workload identity trusted by SPS. A SPIFFE-compatible issuer is optional, not required.
+- Agent → SPS path in hosted or dedicated production: JWT or equivalent workload identity trusted by SPS, carrying `workspace_id`, stable `sub`, intended audience, and actor type / role claims. A SPIFFE-compatible issuer is optional, not required.
+
+`workspace_id` is derived from the authenticated caller context, not accepted as a freeform request-body field.
 
 #### Local/Dev Agent JWT Bootstrap
 
 Phase 2A uses a simple bootstrap path for local/dev agents:
 
 - gateway mints a short-lived JWT for a specific agent identity
+- when simulating hosted mode, the gateway may also stamp a fixed test `workspace_id`
 - the token is injected into the agent process via environment variable or test harness configuration
 - no local HTTP minting endpoint is required in Phase 2A
 
@@ -218,6 +224,7 @@ This avoids a bootstrap authentication loop in local environments. A runtime tok
 
 For Agent → Agent, SPS must store more than ciphertext state. Each exchange record must bind:
 
+- `workspace_id`
 - `exchange_id`
 - `requester_id` (Agent B)
 - `allowed_fulfiller_id` or policy selector
@@ -228,12 +235,13 @@ For Agent → Agent, SPS must store more than ciphertext state. Each exchange re
 - `created_at` / `expires_at`
 - `status`
 
-Without this binding, SPS cannot safely enforce "only B retrieves" and "only authorized A fulfills."
+Without this binding, SPS cannot safely enforce "only B retrieves" and "only authorized A fulfills." In hosted mode, requester and fulfiller identity are evaluated as workspace-scoped principals, not global agent IDs.
 
 ### Fulfillment Token
 
 The `fulfillment_token` is an SPS-signed capability passed from B to A over the existing agent channel. It binds:
 
+- `workspace_id`
 - `exchange_id`
 - `requester_id`
 - `secret_name`
@@ -241,7 +249,7 @@ The `fulfillment_token` is an SPS-signed capability passed from B to A over the 
 - `expiry`
 - `policy version / approval reference`
 
-A must present this token back to SPS before seeing B's public key. This prevents a bare `exchange_id` from becoming an ambient capability.
+A must present this token back to SPS before seeing B's public key. This prevents a bare `exchange_id` from becoming an ambient capability, and prevents a token minted in one workspace from being replayed against another.
 
 ### Concrete Agent → Agent Contract Draft
 
@@ -460,6 +468,7 @@ SPS cannot validate whether the fulfilled secret is semantically correct. If Age
 
 To make incident response possible, A2A audit logs must record:
 
+- `workspace_id`
 - `exchange_id`
 - `secret_name`
 - `requester_id`
@@ -481,7 +490,7 @@ Phase 2B adds admin-only lifecycle inspection endpoints:
 - exchange lifecycle records (`requested`, `reserved`, `submitted`, `retrieved`, `revoked`)
 - approval history records (`approval_requested`, `approval_decided`)
 
-These endpoints are for operator review only. Requester/fulfiller scoped read access is deferred.
+These endpoints are for operator review only in Phase 2B. Hosted phases may expose workspace-scoped customer audit views over the same underlying records, but never cross-workspace visibility.
 
 #### Policy Decision Shape
 
@@ -519,6 +528,7 @@ Minimum claims:
 {
   "iss": "sps",
   "aud": "agent-fulfill",
+  "workspace_id": "ws_acme_prod",
   "exchange_id": "<64-char-hex>",
   "requester_id": "agent:finance:crm-bot",
   "secret_name": "stripe.api_key.prod",
@@ -533,6 +543,7 @@ Notes:
 
 - token must be signed by SPS, not by B
 - token is not itself permission to retrieve; it is only permission for A to ask SPS about fulfillment
+- SPS must reject the token if the authenticated caller's `workspace_id` does not match the token's `workspace_id`
 - **`policy_hash` enables staleness detection**: SPS computes the current policy hash at fulfill time and compares it to the token's `policy_hash`. A mismatch means the policy changed after the exchange was created — SPS rejects fulfillment and B must re-request. This gives emergency revocation for free: update the policy, and all unfulfilled exchanges with stale hashes become unfulfillable.
 - token replay is tolerated only in the sense that SPS state makes it harmless; once the exchange leaves `pending`, replay must fail without changing state
 
@@ -605,25 +616,27 @@ This keeps the wire contract stable while tightening the trust model later.
 - [x] Rotation / re-request lineage linking refreshed exchanges for the same logical secret
 
 ### Phase 3A: Hosted Managed Platform
-- [ ] Hosted deployment: UI at `https://secret.atas.tech/`, API at `https://sps.atas.tech/`
-- [ ] Shared hosted service with workspace-isolated customer environments; each workspace/org is the primary trust, policy, and billing boundary in Phase 3A
-- [ ] Self-service signup for humans and agents with validation gates, free-trial support, and risk-based review; agents may either create a tightly limited trial workspace or enroll into an existing workspace
-- [ ] Multi-user support with RBAC (admin, operator, viewer) for provisioning and audit visibility, with workspace-scoped users and agents plus owner/team bindings that ship in Phase 3A but can remain disabled in simple deployments
-- [ ] Simple onboarding flow for humans (one-click connect, guided setup wizard, email verification, challenge checks)
-- [ ] Agent onboarding supports both paths: validated self-service creation of a tightly limited trial workspace, or self-enrollment into an existing workspace with workspace-scoped bootstrap credentials or approval-gated registration; includes well-known endpoint discovery, MCP server integration, and concurrent support for OpenClaw and similar agent runtimes
-- [ ] Autonomous agent-to-agent exchange only within one customer workspace/org, with policy boundaries for same-owner, same-team, and cross-team sharing
-- [ ] Trial / verified / paid workspace states with quota, policy, and feature gating
+- [ ] Hosted deployment: UI at `https://secret.atas.tech/`, API at `https://sps.atas.tech/`, and gateway/browser allowlists updated to those hosted domains
+- [ ] Phase 3A is the first pooled hosted SaaS phase: multiple customer workspaces share one control plane, but each workspace/org is the tenant boundary for identity, policy, audit visibility, quotas, and billing
+- [ ] Mandatory hosted identity contract: every authenticated human and agent request carries a workspace-scoped identity (`workspace_id` plus stable `sub` / role claims), and SPS resolves policy, audit, and ownership on `(workspace_id, subject)` rather than global IDs alone
+- [ ] Self-service human signup with validation gates, free-trial support, email verification, challenge checks, and risk-based review before higher-risk features are enabled
+- [ ] Hosted agent bootstrap and enrollment with workspace-scoped bootstrap credentials or approval-gated registration; issued credentials must be short-lived, rotatable, revocable, and never reusable across workspaces
+- [ ] Multi-user customer RBAC with explicit workspace roles (`workspace_admin`, `workspace_operator`, `workspace_viewer`) for provisioning, approvals, and audit visibility; platform operator roles remain separate and are never exposed as customer roles
+- [ ] Owner/team bindings are part of the hosted policy model if same-owner or same-team rules ship in Phase 3A; if those bindings are disabled, authorization falls back to explicit per-secret allowlists instead of implicit team inference
+- [ ] Agent onboarding supports both paths: validated self-service creation of a tightly limited trial workspace, or enrollment into an existing workspace; includes well-known endpoint discovery, MCP server integration, and concurrent support for OpenClaw and similar agent runtimes
+- [ ] Autonomous agent-to-agent exchange is restricted to one workspace/org in Phase 3A, with policy boundaries for same-owner, same-team, and cross-team sharing; cross-workspace A2A is explicitly out of scope until Phase 5
+- [ ] Trial / verified / paid workspace states with quota, policy, and feature gating; higher-risk exchange features stay disabled for trial workspaces, and any future cross-workspace exchange path remains off for trials
 - [ ] Traditional billing: Stripe subscriptions and subscription tiers
 - [ ] Automatic workspace activation or upgrade after verified human payment settlement
-- [ ] Usage analytics dashboard (deployment-level request counts, exchange metrics, user activity, error rates)
-- [ ] Basic hosted-service protections: rate limits, signup abuse controls, auth hardening, operator controls, and audit visibility
+- [ ] Hosted analytics and dashboards are metadata-minimized: aggregate request counts, exchange metrics, workspace activity, error rates, abuse signals, and billing usage only; no secret plaintext, no ciphertext inspection, and defined retention/redaction rules for secret names and user activity
+- [ ] Basic hosted-service protections: rate limits, signup abuse controls, auth hardening, customer-visible audit trails, and internal operator controls with least-privilege access
 - [ ] Agent-specific signup protections: strict trial quotas, runtime/manifest metadata validation, risk scoring, quarantine/manual review for suspicious signups, and no cross-workspace A2A for trial agents
 
 ### Phase 3B: Billing, SDKs & Community
-- [ ] x402 (HTTP 402) autonomous agent payments on top of hosted billing/quota infrastructure, with automatic upgrade after verified settlement
-- [ ] Language SDKs: Python, Go (Node.js SDK is already `agent-skill`, just needs publishing)
+- [ ] x402 (HTTP 402) autonomous agent payments on top of the hosted workspace billing/quota infrastructure, with automatic upgrade after verified settlement
+- [ ] Language SDKs: Python, Go, and published Node.js package(s) from the current `agent-skill` implementation
 - [ ] Docker Compose community guide (builds goodwill while SaaS matures; full self-hosted polish deferred to Phase 4)
-- [ ] Comprehensive API documentation and integration guides
+- [ ] Comprehensive API documentation plus hosted onboarding, identity bootstrap, and policy integration guides
 
 ### Phase 4: Expansion & Go-to-Market
 - [ ] Self-hosted version: polished Docker Compose + build-from-source with monitoring, upgrade guides
@@ -632,8 +645,8 @@ This keeps the wire contract stable while tightening the trust model later.
 - [ ] CLI tool for quick secret operations without browser UI (`kryptos share` / `kryptos get`)
 - [ ] SEO, landing page, and marketing strategy
 
-### Phase 5: Enterprise, Multi-Tenant & Compliance
-- [ ] Multi-tenant architecture with tenant-scoped identities, policies, audit logs, rate limits, and billing boundaries
+### Phase 5: Enterprise, Federation & Compliance
+- [ ] Enterprise isolation options on top of the Phase 3A tenant model: dedicated deployments, stronger regional/data-boundary controls, and customer-managed identity or key-management integrations where needed
 - [ ] Public SaaS abuse controls: CAPTCHA, ToS enforcement, anomaly detection, and anti-abuse review tooling
 - [ ] Cross-workspace / cross-org autonomous A2A authorization and federation between unrelated customer environments
 - [ ] Capability token proxy (SPS → API Gateway)
