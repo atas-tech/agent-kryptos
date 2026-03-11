@@ -11,7 +11,8 @@
  * the server in plaintext.
  */
 
-import { requestSecretFlow, cleanup } from "./sps-bridge.mjs";
+import { buildExchangeDeliveryMessage, createOpenClawAgentTransport, resolveOpenClawAgentTarget } from "./agent-transport.mjs";
+import { fulfillExchangeFlow, requestExchangeFlow, requestSecretFlow, cleanup } from "./sps-bridge.mjs";
 import { spawn } from "node:child_process";
 
 const SECRET_NAME_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
@@ -29,6 +30,19 @@ function setInMemorySecret(name, value) {
         disposeBuffer(existing);
     }
     _inMemorySecrets.set(name, Buffer.from(value));
+}
+
+function cloneSecretValue(value) {
+    if (Buffer.isBuffer(value)) {
+        return Buffer.from(value);
+    }
+    if (value instanceof Uint8Array) {
+        return Buffer.from(value);
+    }
+    if (typeof value === "string") {
+        return Buffer.from(value, "utf8");
+    }
+    return null;
 }
 
 function disposeAllInMemorySecrets() {
@@ -49,12 +63,37 @@ async function persistSecret(api, context, name, value) {
     for (const target of targets) {
         if (typeof target.fn === "function") {
             await target.fn.call(target.owner, name, Buffer.from(value));
+            setInMemorySecret(name, value);
             return "runtime";
         }
     }
 
     setInMemorySecret(name, value);
     return "plugin";
+}
+
+async function resolveStoredSecret(api, context, name) {
+    const targets = [
+        { owner: context, fn: context?.getSecret, args: [name] },
+        { owner: context, fn: context?.readSecret, args: [name] },
+        { owner: api, fn: api?.getSecret, args: [name] },
+        { owner: api, fn: api?.readSecret, args: [name] },
+    ];
+
+    for (const target of targets) {
+        if (typeof target.fn !== "function") continue;
+        try {
+            const value = await target.fn.call(target.owner, ...target.args);
+            const normalized = cloneSecretValue(value);
+            if (normalized) {
+                return normalized;
+            }
+        } catch (err) {
+            console.warn(`[agent-kryptos] Secret lookup via runtime failed: ${err?.message ?? String(err)}`);
+        }
+    }
+
+    return getStoredSecret(name);
 }
 
 function normalizeSecretName(value) {
@@ -164,6 +203,10 @@ function resolveMessageTarget(params, context, channelId) {
     }
 
     return "";
+}
+
+function resolveConfiguredAgentId() {
+    return process.env.AGENT_KRYPTOS_AGENT_ID?.trim() || process.env.OPENCLAW_AGENT_ID?.trim() || "agent-kryptos-agent";
 }
 
 async function runExecFile(execFileFn, file, args, timeoutMs = 15000) {
@@ -352,10 +395,129 @@ export function disposeStoredSecret(name = "default") {
     }
 }
 
+export { buildExchangeDeliveryMessage, createOpenClawAgentTransport, resolveOpenClawAgentTarget };
+
 export default function register(api, runtime = {}) {
     const runRequestSecretFlow = runtime.requestSecretFlowFn ?? requestSecretFlow;
+    const runRequestExchangeFlow = runtime.requestExchangeFlowFn ?? requestExchangeFlow;
+    const runFulfillExchangeFlow = runtime.fulfillExchangeFlowFn ?? fulfillExchangeFlow;
     const runCleanup = runtime.cleanupFn ?? cleanup;
+    const buildAgentTransport = runtime.createOpenClawAgentTransportFn ?? createOpenClawAgentTransport;
     const execFileFn = runtime.execFileFn ?? spawn;
+
+    api.registerTool({
+        name: "request_secret_exchange",
+        description: [
+            "Securely request a named secret from another authenticated agent through SPS.",
+            "This uses the OpenClaw runtime transport to deliver an SPS fulfillment token to the fulfiller agent.",
+            "The secret plaintext is never returned in tool output and is stored only in runtime memory.",
+        ].join(" "),
+        parameters: {
+            type: "object",
+            properties: {
+                secret_name: {
+                    type: "string",
+                    description: "Stable logical secret identifier, e.g. 'stripe.api_key.prod'.",
+                },
+                purpose: {
+                    type: "string",
+                    description: "Short reason for the exchange, e.g. 'charge-customer-order'.",
+                },
+                fulfiller_id: {
+                    type: "string",
+                    description: "Stable agent identity expected to fulfill the exchange, e.g. 'agent:payment-bot'.",
+                },
+                prior_exchange_id: {
+                    type: "string",
+                    description: "Optional prior exchange to supersede for re-request / rotation lineage.",
+                },
+                reserved_timeout_ms: {
+                    type: "number",
+                    description: "Optional time to wait after the fulfiller reserves the exchange before failing closed.",
+                },
+            },
+            required: ["secret_name", "purpose", "fulfiller_id"],
+        },
+
+        async execute(_id, params, context) {
+            const secretName = normalizeSecretName(params.secret_name);
+            if (secretName == null) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "Error: secret_name must match [A-Za-z0-9._-] and be 1-64 characters.",
+                    }],
+                };
+            }
+
+            const purpose = typeof params.purpose === "string" ? params.purpose.trim() : "";
+            if (!purpose) {
+                return {
+                    content: [{ type: "text", text: "Error: purpose is required for request_secret_exchange." }],
+                };
+            }
+
+            const fulfillerId = typeof params.fulfiller_id === "string" ? params.fulfiller_id.trim() : "";
+            if (!fulfillerId) {
+                return {
+                    content: [{ type: "text", text: "Error: fulfiller_id is required for request_secret_exchange." }],
+                };
+            }
+            const priorExchangeId = typeof params.prior_exchange_id === "string" ? params.prior_exchange_id.trim() : "";
+
+            const reservedTimeoutMs = params.reserved_timeout_ms;
+            if (reservedTimeoutMs != null && (!Number.isFinite(reservedTimeoutMs) || reservedTimeoutMs <= 0)) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "Error: reserved_timeout_ms must be a positive number when provided.",
+                    }],
+                };
+            }
+
+            try {
+                const transport = buildAgentTransport(api, runtime.agentTransportOptions ?? {});
+                const result = await runRequestExchangeFlow({
+                    secretName,
+                    purpose,
+                    fulfillerId,
+                    priorExchangeId,
+                    reservedTimeoutMs,
+                    spsBaseUrl: process.env.SPS_BASE_URL ?? "http://localhost:3100",
+                    agentId: resolveConfiguredAgentId(),
+                    transport,
+                });
+
+                let storedIn = "plugin";
+                try {
+                    storedIn = await persistSecret(api, context, secretName, result.secret);
+                } finally {
+                    disposeBuffer(result.secret);
+                }
+
+                return {
+                    content: [{
+                        type: "text",
+                        text: [
+                            "Secret exchange completed and stored securely in memory.",
+                            `exchange_id: ${result.exchangeId}`,
+                            `secret_name: ${secretName}`,
+                            `fulfilled_by: ${result.fulfilledBy ?? fulfillerId}`,
+                            `storage: ${storedIn}`,
+                            "Continue the task without asking the user to share secrets in chat.",
+                        ].join("\n"),
+                    }],
+                };
+            } catch (err) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Failed to request secret exchange: ${err?.message ?? String(err)}`,
+                    }],
+                };
+            }
+        },
+    });
 
     api.registerTool({
         name: "request_secret",
@@ -437,6 +599,7 @@ export default function register(api, runtime = {}) {
                 const secret = await runRequestSecretFlow({
                     description,
                     spsBaseUrl,
+                    agentId: resolveConfiguredAgentId(),
                     onSecretLink: async (secretUrl, confirmationCode) => {
                         console.log(`[agent-kryptos] Delivering secret link: ${secretUrl}`);
 
@@ -543,6 +706,62 @@ export default function register(api, runtime = {}) {
                     content: [{
                         type: "text",
                         text: `Failed to retrieve secret: ${message}`,
+                    }],
+                };
+            }
+        },
+    });
+
+    api.registerTool({
+        name: "fulfill_secret_exchange",
+        description: [
+            "Fulfill a Secret Provisioning Service agent-to-agent exchange using a secret already stored in runtime memory.",
+            "Use this only for authenticated agent-to-agent exchange messages carrying a fulfillment token.",
+            "This tool never returns the secret plaintext.",
+        ].join(" "),
+        parameters: {
+            type: "object",
+            properties: {
+                fulfillment_token: {
+                    type: "string",
+                    description: "SPS-signed fulfillment token for a pending exchange request.",
+                },
+            },
+            required: ["fulfillment_token"],
+        },
+
+        async execute(_id, params, context) {
+            const fulfillmentToken = typeof params.fulfillment_token === "string" ? params.fulfillment_token.trim() : "";
+            if (!fulfillmentToken) {
+                return {
+                    content: [{ type: "text", text: "Error: fulfillment_token is required for fulfill_secret_exchange." }],
+                };
+            }
+
+            try {
+                const result = await runFulfillExchangeFlow({
+                    fulfillmentToken,
+                    spsBaseUrl: process.env.SPS_BASE_URL ?? "http://localhost:3100",
+                    agentId: resolveConfiguredAgentId(),
+                    resolveSecret: async (secretName) => resolveStoredSecret(api, context, secretName),
+                });
+
+                return {
+                    content: [{
+                        type: "text",
+                        text: [
+                            "Secret exchange fulfilled successfully.",
+                            `exchange_id: ${result.exchangeId}`,
+                            `secret_name: ${result.secretName}`,
+                            `fulfilled_by: ${result.fulfilledBy}`,
+                        ].join("\n"),
+                    }],
+                };
+            } catch (err) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Failed to fulfill secret exchange: ${err?.message ?? String(err)}`,
                     }],
                 };
             }

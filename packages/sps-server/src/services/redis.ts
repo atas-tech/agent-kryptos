@@ -1,5 +1,5 @@
 import { Redis } from "ioredis";
-import type { RequestStore, StoredExchange, StoredRequest } from "../types.js";
+import type { ExchangeLifecycleRecord, RequestStore, StoredApprovalRequest, StoredExchange, StoredRequest } from "../types.js";
 
 function keyForRequest(requestId: string): string {
   return `sps:request:${requestId}`;
@@ -7,6 +7,18 @@ function keyForRequest(requestId: string): string {
 
 function keyForExchange(exchangeId: string): string {
   return `sps:exchange:${exchangeId}`;
+}
+
+function keyForApproval(approvalReference: string): string {
+  return `sps:approval:${approvalReference}`;
+}
+
+function keyForExchangeLifecycle(exchangeId: string): string {
+  return `sps:exchange-lifecycle:${exchangeId}`;
+}
+
+function keyForApprovalLifecycle(approvalReference: string): string {
+  return `sps:approval-lifecycle:${approvalReference}`;
 }
 
 export class RedisRequestStore implements RequestStore {
@@ -211,6 +223,60 @@ export class RedisRequestStore implements RequestStore {
 
     return JSON.parse(raw) as StoredExchange;
   }
+
+  async setApprovalRequest(data: StoredApprovalRequest, ttlSeconds: number): Promise<void> {
+    await this.redis.set(keyForApproval(data.approvalReference), JSON.stringify(data), "EX", ttlSeconds);
+  }
+
+  async getApprovalRequest(approvalReference: string): Promise<StoredApprovalRequest | null> {
+    const raw = await this.redis.get(keyForApproval(approvalReference));
+    return raw ? (JSON.parse(raw) as StoredApprovalRequest) : null;
+  }
+
+  async updateApprovalRequest(
+    approvalReference: string,
+    patch: Partial<StoredApprovalRequest>,
+    ttlSeconds?: number
+  ): Promise<StoredApprovalRequest | null> {
+    const current = await this.getApprovalRequest(approvalReference);
+    if (!current) {
+      return null;
+    }
+
+    const next = { ...current, ...patch };
+    if (typeof ttlSeconds === "number") {
+      await this.redis.set(keyForApproval(approvalReference), JSON.stringify(next), "EX", ttlSeconds);
+    } else {
+      const pttl = await this.redis.pttl(keyForApproval(approvalReference));
+      if (pttl > 0) {
+        await this.redis.set(keyForApproval(approvalReference), JSON.stringify(next), "PX", pttl);
+      } else {
+        await this.redis.set(keyForApproval(approvalReference), JSON.stringify(next));
+      }
+    }
+
+    return next;
+  }
+
+  async appendLifecycleRecord(record: ExchangeLifecycleRecord): Promise<void> {
+    const encoded = JSON.stringify(record);
+    if (record.exchangeId) {
+      await this.redis.rpush(keyForExchangeLifecycle(record.exchangeId), encoded);
+    }
+    if (record.approvalReference) {
+      await this.redis.rpush(keyForApprovalLifecycle(record.approvalReference), encoded);
+    }
+  }
+
+  async listLifecycleRecordsByExchange(exchangeId: string): Promise<ExchangeLifecycleRecord[]> {
+    const entries = await this.redis.lrange(keyForExchangeLifecycle(exchangeId), 0, -1);
+    return entries.map((entry) => JSON.parse(entry) as ExchangeLifecycleRecord);
+  }
+
+  async listLifecycleRecordsByApproval(approvalReference: string): Promise<ExchangeLifecycleRecord[]> {
+    const entries = await this.redis.lrange(keyForApprovalLifecycle(approvalReference), 0, -1);
+    return entries.map((entry) => JSON.parse(entry) as ExchangeLifecycleRecord);
+  }
 }
 
 export class InMemoryRequestStore implements RequestStore {
@@ -218,6 +284,10 @@ export class InMemoryRequestStore implements RequestStore {
   private readonly timers = new Map<string, NodeJS.Timeout>();
   private readonly exchanges = new Map<string, StoredExchange>();
   private readonly exchangeTimers = new Map<string, NodeJS.Timeout>();
+  private readonly approvals = new Map<string, StoredApprovalRequest>();
+  private readonly approvalTimers = new Map<string, NodeJS.Timeout>();
+  private readonly exchangeLifecycle = new Map<string, ExchangeLifecycleRecord[]>();
+  private readonly approvalLifecycle = new Map<string, ExchangeLifecycleRecord[]>();
 
   async setRequest(data: StoredRequest, ttlSeconds: number): Promise<void> {
     this.data.set(data.requestId, data);
@@ -270,6 +340,13 @@ export class InMemoryRequestStore implements RequestStore {
     }
     this.exchangeTimers.clear();
     this.exchanges.clear();
+    for (const timer of this.approvalTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.approvalTimers.clear();
+    this.approvals.clear();
+    this.exchangeLifecycle.clear();
+    this.approvalLifecycle.clear();
   }
 
   async setExchange(data: StoredExchange, ttlSeconds: number): Promise<void> {
@@ -347,6 +424,55 @@ export class InMemoryRequestStore implements RequestStore {
     return current;
   }
 
+  async setApprovalRequest(data: StoredApprovalRequest, ttlSeconds: number): Promise<void> {
+    this.approvals.set(data.approvalReference, data);
+    this.scheduleApprovalExpiry(data.approvalReference, ttlSeconds);
+  }
+
+  async getApprovalRequest(approvalReference: string): Promise<StoredApprovalRequest | null> {
+    return this.approvals.get(approvalReference) ?? null;
+  }
+
+  async updateApprovalRequest(
+    approvalReference: string,
+    patch: Partial<StoredApprovalRequest>,
+    ttlSeconds?: number
+  ): Promise<StoredApprovalRequest | null> {
+    const current = this.approvals.get(approvalReference);
+    if (!current) {
+      return null;
+    }
+
+    const next = { ...current, ...patch };
+    this.approvals.set(approvalReference, next);
+    if (typeof ttlSeconds === "number") {
+      this.scheduleApprovalExpiry(approvalReference, ttlSeconds);
+    }
+
+    return next;
+  }
+
+  async appendLifecycleRecord(record: ExchangeLifecycleRecord): Promise<void> {
+    if (record.exchangeId) {
+      const records = this.exchangeLifecycle.get(record.exchangeId) ?? [];
+      records.push(record);
+      this.exchangeLifecycle.set(record.exchangeId, records);
+    }
+    if (record.approvalReference) {
+      const records = this.approvalLifecycle.get(record.approvalReference) ?? [];
+      records.push(record);
+      this.approvalLifecycle.set(record.approvalReference, records);
+    }
+  }
+
+  async listLifecycleRecordsByExchange(exchangeId: string): Promise<ExchangeLifecycleRecord[]> {
+    return [...(this.exchangeLifecycle.get(exchangeId) ?? [])];
+  }
+
+  async listLifecycleRecordsByApproval(approvalReference: string): Promise<ExchangeLifecycleRecord[]> {
+    return [...(this.approvalLifecycle.get(approvalReference) ?? [])];
+  }
+
   private scheduleExpiry(requestId: string, ttlSeconds: number): void {
     this.clearExpiry(requestId);
     const timer = setTimeout(() => {
@@ -380,6 +506,24 @@ export class InMemoryRequestStore implements RequestStore {
     if (timer) {
       clearTimeout(timer);
       this.exchangeTimers.delete(exchangeId);
+    }
+  }
+
+  private scheduleApprovalExpiry(approvalReference: string, ttlSeconds: number): void {
+    this.clearApprovalExpiry(approvalReference);
+    const timer = setTimeout(() => {
+      this.approvals.delete(approvalReference);
+      this.approvalTimers.delete(approvalReference);
+    }, ttlSeconds * 1000);
+    timer.unref();
+    this.approvalTimers.set(approvalReference, timer);
+  }
+
+  private clearApprovalExpiry(approvalReference: string): void {
+    const timer = this.approvalTimers.get(approvalReference);
+    if (timer) {
+      clearTimeout(timer);
+      this.approvalTimers.delete(approvalReference);
     }
   }
 }

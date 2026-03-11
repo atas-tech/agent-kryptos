@@ -34,6 +34,10 @@ describe("secret routes", () => {
   const originalJwksFile = process.env.SPS_GATEWAY_JWKS_FILE;
   const originalJwksUrl = process.env.SPS_GATEWAY_JWKS_URL;
   const originalJwksTtl = process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS;
+  const originalRequireSpiffe = process.env.SPS_REQUIRE_SPIFFE;
+  const originalAgentIssuers = process.env.SPS_AGENT_JWT_ISSUERS;
+  const originalAgentAudiences = process.env.SPS_AGENT_JWT_AUDIENCES;
+  const originalProviders = process.env.SPS_AGENT_AUTH_PROVIDERS_JSON;
   let authFixture: GatewayAuthFixture;
 
   beforeEach(async () => {
@@ -42,6 +46,10 @@ describe("secret routes", () => {
     process.env.SPS_GATEWAY_JWKS_FILE = authFixture.jwksPath;
     process.env.SPS_GATEWAY_JWKS_URL = "";
     process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = "";
+    process.env.SPS_REQUIRE_SPIFFE = "";
+    process.env.SPS_AGENT_JWT_ISSUERS = "";
+    process.env.SPS_AGENT_JWT_AUDIENCES = "";
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = "";
     __resetJwksCacheForTests();
   });
 
@@ -50,6 +58,10 @@ describe("secret routes", () => {
     process.env.SPS_GATEWAY_JWKS_FILE = originalJwksFile;
     process.env.SPS_GATEWAY_JWKS_URL = originalJwksUrl;
     process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = originalJwksTtl;
+    process.env.SPS_REQUIRE_SPIFFE = originalRequireSpiffe;
+    process.env.SPS_AGENT_JWT_ISSUERS = originalAgentIssuers;
+    process.env.SPS_AGENT_JWT_AUDIENCES = originalAgentAudiences;
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = originalProviders;
     __resetJwksCacheForTests();
     vi.restoreAllMocks();
     await authFixture.cleanup();
@@ -144,6 +156,179 @@ describe("secret routes", () => {
 
     expect(response.statusCode).toBe(401);
     await app.close();
+  });
+
+  it("accepts SPIFFE workload claims when SPIFFE mode is required", async () => {
+    process.env.SPS_REQUIRE_SPIFFE = "1";
+    const app = await buildApp({ useInMemoryStore: true, hmacSecret: "test-hmac" });
+    const jwt = await authFixture.issueToken({
+      agentId: "agent:finance-bot",
+      claims: {
+        role: "gateway",
+        spiffe_id: "spiffe://myorg.local/ring/finance/finance-bot",
+        workload_mode: "spiffe-jwt"
+      }
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v2/secret/request",
+      headers: {
+        authorization: `Bearer ${jwt}`
+      },
+      payload: {
+        public_key: "cHVi",
+        description: "API key"
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    await app.close();
+  });
+
+  it("rejects non-SPIFFE workload tokens when SPIFFE mode is required", async () => {
+    process.env.SPS_REQUIRE_SPIFFE = "true";
+    const app = await buildApp({ useInMemoryStore: true, hmacSecret: "test-hmac" });
+    const jwt = await authFixture.issueToken({ agentId: "agent:no-spiffe" });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v2/secret/request",
+      headers: {
+        authorization: `Bearer ${jwt}`
+      },
+      payload: {
+        public_key: "cHVi",
+        description: "API key"
+      }
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ error: "SPIFFE workload identity required" });
+    await app.close();
+  });
+
+  it("accepts configured non-default issuer values for workload JWTs", async () => {
+    process.env.SPS_AGENT_JWT_ISSUERS = "gateway,spire";
+    const app = await buildApp({ useInMemoryStore: true, hmacSecret: "test-hmac" });
+    const jwt = await authFixture.issueToken({
+      agentId: "agent:spiffe-bot",
+      issuer: "spire",
+      claims: {
+        role: "gateway",
+        spiffe_id: "spiffe://myorg.local/ring/ops/deploy-bot",
+        workload_mode: "spiffe-jwt"
+      }
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v2/secret/request",
+      headers: {
+        authorization: `Bearer ${jwt}`
+      },
+      payload: {
+        public_key: "cHVi",
+        description: "API key"
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    await app.close();
+  });
+
+  it("supports multiple auth providers with distinct JWKS sources", async () => {
+    const spireFixture = await createGatewayAuthFixture();
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = JSON.stringify([
+      {
+        name: "gateway-local",
+        issuer: "gateway",
+        audience: "sps",
+        jwks_file: authFixture.jwksPath
+      },
+      {
+        name: "spire-prod",
+        issuer: "spire",
+        audience: "sps",
+        jwks_file: spireFixture.jwksPath,
+        require_spiffe: true
+      }
+    ]);
+    process.env.SPS_GATEWAY_JWKS_FILE = "";
+    process.env.SPS_AGENT_JWT_ISSUERS = "";
+    __resetJwksCacheForTests();
+
+    try {
+      const app = await buildApp({ useInMemoryStore: true, hmacSecret: "test-hmac" });
+      const jwt = await spireFixture.issueToken({
+        agentId: "agent:spire-prod",
+        issuer: "spire",
+        claims: {
+          role: "gateway",
+          spiffe_id: "spiffe://myorg.local/ring/ops/deploy-bot",
+          workload_mode: "spiffe-jwt"
+        }
+      });
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/v2/secret/request",
+        headers: {
+          authorization: `Bearer ${jwt}`
+        },
+        payload: {
+          public_key: "cHVi",
+          description: "API key"
+        }
+      });
+
+      expect(response.statusCode).toBe(201);
+      await app.close();
+    } finally {
+      await spireFixture.cleanup();
+    }
+  });
+
+  it("enforces provider-level SPIFFE requirements from auth provider config", async () => {
+    const spireFixture = await createGatewayAuthFixture();
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = JSON.stringify([
+      {
+        name: "spire-prod",
+        issuer: "spire",
+        audience: "sps",
+        jwks_file: spireFixture.jwksPath,
+        require_spiffe: true
+      }
+    ]);
+    process.env.SPS_GATEWAY_JWKS_FILE = "";
+    __resetJwksCacheForTests();
+
+    try {
+      const app = await buildApp({ useInMemoryStore: true, hmacSecret: "test-hmac" });
+      const jwt = await spireFixture.issueToken({
+        agentId: "agent:no-spiffe",
+        issuer: "spire",
+        claims: { role: "gateway" }
+      });
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/v2/secret/request",
+        headers: {
+          authorization: `Bearer ${jwt}`
+        },
+        payload: {
+          public_key: "cHVi",
+          description: "API key"
+        }
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toEqual({ error: "SPIFFE workload identity required" });
+      await app.close();
+    } finally {
+      await spireFixture.cleanup();
+    }
   });
 
   it("supports gateway auth via SPS_GATEWAY_JWKS_URL with cache reuse", async () => {

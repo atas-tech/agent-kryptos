@@ -48,6 +48,7 @@ describe("routes adversarial", () => {
   const originalJwksFile = process.env.SPS_GATEWAY_JWKS_FILE;
   const originalJwksUrl = process.env.SPS_GATEWAY_JWKS_URL;
   const originalJwksTtl = process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS;
+  const originalProviders = process.env.SPS_AGENT_AUTH_PROVIDERS_JSON;
   let authFixture: GatewayAuthFixture;
 
   beforeEach(async () => {
@@ -56,6 +57,7 @@ describe("routes adversarial", () => {
     process.env.SPS_GATEWAY_JWKS_FILE = authFixture.jwksPath;
     process.env.SPS_GATEWAY_JWKS_URL = "";
     process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = "";
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = "";
     __resetJwksCacheForTests();
   });
 
@@ -64,6 +66,7 @@ describe("routes adversarial", () => {
     process.env.SPS_GATEWAY_JWKS_FILE = originalJwksFile;
     process.env.SPS_GATEWAY_JWKS_URL = originalJwksUrl;
     process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = originalJwksTtl;
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = originalProviders;
     __resetJwksCacheForTests();
     await authFixture.cleanup();
   });

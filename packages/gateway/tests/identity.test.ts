@@ -3,7 +3,14 @@ import os from "node:os";
 import path from "node:path";
 import { createLocalJWKSet, jwtVerify } from "jose";
 import { afterEach, describe, expect, it } from "vitest";
-import { getJWKS, issueJwt, loadOrCreateGatewayIdentity, writeJwksFile } from "../src/identity.js";
+import {
+  buildSpiffeId,
+  getJWKS,
+  issueJwt,
+  issueWorkloadJwt,
+  loadOrCreateGatewayIdentity,
+  writeJwksFile
+} from "../src/identity.js";
 
 describe("identity", () => {
   const tempDirs: string[] = [];
@@ -72,5 +79,29 @@ describe("identity", () => {
     expect(requester.payload.sub).toBe("agent:crm-bot");
     expect(fulfiller.payload.sub).toBe("agent:payment-bot");
     expect(requester.payload.sub).not.toBe(fulfiller.payload.sub);
+  });
+
+  it("issues workload JWTs with SPIFFE claims", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "gateway-identity-"));
+    tempDirs.push(dir);
+
+    const keyPath = path.join(dir, "gateway-key.json");
+    const identity = await loadOrCreateGatewayIdentity({ keyPath });
+    const verifier = createLocalJWKSet(getJWKS(identity));
+    const spiffeId = buildSpiffeId("myorg.local", ["ring", "finance", "crm-bot"]);
+
+    const token = await issueWorkloadJwt(identity, {
+      agentId: "agent:crm-bot",
+      spiffeId
+    });
+
+    const verified = await jwtVerify(token, verifier, {
+      issuer: "gateway",
+      audience: "sps"
+    });
+
+    expect(verified.payload.sub).toBe("agent:crm-bot");
+    expect(verified.payload.spiffe_id).toBe(spiffeId);
+    expect(verified.payload.workload_mode).toBe("spiffe-jwt");
   });
 });

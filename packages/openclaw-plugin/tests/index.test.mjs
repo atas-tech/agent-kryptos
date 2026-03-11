@@ -1,23 +1,35 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import register, { disposeStoredSecret, getStoredSecret } from "../index.mjs";
+import register, {
+    buildExchangeDeliveryMessage,
+    createOpenClawAgentTransport,
+    disposeStoredSecret,
+    getStoredSecret,
+    resolveOpenClawAgentTarget,
+} from "../index.mjs";
 
 function createMockApi() {
     const state = {
-        tool: null,
+        tools: new Map(),
         hooks: [],
     };
 
     return {
         state,
         registerTool(tool) {
-            state.tool = tool;
+            state.tools.set(tool.name, tool);
         },
         registerHook(event, handler, meta) {
             state.hooks.push({ event, handler, meta });
         },
     };
+}
+
+function getTool(api, name) {
+    const tool = api.state.tools.get(name);
+    assert.ok(tool, `Tool '${name}' should be registered`);
+    return tool;
 }
 
 function createMockChild(exitCode = 0, stderrText = "") {
@@ -49,9 +61,7 @@ async function testNoPlaintextExposure() {
         cleanupFn: async () => { },
     });
 
-    assert.ok(api.state.tool, "Tool should be registered");
-
-    const result = await api.state.tool.execute(
+    const result = await getTool(api, "request_secret").execute(
         "id-1",
         { description: "AWS deployment token", secret_name: "aws_token", channel_id: "telegram:111" },
         { sendText: async (message) => outbound.push(message) },
@@ -87,7 +97,7 @@ async function testUsesOpenClawCliFallback() {
         },
     });
 
-    const result = await api.state.tool.execute(
+    const result = await getTool(api, "request_secret").execute(
         "id-cli",
         {
             description: "Need token",
@@ -116,9 +126,13 @@ async function testUsesSendMessageWhenSendTextMissing() {
         cleanupFn: async () => { },
     });
 
-    const result = await api.state.tool.execute(
-        "id-3",
-        { description: "Need token", secret_name: "t1", channel_id: "telegram:123" },
+    const result = await getTool(api, "request_secret").execute(
+        "id-cli",
+        {
+            description: "Need token",
+            channel_id: "telegram:123456789",
+            secret_name: "t1",
+        },
         { sendMessage: async (message) => outbound.push(message) },
     );
 
@@ -146,7 +160,7 @@ async function testFailsWhenNoTransportAvailable() {
             execFileFn: () => createMockChild(1, "mock cli failure"),
         });
 
-        const result = await api.state.tool.execute("id-4", { description: "Need token" }, {});
+        const result = await getTool(api, "request_secret").execute("id-4", { description: "Need token" }, {});
         const output = result?.content?.[0]?.text ?? "";
         assert.match(output, /Error: request_secret requires routing params/);
         assert.equal(captured.length, 0, "Should fail before transport attempts when routing params are missing");
@@ -173,7 +187,7 @@ async function testUsesRuntimeChannelWhenOtherTransportsMissing() {
         cleanupFn: async () => { },
     });
 
-    const result = await api.state.tool.execute("id-5", { description: "Need token", channel_id: "telegram:555" }, {});
+    const result = await getTool(api, "request_secret").execute("id-5", { description: "Need token", channel_id: "telegram:555" }, {});
 
     assert.equal(outbound.length, 1, "Should use api.runtime.channel.sendText when available");
     assert.match(result?.content?.[0]?.text ?? "", /Secret received and stored securely in memory/);
@@ -189,7 +203,7 @@ async function testShutdownDisposesSecrets() {
         cleanupFn: async () => { },
     });
 
-    await api.state.tool.execute("id-2", { description: "DB password", channel_id: "telegram:222" }, {});
+    await getTool(api, "request_secret").execute("id-2", { description: "DB password", channel_id: "telegram:222" }, {});
     assert.ok(getStoredSecret("default"));
 
     for (const hook of api.state.hooks) {
@@ -213,7 +227,7 @@ async function testReRequestFormat() {
         cleanupFn: async () => { },
     });
 
-    await api.state.tool.execute(
+    await getTool(api, "request_secret").execute(
         "id-rereq",
         { description: "DB Password", secret_name: "db_pass", channel_id: "telegram:111", re_request: true },
         { sendText: async (message) => outbound.push(message) },
@@ -225,6 +239,272 @@ async function testReRequestFormat() {
     assert.ok(!sentMessage.includes("Secure secret requested"), "Message should NOT contain the default prompt");
 
     disposeStoredSecret("db_pass");
+}
+
+async function testFulfillSecretExchangeUsesStoredSecret() {
+    const api = createMockApi();
+    const calls = [];
+
+    register(api, {
+        requestSecretFlowFn: async () => Buffer.from("super-secret-value", "utf8"),
+        cleanupFn: async () => { },
+        fulfillExchangeFlowFn: async (params) => {
+            calls.push({
+                fulfillmentToken: params.fulfillmentToken,
+                secret: await params.resolveSecret("stripe.api_key.prod"),
+                agentId: params.agentId,
+            });
+            return {
+                exchangeId: "ex-123",
+                secretName: "stripe.api_key.prod",
+                fulfilledBy: params.agentId,
+            };
+        },
+    });
+
+    const requestTool = getTool(api, "request_secret");
+    await requestTool.execute(
+        "store-secret",
+        { description: "Need token", secret_name: "stripe.api_key.prod", channel_id: "telegram:111" },
+        {
+            sendText: async () => { },
+        },
+    );
+
+    const result = await getTool(api, "fulfill_secret_exchange").execute(
+        "fulfill-1",
+        { fulfillment_token: "token-abc" },
+        {},
+    );
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].fulfillmentToken, "token-abc");
+    assert.equal(calls[0].secret.toString("utf8"), "super-secret-value");
+    assert.match(result?.content?.[0]?.text ?? "", /Secret exchange fulfilled successfully/);
+
+    disposeStoredSecret("stripe.api_key.prod");
+}
+
+async function testRequestSecretExchangeUsesOpenClawTransportAndStoresSecret() {
+    const api = createMockApi();
+    const sent = [];
+
+    api.runtime = {
+        agentToAgent: {
+            send: async (payload) => sent.push(payload),
+        },
+    };
+
+    register(api, {
+        cleanupFn: async () => { },
+        requestExchangeFlowFn: async ({ secretName, purpose, fulfillerId, transport, agentId }) => {
+            await transport.deliverFulfillmentToken({
+                kind: "agent-kryptos.exchange-fulfillment.v1",
+                exchangeId: "ex-request-1",
+                requesterId: agentId,
+                fulfillerId,
+                secretName,
+                purpose,
+                fulfillmentToken: "token-request-1",
+            });
+
+            return {
+                exchangeId: "ex-request-1",
+                fulfilledBy: fulfillerId,
+                secret: Buffer.from("sk_exchange_123", "utf8"),
+            };
+        },
+    });
+
+    const result = await getTool(api, "request_secret_exchange").execute(
+        "request-exchange-1",
+        {
+            secret_name: "stripe.api_key.prod",
+            purpose: "charge-order",
+            fulfiller_id: "session:payments",
+        },
+        {},
+    );
+
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].target, "session:payments");
+    assert.match(sent[0].message, /fulfill_secret_exchange/);
+    assert.match(result?.content?.[0]?.text ?? "", /Secret exchange completed and stored securely in memory/);
+    assert.equal(getStoredSecret("stripe.api_key.prod")?.toString("utf8"), "sk_exchange_123");
+
+    disposeStoredSecret("stripe.api_key.prod");
+}
+
+async function testRequestSecretExchangeFailsClosedWhenTargetCannotBeResolved() {
+    const api = createMockApi();
+
+    register(api, {
+        cleanupFn: async () => { },
+        createOpenClawAgentTransportFn: (apiArg, options) =>
+            createOpenClawAgentTransport(apiArg, { ...options, directTargetFallback: false }),
+        requestExchangeFlowFn: async ({ secretName, purpose, fulfillerId, transport, agentId }) => {
+            await transport.deliverFulfillmentToken({
+                kind: "agent-kryptos.exchange-fulfillment.v1",
+                exchangeId: "ex-request-fail",
+                requesterId: agentId,
+                fulfillerId,
+                secretName,
+                purpose,
+                fulfillmentToken: "token-request-fail",
+            });
+
+            return {
+                exchangeId: "ex-request-fail",
+                fulfilledBy: fulfillerId,
+                secret: Buffer.from("should-not-store", "utf8"),
+            };
+        },
+    });
+
+    const result = await getTool(api, "request_secret_exchange").execute(
+        "request-exchange-fail",
+        {
+            secret_name: "stripe.api_key.prod",
+            purpose: "charge-order",
+            fulfiller_id: "agent:missing-bot",
+        },
+        {},
+    );
+
+    assert.match(
+        result?.content?.[0]?.text ?? "",
+        /Failed to request secret exchange: OpenClaw transport could not resolve a target session/
+    );
+    assert.equal(getStoredSecret("stripe.api_key.prod"), null);
+}
+
+async function testCreateOpenClawAgentTransportUsesRuntimeAgentChannel() {
+    const sent = [];
+    const api = {
+        runtime: {
+            agentToAgent: {
+                send: async (payload) => sent.push(payload),
+            },
+        },
+    };
+
+    const transport = createOpenClawAgentTransport(api);
+    await transport.deliverFulfillmentToken({
+        kind: "agent-kryptos.exchange-fulfillment.v1",
+        exchangeId: "ex-transport",
+        requesterId: "agent:crm-bot",
+        fulfillerId: "session:payments",
+        secretName: "stripe.api_key.prod",
+        purpose: "charge-order",
+        fulfillmentToken: "token-transport",
+    });
+
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].target, "session:payments");
+    assert.match(sent[0].message, /fulfill_secret_exchange/);
+}
+
+async function testResolveOpenClawAgentTargetUsesConfiguredMap() {
+    const target = await resolveOpenClawAgentTarget(
+        {},
+        {
+            fulfillerId: "agent:payment-bot",
+        },
+        {
+            targetMap: {
+                "agent:payment-bot": "session:payments",
+            },
+            directTargetFallback: false,
+        },
+    );
+
+    assert.equal(target, "session:payments");
+}
+
+async function testResolveOpenClawAgentTargetUsesRuntimeResolver() {
+    const target = await resolveOpenClawAgentTarget(
+        {
+            runtime: {
+                sessions: {
+                    resolveTarget: async (agentId) => agentId === "agent:ops-bot" ? "session:ops" : null,
+                },
+            },
+        },
+        {
+            fulfillerId: "agent:ops-bot",
+        },
+        {
+            directTargetFallback: false,
+        },
+    );
+
+    assert.equal(target, "session:ops");
+}
+
+async function testResolveOpenClawAgentTargetUsesEnvMap() {
+    const original = process.env.OPENCLAW_AGENT_TARGETS_JSON;
+    process.env.OPENCLAW_AGENT_TARGETS_JSON = JSON.stringify({
+        "agent:payment-bot": "session:payments-env",
+    });
+
+    try {
+        const target = await resolveOpenClawAgentTarget(
+            {},
+            {
+                fulfillerId: "agent:payment-bot",
+            },
+            {
+                directTargetFallback: false,
+            },
+        );
+
+        assert.equal(target, "session:payments-env");
+    } finally {
+        process.env.OPENCLAW_AGENT_TARGETS_JSON = original;
+    }
+}
+
+async function testCreateOpenClawAgentTransportUsesAgentTargetMapBeforeFallback() {
+    const sent = [];
+    const api = {
+        runtime: {
+            agentToAgent: {
+                send: async (payload) => sent.push(payload),
+            },
+        },
+        agentTargetMap: {
+            "agent:payment-bot": "session:payments",
+        },
+    };
+
+    const transport = createOpenClawAgentTransport(api, { directTargetFallback: false });
+    await transport.deliverFulfillmentToken({
+        kind: "agent-kryptos.exchange-fulfillment.v1",
+        exchangeId: "ex-transport-2",
+        requesterId: "agent:crm-bot",
+        fulfillerId: "agent:payment-bot",
+        secretName: "stripe.api_key.prod",
+        purpose: "charge-order",
+        fulfillmentToken: "token-transport-2",
+    });
+
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].target, "session:payments");
+}
+
+async function testBuildExchangeDeliveryMessageIncludesToolCall() {
+    const message = buildExchangeDeliveryMessage({
+        exchangeId: "ex-42",
+        requesterId: "agent:crm-bot",
+        fulfillerId: "agent:payment-bot",
+        secretName: "stripe.api_key.prod",
+        purpose: "charge-order",
+        fulfillmentToken: "token-42",
+    });
+
+    assert.match(message, /Agent-Kryptos secret exchange request/);
+    assert.match(message, /fulfill_secret_exchange/);
+    assert.match(message, /token-42/);
 }
 
 const tests = [
@@ -255,6 +535,42 @@ const tests = [
     {
         name: "shutdown hook disposes in-memory secrets",
         run: testShutdownDisposesSecrets,
+    },
+    {
+        name: "fulfill_secret_exchange uses the stored runtime secret",
+        run: testFulfillSecretExchangeUsesStoredSecret,
+    },
+    {
+        name: "request_secret_exchange uses OpenClaw transport and stores the exchanged secret",
+        run: testRequestSecretExchangeUsesOpenClawTransportAndStoresSecret,
+    },
+    {
+        name: "request_secret_exchange fails closed when no target can be resolved",
+        run: testRequestSecretExchangeFailsClosedWhenTargetCannotBeResolved,
+    },
+    {
+        name: "createOpenClawAgentTransport uses runtime agent messaging when available",
+        run: testCreateOpenClawAgentTransportUsesRuntimeAgentChannel,
+    },
+    {
+        name: "resolveOpenClawAgentTarget uses explicit target maps",
+        run: testResolveOpenClawAgentTargetUsesConfiguredMap,
+    },
+    {
+        name: "resolveOpenClawAgentTarget uses runtime session resolvers",
+        run: testResolveOpenClawAgentTargetUsesRuntimeResolver,
+    },
+    {
+        name: "resolveOpenClawAgentTarget uses OPENCLAW_AGENT_TARGETS_JSON",
+        run: testResolveOpenClawAgentTargetUsesEnvMap,
+    },
+    {
+        name: "createOpenClawAgentTransport uses mapped agent targets before fallback",
+        run: testCreateOpenClawAgentTransportUsesAgentTargetMapBeforeFallback,
+    },
+    {
+        name: "buildExchangeDeliveryMessage includes fulfill tool instructions",
+        run: testBuildExchangeDeliveryMessageIncludesToolCall,
     },
 ];
 

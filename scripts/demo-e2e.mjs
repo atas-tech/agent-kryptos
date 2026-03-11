@@ -21,7 +21,7 @@ function toBase64(bytes) {
 
 async function simulateHumanSubmit(secretUrl, plaintext, fetchImpl) {
   const url = new URL(secretUrl);
-  const requestId = url.pathname.split("/").pop();
+  const requestId = url.searchParams.get("id");
   const metadataSig = url.searchParams.get("metadata_sig");
   const submitSig = url.searchParams.get("submit_sig");
 

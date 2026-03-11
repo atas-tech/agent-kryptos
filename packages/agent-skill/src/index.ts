@@ -1,22 +1,31 @@
 import { decrypt, destroyKeyPair, encrypt, generateKeyPair } from "./key-manager.js";
 import { SecretStore } from "./secret-store.js";
 import { SpsClient } from "./sps-client.js";
+import {
+  createFulfillmentTransportEnvelope,
+  type FulfillmentTransport,
+  type FulfillmentTransportEnvelope
+} from "./transport.js";
 
 export * from "./key-manager.js";
 export * from "./secret-store.js";
 export * from "./sps-client.js";
+export * from "./transport.js";
 
 export interface AgentSecretRuntimeOptions {
   spsBaseUrl: string;
   gatewayBearerToken: string;
   fetchImpl?: typeof fetch;
+  agentId?: string;
 }
 
 export interface RequestExchangeParams {
   secretName: string;
   purpose: string;
   fulfillerHint: string;
-  deliverToken: (fulfillmentToken: string) => Promise<void>;
+  priorExchangeId?: string;
+  deliverToken?: (fulfillmentToken: string, envelope: FulfillmentTransportEnvelope) => Promise<void>;
+  transport?: FulfillmentTransport;
   reservedTimeoutMs?: number;
 }
 
@@ -31,6 +40,7 @@ export class AgentSecretRuntime {
   readonly store = new SecretStore();
 
   private readonly client: SpsClient;
+  private readonly agentId: string | null;
 
   constructor(options: AgentSecretRuntimeOptions) {
     this.client = new SpsClient({
@@ -38,6 +48,7 @@ export class AgentSecretRuntime {
       gatewayBearerToken: options.gatewayBearerToken,
       fetchImpl: options.fetchImpl
     });
+    this.agentId = options.agentId ?? null;
   }
 
   checkSecretOrThrow(secretName: string): Buffer {
@@ -74,6 +85,10 @@ export class AgentSecretRuntime {
   }
 
   async requestAndStoreExchangeSecret(params: RequestExchangeParams): Promise<{ exchangeId: string; fulfilledBy: string | null }> {
+    if (!params.transport && !params.deliverToken) {
+      throw new Error("Either transport or deliverToken must be provided for exchange requests.");
+    }
+
     const keyPair = await generateKeyPair();
 
     try {
@@ -81,10 +96,30 @@ export class AgentSecretRuntime {
         publicKey: keyPair.publicKey,
         secretName: params.secretName,
         purpose: params.purpose,
-        fulfillerHint: params.fulfillerHint
+        fulfillerHint: params.fulfillerHint,
+        priorExchangeId: params.priorExchangeId
       });
 
-      await params.deliverToken(created.fulfillmentToken);
+      const envelope = createFulfillmentTransportEnvelope({
+        exchangeId: created.exchangeId,
+        requesterId: this.agentId,
+        fulfillerId: params.fulfillerHint,
+        secretName: params.secretName,
+        purpose: params.purpose,
+        fulfillmentToken: created.fulfillmentToken
+      });
+
+      try {
+        if (params.transport) {
+          await params.transport.deliverFulfillmentToken(envelope);
+        } else {
+          await params.deliverToken!(created.fulfillmentToken, envelope);
+        }
+      } catch (error) {
+        await this.client.revokeExchange(created.exchangeId).catch(() => undefined);
+        throw error;
+      }
+
       await this.client.pollExchangeStatus(created.exchangeId, 1000, 180000, params.reservedTimeoutMs ?? 30000);
 
       const retrieved = await this.client.retrieveExchange(created.exchangeId);

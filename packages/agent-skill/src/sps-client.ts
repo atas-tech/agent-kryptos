@@ -19,6 +19,7 @@ export interface CreateExchangeRequestParams {
   secretName: string;
   purpose: string;
   fulfillerHint: string;
+  priorExchangeId?: string;
 }
 
 export interface CreateExchangeRequestResult {
@@ -171,7 +172,8 @@ export class SpsClient {
         public_key: params.publicKey,
         secret_name: params.secretName,
         purpose: params.purpose,
-        fulfiller_hint: params.fulfillerHint
+        fulfiller_hint: params.fulfillerHint,
+        prior_exchange_id: params.priorExchangeId
       })
     });
 

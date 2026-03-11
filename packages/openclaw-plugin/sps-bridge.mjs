@@ -26,10 +26,21 @@ async function loadModules(opts = {}) {
 
     const identity = opts.identity ?? await import(path.join(base, "packages/gateway/dist/identity.js"));
     const keyManager = opts.keyManager ?? await import(path.join(base, "packages/agent-skill/dist/key-manager.js"));
+    const AgentSkillRuntimeMod = opts.AgentSkillRuntimeModule ?? await import(path.join(base, "packages/agent-skill/dist/index.js"));
     const SpsClientMod = opts.SpsClientModule ?? await import(path.join(base, "packages/agent-skill/dist/sps-client.js"));
     const GatewaySpsClientMod = opts.GatewaySpsClientModule ?? await import(path.join(base, "packages/gateway/dist/sps-client.js"));
 
-    return { identity, keyManager, SpsClient: SpsClientMod.SpsClient, GatewaySpsClient: GatewaySpsClientMod.GatewaySpsClient };
+    return {
+        identity,
+        keyManager,
+        AgentSecretRuntime: AgentSkillRuntimeMod.AgentSecretRuntime,
+        SpsClient: SpsClientMod.SpsClient,
+        GatewaySpsClient: GatewaySpsClientMod.GatewaySpsClient,
+    };
+}
+
+function resolveAgentId(agentId) {
+    return agentId ?? process.env.AGENT_KRYPTOS_AGENT_ID ?? process.env.OPENCLAW_AGENT_ID ?? "agent-kryptos-agent";
 }
 
 /**
@@ -85,19 +96,21 @@ export async function requestSecretFlow(params) {
         description,
         spsBaseUrl = process.env.SPS_BASE_URL ?? "http://localhost:3100",
         onSecretLink,
+        agentId,
         moduleOverrides = {},
         identityOptions = {},
     } = params;
 
     const modules = await loadModules(moduleOverrides);
     const gwIdentity = await ensureIdentity(modules.identity, identityOptions);
+    const resolvedAgentId = resolveAgentId(agentId);
 
     // 1. Generate HPKE keypair
     const keyPair = await modules.keyManager.generateKeyPair();
 
     try {
         // 2. Create secret request via Gateway SPS client
-        const gatewayToken = await modules.identity.issueJwt(gwIdentity, "agent-kryptos-plugin");
+        const gatewayToken = await modules.identity.issueJwt(gwIdentity, resolvedAgentId);
         const gatewayClient = new modules.GatewaySpsClient({
             baseUrl: spsBaseUrl,
             gatewayBearerToken: gatewayToken,
@@ -112,7 +125,7 @@ export async function requestSecretFlow(params) {
         await onSecretLink(request.secretUrl, request.confirmationCode);
 
         // 4. Poll until submitted
-        const agentToken = await modules.identity.issueJwt(gwIdentity, "agent-kryptos-agent");
+        const agentToken = await modules.identity.issueJwt(gwIdentity, resolvedAgentId);
         const agentClient = new modules.SpsClient({
             baseUrl: spsBaseUrl,
             gatewayBearerToken: agentToken,
@@ -127,6 +140,91 @@ export async function requestSecretFlow(params) {
     } finally {
         // 6. Always destroy keypair
         modules.keyManager.destroyKeyPair(keyPair);
+    }
+}
+
+export async function fulfillExchangeFlow(params) {
+    const {
+        fulfillmentToken,
+        resolveSecret,
+        spsBaseUrl = process.env.SPS_BASE_URL ?? "http://localhost:3100",
+        agentId,
+        moduleOverrides = {},
+        identityOptions = {},
+    } = params;
+
+    const modules = await loadModules(moduleOverrides);
+    const gwIdentity = await ensureIdentity(modules.identity, identityOptions);
+    const resolvedAgentId = resolveAgentId(agentId);
+    const agentToken = await modules.identity.issueJwt(gwIdentity, resolvedAgentId);
+    const agentClient = new modules.SpsClient({
+        baseUrl: spsBaseUrl,
+        gatewayBearerToken: agentToken,
+    });
+
+    const reservation = await agentClient.fulfillExchange(fulfillmentToken);
+    const secret = await resolveSecret(reservation.secretName);
+    if (!secret) {
+        throw new Error(`Secret '${reservation.secretName}' is missing from runtime memory.`);
+    }
+
+    const secretBuffer = Buffer.isBuffer(secret) ? Buffer.from(secret) : Buffer.from(secret);
+
+    try {
+        const sealed = await modules.keyManager.encrypt(reservation.requesterPublicKey, secretBuffer);
+        await agentClient.submitExchange(reservation.exchangeId, sealed);
+        return {
+            exchangeId: reservation.exchangeId,
+            secretName: reservation.secretName,
+            fulfilledBy: reservation.fulfilledBy,
+        };
+    } finally {
+        secretBuffer.fill(0);
+    }
+}
+
+export async function requestExchangeFlow(params) {
+    const {
+        secretName,
+        purpose,
+        fulfillerId,
+        priorExchangeId,
+        transport,
+        reservedTimeoutMs,
+        spsBaseUrl = process.env.SPS_BASE_URL ?? "http://localhost:3100",
+        agentId,
+        moduleOverrides = {},
+        identityOptions = {},
+    } = params;
+
+    const modules = await loadModules(moduleOverrides);
+    const gwIdentity = await ensureIdentity(modules.identity, identityOptions);
+    const resolvedAgentId = resolveAgentId(agentId);
+    const agentToken = await modules.identity.issueJwt(gwIdentity, resolvedAgentId);
+    const runtime = new modules.AgentSecretRuntime({
+        spsBaseUrl,
+        gatewayBearerToken: agentToken,
+        agentId: resolvedAgentId,
+    });
+
+    try {
+        const result = await runtime.requestAndStoreExchangeSecret({
+            secretName,
+            purpose,
+            fulfillerHint: fulfillerId,
+            priorExchangeId,
+            transport,
+            reservedTimeoutMs,
+        });
+        const secret = Buffer.from(runtime.checkSecretOrThrow(secretName));
+
+        return {
+            exchangeId: result.exchangeId,
+            fulfilledBy: result.fulfilledBy,
+            secret,
+        };
+    } finally {
+        runtime.store.disposeAll();
     }
 }
 

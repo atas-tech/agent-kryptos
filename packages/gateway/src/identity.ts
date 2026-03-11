@@ -27,6 +27,13 @@ export interface GatewayIdentityOptions {
   defaultTtlSeconds?: number;
 }
 
+export interface IssueWorkloadJwtOptions {
+  agentId: string;
+  spiffeId?: string;
+  ttlSeconds?: number;
+  extraClaims?: Record<string, unknown>;
+}
+
 function keyPathFromOptions(options: GatewayIdentityOptions): string {
   return options.keyPath ?? process.env.GATEWAY_KEY_PATH ?? path.resolve(process.cwd(), "gateway-key.json");
 }
@@ -132,12 +139,48 @@ export async function issueJwt(
   ttlSeconds = identity.defaultTtlSeconds,
   extraClaims: Record<string, unknown> = {}
 ): Promise<string> {
+  return issueWorkloadJwt(identity, {
+    agentId,
+    ttlSeconds,
+    extraClaims
+  });
+}
+
+export function buildSpiffeId(trustDomain: string, pathSegments: string[]): string {
+  const normalizedTrustDomain = trustDomain.trim().replace(/^spiffe:\/\//, "").replace(/\/+$/, "");
+  const normalizedPath = pathSegments
+    .map((segment) => segment.trim().replace(/^\/+|\/+$/g, ""))
+    .filter(Boolean)
+    .join("/");
+
+  if (!normalizedTrustDomain || !normalizedPath) {
+    throw new Error("SPIFFE trust domain and path must be non-empty");
+  }
+
+  return `spiffe://${normalizedTrustDomain}/${normalizedPath}`;
+}
+
+export async function issueWorkloadJwt(
+  identity: GatewayIdentity,
+  options: IssueWorkloadJwtOptions
+): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  return new SignJWT({ role: identity.role, ...extraClaims })
+  const ttlSeconds = options.ttlSeconds ?? identity.defaultTtlSeconds;
+  const claims: Record<string, unknown> = {
+    role: identity.role,
+    workload_mode: options.spiffeId ? "spiffe-jwt" : "local-jwt",
+    ...options.extraClaims
+  };
+
+  if (options.spiffeId) {
+    claims.spiffe_id = options.spiffeId;
+  }
+
+  return new SignJWT(claims)
     .setProtectedHeader({ alg: "EdDSA", kid: identity.kid, typ: "JWT" })
     .setIssuer(identity.issuer)
     .setAudience(identity.audience)
-    .setSubject(agentId)
+    .setSubject(options.agentId)
     .setIssuedAt(now)
     .setExpirationTime(now + ttlSeconds)
     .sign(identity.privateKey);

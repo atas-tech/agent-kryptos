@@ -10,6 +10,10 @@ export interface AuditEvent {
     | "exchange_submitted"
     | "exchange_retrieved"
     | "exchange_revoked"
+    | "exchange_approval_requested"
+    | "exchange_approved"
+    | "exchange_rejected"
+    | "exchange_pending_approval"
     | "exchange_denied";
   requestId?: string;
   exchangeId?: string;

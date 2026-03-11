@@ -2,6 +2,8 @@
 
 This guide covers the current deployment path for running Agent Kryptos on Unraid using the Unraid Docker UI and images published to GitHub Container Registry.
 
+This is the simplest deployment shape for the project: one SPS server, one browser UI, and Redis. Kubernetes is not required.
+
 ## What gets deployed
 
 - `ghcr.io/tuthan/agent-kryptos-sps-server`
@@ -67,8 +69,27 @@ Recommended values:
 6. Fill in the SPS template values:
    - `SPS_HMAC_SECRET`: required, strong random value
    - `SPS_UI_BASE_URL`: your public browser UI URL
-   - `SPS_GATEWAY_JWKS_URL`: preferred if you can expose JWKS from the gateway
-   - `SPS_GATEWAY_JWKS_FILE`: use only if you plan to mount a local file
+   - `SPS_AGENT_AUTH_PROVIDERS_JSON`: use this if you want SPS to trust one or more JWT issuers by issuer, audience, and JWKS URL/file. Most deployments only need one gateway or runtime issuer. SPIFFE-style claim enforcement is optional.
+   - `SPS_GATEWAY_JWKS_URL`: compatibility-only single-provider shortcut. Fine for an older single gateway issuer setup.
+   - `SPS_GATEWAY_JWKS_FILE`: compatibility-only single-provider file mount. Use only if you plan to mount a local file.
+   - `SPS_EXCHANGE_POLICY_JSON`: **(Phase 2B)** optional JSON array defining Agent-to-Agent exchange policies.
+   - `SPS_SECRET_REGISTRY_JSON`: **(Phase 2B)** optional JSON array defining known secrets and their classifications.
+
+   Example `SPS_AGENT_AUTH_PROVIDERS_JSON`:
+
+   ```json
+   [
+     {
+       "name": "gateway-main",
+       "issuer": "agent-gateway",
+       "audience": "sps",
+       "jwks_url": "https://gateway.example.com/.well-known/jwks.json"
+     }
+   ]
+   ```
+
+   Add more providers only if you actually have multiple agent issuers to trust.
+   Prefer `SPS_AGENT_AUTH_PROVIDERS_JSON` for new deployments.
 
 7. If you use `SPS_GATEWAY_JWKS_FILE`, place the file on Unraid first.
    Recommended host path:
@@ -126,6 +147,7 @@ If the browser UI loads but cannot talk to the API:
 
 If the SPS container cannot validate gateway tokens:
 
+- if you use `SPS_AGENT_AUTH_PROVIDERS_JSON`, validate the JSON and confirm each `issuer`, `audience`, and `jwks_url` / `jwks_file`
 - check `SPS_GATEWAY_JWKS_URL`
 - or confirm the mounted `jwks.json` file exists and matches `SPS_GATEWAY_JWKS_FILE`
 

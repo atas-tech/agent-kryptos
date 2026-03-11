@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { PolicyDecision } from "../types.js";
+import type { PolicyDecision, PolicyDecisionMode } from "../types.js";
 
 export interface SecretRegistryEntry {
   secretName: string;
@@ -12,9 +12,15 @@ export interface ExchangePolicyRule {
   secretName: string;
   requesterIds?: string[];
   fulfillerIds?: string[];
+  approverIds?: string[];
+  requesterRings?: string[];
+  fulfillerRings?: string[];
+  approverRings?: string[];
   purposes?: string[];
   sameRing?: boolean;
   allowedRings?: string[];
+  mode?: PolicyDecisionMode;
+  approvalReference?: string | null;
   reason?: string;
 }
 
@@ -41,6 +47,23 @@ function ringFromAgentId(agentId: string): string | null {
   return match?.[1] ?? null;
 }
 
+function normalizeMode(mode: PolicyDecisionMode | undefined): PolicyDecisionMode {
+  if (mode === "deny" || mode === "pending_approval") {
+    return mode;
+  }
+  return "allow";
+}
+
+function defaultReason(mode: PolicyDecisionMode, classification: string): string {
+  if (mode === "pending_approval") {
+    return `exchange for ${classification} requires human approval`;
+  }
+  if (mode === "deny") {
+    return `exchange for ${classification} is denied by policy`;
+  }
+  return `exchange allowed by static policy for ${classification}`;
+}
+
 export class ExchangePolicyEngine {
   private readonly registry = new Map<string, SecretRegistryEntry>();
   private readonly rules: ExchangePolicyRule[];
@@ -58,8 +81,14 @@ export class ExchangePolicyEngine {
       ...rule,
       requesterIds: rule.requesterIds ? normalizeList(rule.requesterIds) : undefined,
       fulfillerIds: rule.fulfillerIds ? normalizeList(rule.fulfillerIds) : undefined,
+      approverIds: rule.approverIds ? normalizeList(rule.approverIds) : undefined,
+      requesterRings: rule.requesterRings ? normalizeList(rule.requesterRings) : undefined,
+      fulfillerRings: rule.fulfillerRings ? normalizeList(rule.fulfillerRings) : undefined,
+      approverRings: rule.approverRings ? normalizeList(rule.approverRings) : undefined,
       purposes: rule.purposes ? normalizeList(rule.purposes) : undefined,
-      allowedRings: rule.allowedRings ? normalizeList(rule.allowedRings) : undefined
+      allowedRings: rule.allowedRings ? normalizeList(rule.allowedRings) : undefined,
+      mode: normalizeMode(rule.mode),
+      approvalReference: typeof rule.approvalReference === "string" ? rule.approvalReference.trim() || null : rule.approvalReference ?? null
     }));
   }
 
@@ -71,7 +100,12 @@ export class ExchangePolicyEngine {
     return this.registry.get(secretName) ?? null;
   }
 
-  evaluate(input: EvaluateExchangePolicyInput): { decision: PolicyDecision; allowedFulfillerId: string } | null {
+  evaluate(input: EvaluateExchangePolicyInput): {
+    decision: PolicyDecision;
+    allowedFulfillerId: string | null;
+    approverIds?: string[];
+    approverRings?: string[];
+  } | null {
     const registryEntry = this.registry.get(input.secretName);
     if (!registryEntry) {
       return null;
@@ -96,6 +130,14 @@ export class ExchangePolicyEngine {
         return false;
       }
 
+      if (!listIncludes(rule.requesterRings, requesterRing ?? "")) {
+        return false;
+      }
+
+      if (!listIncludes(rule.fulfillerRings, fulfillerRing ?? "")) {
+        return false;
+      }
+
       if (rule.sameRing) {
         if (!requesterRing || !fulfillerRing || requesterRing !== fulfillerRing) {
           return false;
@@ -113,13 +155,15 @@ export class ExchangePolicyEngine {
     }
 
     return {
-      allowedFulfillerId: input.fulfillerHint,
+      allowedFulfillerId: matchedRule.mode === "allow" ? input.fulfillerHint : null,
+      approverIds: matchedRule.approverIds,
+      approverRings: matchedRule.approverRings,
       decision: {
-        mode: "allow",
-        approvalRequired: false,
+        mode: matchedRule.mode ?? "allow",
+        approvalRequired: matchedRule.mode === "pending_approval",
         ruleId: matchedRule.ruleId,
-        reason: matchedRule.reason ?? `exchange allowed by static policy for ${registryEntry.classification}`,
-        approvalReference: null,
+        reason: matchedRule.reason ?? defaultReason(matchedRule.mode ?? "allow", registryEntry.classification),
+        approvalReference: matchedRule.approvalReference ?? null,
         requesterRing,
         fulfillerRing,
         secretName: input.secretName
@@ -128,7 +172,7 @@ export class ExchangePolicyEngine {
   }
 }
 
-export function hashPolicyDecision(decision: PolicyDecision, allowedFulfillerId: string): string {
+export function hashPolicyDecision(decision: PolicyDecision, allowedFulfillerId: string | null): string {
   const payload = JSON.stringify({
     mode: decision.mode,
     approvalRequired: decision.approvalRequired,
@@ -138,7 +182,7 @@ export function hashPolicyDecision(decision: PolicyDecision, allowedFulfillerId:
     requesterRing: decision.requesterRing ?? null,
     fulfillerRing: decision.fulfillerRing ?? null,
     secretName: decision.secretName,
-    allowedFulfillerId
+    allowedFulfillerId: allowedFulfillerId ?? null
   });
   return createHash("sha256").update(payload).digest("hex");
 }

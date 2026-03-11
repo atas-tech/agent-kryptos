@@ -22,7 +22,7 @@ sequenceDiagram
     participant UI as 💬 OpenClaw UI
 
     Agent->>Agent: Generate ephemeral HPKE keypair
-    Agent->>SPS: POST /request {public_key, agent_id, spiffe_id}
+    Agent->>SPS: POST /request {public_key, agent_id}
     SPS->>SPS: Verify identity, store public key
     SPS-->>Agent: {request_id}
     Agent->>UI: tool_call: secret_request({request_id, description})
@@ -123,20 +123,22 @@ sequenceDiagram
 | **2. Egress URL Filtering** | Gateway regex-scans all outbound messages. Any URL not matching `https://secrets.yourdomain.com/*` is **redacted or dropped** and flagged as a security breach. |
 | **3. Strict TTL** | URL + confirmation code expire in **3 minutes**. Request ID invalidated immediately on ciphertext submission. Max 1 active request per agent per secret type. |
 
-### 🪪 Agent Identity: SPIFFE/SPIRE + Lightweight Fallback
+### 🪪 Agent Identity: SPS-Trusted JWTs First, Optional SPIFFE
 
 | Deployment | Identity Method |
 |-----------|----------------|
-| **Production / multi-host / internet-reachable** | SPIFFE/SPIRE — SVIDs verified against trust bundle |
-| **Local/dev / single-operator** | Gateway-signed Ed25519 keys (chain: Gateway root → Agent key → Ephemeral HPKE key) |
+| **Default / single-operator / multi-host** | SPS-trusted JWTs with stable per-agent `sub` values, validated by issuer/audience/JWKS |
+| **Optional advanced deployment** | SPIFFE-compatible issuer or workload identity provider, if the operator already runs one |
 
-**Important**: "Local/dev" does **not** mean same machine. It means one trust domain under one operator using the gateway as the root of trust. This can still run across Docker, a LAN, Tailscale, or even the internet for testing, but it is **not** the production trust model.
+**Important**: the intended architecture is still one coordinating SPS server. "Single-operator" does **not** mean same machine. It can run across Docker, a LAN, Tailscale, or public hosts as long as SPS is the trust anchor and agents present distinct identities.
 
-Trust Rings enforced via SPIFFE ID namespaces:
+Current repo state: SPS validates agent JWTs from one or more configured issuers via issuer/audience/JWKS settings. The auth path can also enforce SPIFFE-shaped claims if an operator wants that, but SPIFFE is optional and not required for the normal single-server deployment model.
+
+Trust rings are enforced from agent identity and policy metadata. They do not require SPIFFE URIs. Example stable IDs:
 ```
-spiffe://myorg.local/ring/finance/crm-bot
-spiffe://myorg.local/ring/finance/payment-bot
-spiffe://myorg.local/ring/devops/deploy-bot
+agent:finance:crm-bot
+agent:finance:payment-bot
+agent:devops:deploy-bot
 ```
 
 Trust rings are a **policy input**, not blanket authorization.  
@@ -185,19 +187,22 @@ DELETE /api/v2/secret/revoke/:id              → Cancel request
 GET    /api/v2/secret/status/:id              → {status: pending|submitted|retrieved|expired}
 
 # Agent-to-Agent Exchange (Phase 2)
-POST   /api/v2/secret/exchange/request        → B creates pull request {public_key, secret_name, purpose, fulfiller_hint?}
+POST   /api/v2/secret/exchange/request        → B creates pull request {public_key, secret_name, purpose, fulfiller_hint?, prior_exchange_id?}
 POST   /api/v2/secret/exchange/fulfill        → A presents fulfillment_token, SPS validates policy, returns B metadata
 POST   /api/v2/secret/exchange/submit/:id     → A submits HPKE ciphertext for B
 GET    /api/v2/secret/exchange/retrieve/:id   → B retrieves once
 GET    /api/v2/secret/exchange/status/:id     → {status: pending|reserved|submitted|retrieved|revoked|expired|denied}
 DELETE /api/v2/secret/exchange/revoke/:id     → B cancels exchange
+GET    /api/v2/secret/exchange/admin/exchange/:id              → admin-only exchange metadata
+GET    /api/v2/secret/exchange/admin/exchange/:id/lifecycle    → admin-only lifecycle records
+GET    /api/v2/secret/exchange/admin/approval/:id/history      → admin-only approval history
 ```
 
 **Auth**:
 
 - Human → Agent browser path: Session token / scoped browser signature
 - Agent → SPS path in local/dev: Gateway-signed JWT with **per-agent `sub` claim** (e.g., `sub: "agent:crm-bot"`). Each agent must receive a JWT with a unique `sub` so SPS can enforce requester/fulfiller ownership binding. The current single shared `gatewayBearerToken` with `role: "gateway"` is insufficient for A2A — Phase 2A must extend the gateway to issue agent-specific tokens.
-- Agent → SPS path in production: SPIFFE SVID or equivalent workload identity
+- Agent → SPS path in production: JWT or equivalent workload identity trusted by SPS. A SPIFFE-compatible issuer is optional, not required.
 
 #### Local/Dev Agent JWT Bootstrap
 
@@ -207,7 +212,7 @@ Phase 2A uses a simple bootstrap path for local/dev agents:
 - the token is injected into the agent process via environment variable or test harness configuration
 - no local HTTP minting endpoint is required in Phase 2A
 
-This avoids a bootstrap authentication loop in local environments. A runtime token issuance channel belongs in Phase 2B alongside real transport and workload identity.
+This avoids a bootstrap authentication loop in local environments. A runtime token issuance channel belongs in Phase 2B alongside real transport and multi-host auth hardening.
 
 ### Agent → Agent Exchange Record Requirements
 
@@ -296,7 +301,8 @@ Request body:
   "public_key": "<base64-hpke-public-key>",
   "secret_name": "stripe.api_key.prod",
   "purpose": "charge-customer-order",
-  "fulfiller_hint": "spiffe://myorg.local/ring/finance/payment-bot"
+  "fulfiller_hint": "agent:finance:payment-bot",
+  "prior_exchange_id": "<optional-previous-exchange-id>"
 }
 ```
 
@@ -326,8 +332,10 @@ Server behavior:
 
 - authenticate B
 - validate `secret_name`
+- if `prior_exchange_id` is present, validate that it belongs to the same requester and `secret_name`
 - evaluate policy and record a **bound policy snapshot** (including `policy_hash`) with the exchange
 - bind requester identity to the exchange record
+- persist a single-hop lineage backlink (`supersedes_exchange_id`) when `prior_exchange_id` is valid
 - mint `fulfillment_token` containing `policy_hash`
 
 #### `POST /api/v2/secret/exchange/fulfill`
@@ -348,8 +356,8 @@ Response body:
 {
   "exchange_id": "<64-char-hex>",
   "status": "reserved",
-  "fulfilled_by": "spiffe://myorg.local/ring/finance/payment-bot",
-  "requester_id": "spiffe://myorg.local/ring/finance/crm-bot",
+  "fulfilled_by": "agent:finance:payment-bot",
+  "requester_id": "agent:finance:crm-bot",
   "requester_public_key": "<base64-hpke-public-key>",
   "secret_name": "stripe.api_key.prod",
   "purpose": "charge-customer-order",
@@ -406,7 +414,7 @@ Response body:
 {
   "status": "submitted",
   "retrieve_by": 1760000060,
-  "fulfilled_by": "spiffe://myorg.local/ring/finance/payment-bot"
+  "fulfilled_by": "agent:finance:payment-bot"
 }
 ```
 
@@ -434,7 +442,7 @@ Response body:
   "enc": "<base64-hpke-enc>",
   "ciphertext": "<base64-hpke-ciphertext>",
   "secret_name": "stripe.api_key.prod",
-  "fulfilled_by": "spiffe://myorg.local/ring/finance/payment-bot"
+  "fulfilled_by": "agent:finance:payment-bot"
 }
 ```
 
@@ -464,6 +472,16 @@ To make incident response possible, A2A audit logs must record:
 - optional ciphertext digest for forensics
 
 This makes the exact fulfiller identity visible when tracing a poisoned or incorrect secret.
+
+#### Admin Review Endpoints
+
+Phase 2B adds admin-only lifecycle inspection endpoints:
+
+- exchange metadata by `exchange_id`
+- exchange lifecycle records (`requested`, `reserved`, `submitted`, `retrieved`, `revoked`)
+- approval history records (`approval_requested`, `approval_decided`)
+
+These endpoints are for operator review only. Requester/fulfiller scoped read access is deferred.
 
 #### Policy Decision Shape
 
@@ -502,7 +520,7 @@ Minimum claims:
   "iss": "sps",
   "aud": "agent-fulfill",
   "exchange_id": "<64-char-hex>",
-  "requester_id": "spiffe://myorg.local/ring/finance/crm-bot",
+  "requester_id": "agent:finance:crm-bot",
   "secret_name": "stripe.api_key.prod",
   "purpose": "charge-customer-order",
   "exp": 1760000000,
@@ -521,14 +539,15 @@ Notes:
 #### Local/Dev vs Production Enforcement
 
 - `Phase 2A`: same contract, agent auth via gateway-signed JWT, policy can start with static allowlists by `secret_name`
-- `Phase 2B`: same contract, agent auth via SPIFFE/SPIRE, policy can use trust rings plus approval workflows
+- `Phase 2B`: same contract, harder multi-host deployment with provider-based JWT/JWKS validation, trust rings, and approval workflows
+- `Current repo state`: ring-aware matching, explicit `pending_approval` / `deny` decisions, SPS approval request / approve / reject / status control-plane routes, provider-based JWT validation, OpenClaw env/runtime agent-target resolution helpers, requester-side OpenClaw exchange delivery, admin-only lifecycle inspection endpoints, and validated `prior_exchange_id` lineage are implemented; broader operational hardening is still deferred
 
 This keeps the wire contract stable while tightening the trust model later.
 
 #### Transport Boundary
 
 - `Phase 2A`: fulfillment token delivery uses a **stub transport** (in-process handoff or test harness). No production agent-to-agent messaging channel required. Integration tests pass the token directly between two agent instances.
-- `Phase 2B`: production agent-to-agent transport (OpenClaw runtime channel or equivalent) ships alongside SPIFFE identity, since real transport requires authenticated agent endpoints.
+- `Phase 2B`: production agent-to-agent transport (OpenClaw runtime channel or equivalent) ships alongside hardened auth and endpoint routing, since real transport requires authenticated agent endpoints.
 
 ---
 
@@ -543,7 +562,7 @@ This keeps the wire contract stable while tightening the trust model later.
 | 5 | Native UI / Hardened Device Flow | Prompt injection → phishing |
 | 6 | **LLM Blindness** | LLM never sees URL or confirmation code |
 | 7 | **Gateway Egress Filtering** | LLM-injected malicious URLs redacted |
-| 8 | SPIFFE/SPIRE identity or local signed workload identity | Agent impersonation |
+| 8 | SPS-trusted agent identity (JWT/JWKS, optional SPIFFE-compatible issuer) | Agent impersonation |
 | 9 | In-memory only + zeroing | Disk forensics, crash dumps |
 | 10 | Audit logging + human notifications / approvals | Non-repudiation, rogue agents |
 | 11 | TEE execution (optional) | Host OS compromise |
@@ -571,17 +590,19 @@ This keeps the wire contract stable while tightening the trust model later.
 - [x] Exchange record owner binding (`requester_id`, `allowed_fulfiller`, `purpose`, `policy_decision`)
 - [x] Soft-delete revocation with tombstone + 5-min TTL
 - [x] SPS-signed fulfillment token
-- [x] Gateway-signed local workload identity for A2A
+- [x] Gateway-signed per-agent identity for A2A
 - [x] Same-ring allowlists for named secrets
 - [x] Stub transport for fulfillment token delivery (in-process / test harness)
 - [x] Human → Agent mode remains unchanged and continues to support lazy re-request
 
 ### Phase 2B: Production Networked Agent-to-Agent
-- [ ] SPIFFE/SPIRE integration
-- [ ] Trust ring policy engine with per-secret authorization rules
-- [ ] Cross-ring human approval workflow bound to a specific exchange
-- [ ] Production agent-to-agent transport (OpenClaw runtime channel or equivalent)
-- [ ] Revocation, rotation, and approval audit artifacts for multi-host/internet deployments
+- [~] Optional SPIFFE-compatible identity provider support
+- [x] Trust ring policy engine with per-secret authorization rules
+- [x] Cross-ring human approval workflow bound to a specific exchange
+- [x] Production agent-to-agent transport (OpenClaw runtime channel or equivalent)
+- [x] Approval history records and retrieval endpoints for multi-host review
+- [x] Revocation history and operator-visible exchange lifecycle audit records
+- [x] Rotation / re-request lineage linking refreshed exchanges for the same logical secret
 
 ### Phase 3: Enterprise
 - [ ] Capability token proxy (SPS → API Gateway)
