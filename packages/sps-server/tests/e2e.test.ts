@@ -47,13 +47,20 @@ async function disposeIsolatedPool(pool: Pool, schema: string): Promise<void> {
   await adminPool?.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
 }
 
-async function createApp(pool: Pool): Promise<App> {
+async function createApp(pool: Pool, stripeClient?: any): Promise<App> {
+  const defaultMockStripe = {
+    customers: { create: async () => ({ id: "cus_mock" }) },
+    checkout: { sessions: { create: async () => ({ id: "cs_mock", url: "https://stripe.com/mock" }) } },
+    webhooks: { constructEvent: (payload: string) => JSON.parse(payload) }
+  };
+
   return buildApp({
     db: pool,
     useInMemoryStore: true,
     trustProxy: true,
     hmacSecret: "test-hmac",
-    baseUrl: "http://localhost:3100"
+    baseUrl: "http://localhost:3100",
+    stripeClient: stripeClient ?? defaultMockStripe
   });
 }
 
@@ -152,6 +159,18 @@ async function mintAgentToken(app: App, apiKey: string, ipAddress: string) {
   });
 }
 
+async function simulateStripeWebhook(app: App, payload: any, signature = "valid") {
+  return app.inject({
+    method: "POST",
+    url: "/api/v2/webhook/stripe",
+    headers: {
+      "stripe-signature": signature,
+      "content-type": "application/json"
+    },
+    payload: JSON.stringify(payload)
+  });
+}
+
 describePg("Phase 3A E2E", { timeout: 30_000 }, () => {
   beforeAll(() => {
     if (!process.env.DATABASE_URL) {
@@ -165,6 +184,9 @@ describePg("Phase 3A E2E", { timeout: 30_000 }, () => {
     process.env.SPS_USER_JWT_SECRET = "test-user-jwt-secret";
     process.env.SPS_AGENT_JWT_SECRET = "test-agent-jwt-secret";
     process.env.SPS_HOSTED_MODE = "1";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_test";
+    process.env.SPS_STRIPE_STANDARD_PRICE_ID = "price_test";
+    process.env.STRIPE_SECRET_KEY = "sk_test_dummy";
     adminPool = createDbPool({
       connectionString: process.env.DATABASE_URL,
       max: 1
@@ -299,6 +321,18 @@ describePg("Phase 3A E2E", { timeout: 30_000 }, () => {
       const app = await createApp(pool);
       const owner = await registerOwner(app, "rbac-admin");
       await verifyOwner(app, pool, "rbac-admin@example.com");
+
+      // Upgrade to standard to allow more than 1 member (free limit is 1)
+      await simulateStripeWebhook(app, {
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            customer: "cus_rbac",
+            subscription: "sub_rbac",
+            metadata: { workspace_id: owner.user.workspace_id }
+          }
+        }
+      });
 
       const createOperatorResponse = await app.inject({
         method: "POST",
@@ -513,6 +547,145 @@ describePg("Phase 3A E2E", { timeout: 30_000 }, () => {
 
       const revokedCredentialResponse = await mintAgentToken(app, enrolled.bootstrap_api_key, "3.3.3.4");
       expect(revokedCredentialResponse.statusCode).toBe(401);
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("handles subscription upgrades and quota expansion", async () => {
+    const { pool, schema } = await createIsolatedPool();
+    const mockStripe = {
+      customers: { create: async () => ({ id: "cus_upgrade" }) },
+      checkout: { sessions: { create: async () => ({ id: "cs_upgrade", url: "https://stripe.com/pay" }) } },
+      webhooks: { constructEvent: (payload: string) => JSON.parse(payload) }
+    };
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const app = await createApp(pool, mockStripe);
+      const owner = await registerOwner(app, "billing-upgrade");
+      await verifyOwner(app, pool, "billing-upgrade@example.com");
+
+      // 1. Keep one agent's key for quota testing
+      const firstAgentRes = await enrollAgent(app, owner.access_token, "quota-agent");
+      expect(firstAgentRes.statusCode).toBe(201);
+      const quotaAgentKey = firstAgentRes.json().bootstrap_api_key;
+
+      // 2. Fill the agent quota (remaining 4 to reach 5)
+      for (let i = 1; i <= 4; i++) {
+        expect((await enrollAgent(app, owner.access_token, `extra-${i}`)).statusCode).toBe(201);
+      }
+      
+      // 3. Verify reaching limit
+      const limitRes = await enrollAgent(app, owner.access_token, "limit-breaker");
+      expect(limitRes.statusCode).toBe(429);
+      expect(limitRes.json().code).toBe("quota_exceeded");
+
+      // 4. Verify secret request quota (limit 10)
+      const agentToken = (await mintAgentToken(app, quotaAgentKey, "1.1.1.1")).json().access_token;
+      for (let i = 1; i <= 10; i++) {
+        const reqRes = await app.inject({
+          method: "POST",
+          url: "/api/v2/secret/request",
+          headers: { authorization: `Bearer ${agentToken}` },
+          payload: { public_key: "cHVi", description: `Req ${i}` }
+        });
+        expect(reqRes.statusCode).toBe(201);
+      }
+      const reqLimitRes = await app.inject({
+        method: "POST",
+        url: "/api/v2/secret/request",
+        headers: { authorization: `Bearer ${agentToken}` },
+        payload: { public_key: "cHVi", description: "Over limit" }
+      });
+      expect(reqLimitRes.statusCode).toBe(429);
+
+      // 5. Upgrade to standard via Webhook
+      const upgradeWebhookRes = await simulateStripeWebhook(app, {
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            customer: "cus_upgrade",
+            subscription: "sub_upgrade",
+            metadata: { workspace_id: owner.user.workspace_id }
+          }
+        }
+      });
+      expect(upgradeWebhookRes.statusCode).toBe(200);
+
+      // 6. Verify expanded quotas
+      const expandedEnrollRes = await enrollAgent(app, owner.access_token, "limit-breaker");
+      expect(expandedEnrollRes.statusCode).toBe(201);
+
+      const expandedReqRes = await app.inject({
+        method: "POST",
+        url: "/api/v2/secret/request",
+        headers: { authorization: `Bearer ${agentToken}` },
+        payload: { public_key: "cHVi", description: "Expanded quota" }
+      });
+      expect(expandedReqRes.statusCode).toBe(201);
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("handles subscription downgrades and webhook security", async () => {
+    const { pool, schema } = await createIsolatedPool();
+    const mockStripe = {
+      customers: { create: async () => ({ id: "cus_downgrade" }) },
+      checkout: { sessions: { create: async () => ({ id: "cs_downgrade", url: "https://stripe.com/pay" }) } },
+      webhooks: { 
+        constructEvent: (payload: string, sig: string) => {
+          if (sig === "invalid") throw new Error("Invalid signature");
+          return JSON.parse(payload);
+        }
+      }
+    };
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const app = await createApp(pool, mockStripe);
+      const owner = await registerOwner(app, "billing-down");
+      await verifyOwner(app, pool, "billing-down@example.com");
+
+      // 1. Upgrade first
+      await simulateStripeWebhook(app, {
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            customer: "cus_downgrade",
+            subscription: "sub_downgrade",
+            metadata: { workspace_id: owner.user.workspace_id }
+          }
+        }
+      });
+
+      // 2. Test Downgrade
+      const downgradeRes = await simulateStripeWebhook(app, {
+        type: "customer.subscription.deleted",
+        data: {
+          object: {
+            id: "sub_downgrade",
+            customer: "cus_downgrade"
+          }
+        }
+      });
+      expect(downgradeRes.statusCode).toBe(200);
+
+      const billingRes = await app.inject({
+        method: "GET",
+        url: "/api/v2/billing",
+        headers: { authorization: `Bearer ${owner.access_token}` }
+      });
+      expect(billingRes.json().billing.tier).toBe("free");
+
+      // 3. Test Webhook Security (Invalid Signature)
+      const securityRes = await simulateStripeWebhook(app, { type: "any" }, "invalid");
+      expect(securityRes.statusCode).toBe(400);
 
       await app.close();
     } finally {
