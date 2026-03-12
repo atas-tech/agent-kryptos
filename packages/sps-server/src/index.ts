@@ -1,25 +1,28 @@
 import "dotenv/config";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
+import type { Pool } from "pg";
+import { createDbPool } from "./db/index.js";
+import { runMigrations } from "./db/migrate.js";
+import { registerAuthRoutes } from "./routes/auth.js";
 import { registerExchangeRoutes } from "./routes/exchange.js";
 import { registerSecretRoutes } from "./routes/secrets.js";
+import { registerWorkspaceRoutes } from "./routes/workspace.js";
 import { ExchangePolicyEngine, type ExchangePolicyRule, type SecretRegistryEntry } from "./services/policy.js";
 import { InMemoryRequestStore, RedisRequestStore, createRedisClient } from "./services/redis.js";
 import type { RequestStore } from "./types.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 export interface BuildAppOptions {
   store?: RequestStore;
+  db?: Pool | null;
   hmacSecret?: string;
   baseUrl?: string;
   uiBaseUrl?: string; // Add this for consistency
   useInMemoryStore?: boolean;
   secretRegistry?: SecretRegistryEntry[];
   exchangePolicyRules?: ExchangePolicyRule[];
+  runMigrations?: boolean;
+  closeDbOnClose?: boolean;
+  trustProxy?: boolean;
 }
 
 function policyRulesFromEnv(): ExchangePolicyRule[] {
@@ -50,10 +53,20 @@ function secretRegistryFromEnv(): SecretRegistryEntry[] {
   return parsed as SecretRegistryEntry[];
 }
 
+function trustProxyFromEnv(): boolean {
+  const raw = process.env.SPS_TRUST_PROXY?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
+  if (options.db && options.runMigrations) {
+    await runMigrations(options.db);
+  }
+
   const app = Fastify({
     logger: process.env.NODE_ENV !== "test",
     bodyLimit: Number(process.env.SPS_BODY_LIMIT ?? 1024 * 1024),
+    trustProxy: options.trustProxy ?? trustProxyFromEnv(),
     ajv: {
       customOptions: {
         removeAdditional: false
@@ -97,6 +110,12 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     options.exchangePolicyRules ?? policyRulesFromEnv()
   );
 
+  if (options.db && options.closeDbOnClose) {
+    app.addHook("onClose", async () => {
+      await options.db?.end();
+    });
+  }
+
   await app.register(async (secretRoutesApp) => {
     await registerSecretRoutes(secretRoutesApp, {
       store,
@@ -118,13 +137,28 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     });
   }, { prefix: "/api/v2/secret/exchange" });
 
+  if (options.db) {
+    await app.register(async (authRoutesApp) => {
+      await registerAuthRoutes(authRoutesApp, { db: options.db! });
+    }, { prefix: "/api/v2/auth" });
+
+    await app.register(async (workspaceRoutesApp) => {
+      await registerWorkspaceRoutes(workspaceRoutesApp, { db: options.db! });
+    }, { prefix: "/api/v2/workspace" });
+  }
+
   app.get("/healthz", async () => ({ ok: true }));
 
   return app;
 }
 
 async function start(): Promise<void> {
-  const app = await buildApp();
+  const db = createDbPool();
+  const app = await buildApp({
+    db,
+    closeDbOnClose: true,
+    runMigrations: process.env.NODE_ENV !== "production"
+  });
   const host = process.env.SPS_HOST ?? "127.0.0.1";
   const port = Number(process.env.PORT ?? 3100);
   await app.listen({ host, port });

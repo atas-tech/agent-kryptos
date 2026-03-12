@@ -29,7 +29,27 @@ export interface AuthenticatedAgentClaims extends JWTPayload {
   workloadMode?: string | null;
 }
 
+export type UserRole = "workspace_admin" | "workspace_operator" | "workspace_viewer";
+
+export interface AuthenticatedUserClaims extends JWTPayload {
+  sub: string;
+  role: UserRole;
+  workspaceId: string;
+  email?: string;
+  sid?: string;
+  forcePasswordChange: boolean;
+}
+
+export interface RequireUserAuthOptions {
+  allowForcePasswordChange?: boolean;
+}
+
 const jwksCache = new Map<string, JwksCacheEntry>();
+const USER_ROLE_PRIORITY: Record<UserRole, number> = {
+  workspace_viewer: 0,
+  workspace_operator: 1,
+  workspace_admin: 2
+};
 
 function getJwksCacheTtlMs(): number {
   const raw = process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS;
@@ -282,6 +302,85 @@ export async function requireAdminAgentAuth(
   }
 
   return payload;
+}
+
+function userJwtSecret(): Uint8Array {
+  return new TextEncoder().encode(process.env.SPS_USER_JWT_SECRET?.trim() || "local-dev-user-jwt-secret");
+}
+
+function isUserRole(value: unknown): value is UserRole {
+  return value === "workspace_admin" || value === "workspace_operator" || value === "workspace_viewer";
+}
+
+export async function requireUserAuth(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  options: RequireUserAuthOptions = {}
+): Promise<AuthenticatedUserClaims | null> {
+  const token = bearerToken(req);
+  if (!token) {
+    reply.code(401).send({ error: "Missing bearer token" });
+    return null;
+  }
+
+  try {
+    const { payload } = await jwtVerify(token, userJwtSecret(), {
+      issuer: "sps",
+      audience: "sps-user"
+    });
+
+    if (typeof payload.sub !== "string" || !payload.sub.trim()) {
+      reply.code(401).send({ error: "Invalid user identity" });
+      return null;
+    }
+
+    if (!isUserRole(payload.role)) {
+      reply.code(401).send({ error: "Invalid user role" });
+      return null;
+    }
+
+    const workspaceId = typeof payload.workspace_id === "string" ? payload.workspace_id.trim() : "";
+    if (!workspaceId) {
+      reply.code(401).send({ error: "Invalid workspace identity" });
+      return null;
+    }
+
+    const claims: AuthenticatedUserClaims = {
+      ...payload,
+      sub: payload.sub,
+      role: payload.role,
+      workspaceId,
+      email: typeof payload.email === "string" ? payload.email : undefined,
+      sid: typeof payload.sid === "string" ? payload.sid : undefined,
+      forcePasswordChange: payload.fpc === true
+    };
+
+    if (claims.forcePasswordChange && !options.allowForcePasswordChange) {
+      reply.code(403).send({ error: "Password change required", code: "password_change_required" });
+      return null;
+    }
+
+    return claims;
+  } catch {
+    reply.code(401).send({ error: "Invalid token" });
+    return null;
+  }
+}
+
+export function requireUserRole(minRole: UserRole) {
+  return async (req: FastifyRequest, reply: FastifyReply): Promise<AuthenticatedUserClaims | null> => {
+    const payload = await requireUserAuth(req, reply);
+    if (!payload) {
+      return null;
+    }
+
+    if (USER_ROLE_PRIORITY[payload.role] < USER_ROLE_PRIORITY[minRole]) {
+      reply.code(403).send({ error: "Insufficient role" });
+      return null;
+    }
+
+    return payload;
+  };
 }
 
 async function verifyGatewayLikeToken(

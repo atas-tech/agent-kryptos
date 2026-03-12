@@ -13,6 +13,12 @@ Build the first hosted SaaS layer on top of the existing SPS core. Multiple cust
 > [!IMPORTANT]
 > This plan is divided into **6 incremental milestones**, each independently deployable. The order is: Database Foundation → Human Auth → Workspace-Scoped SPS → Agent Enrollment + RBAC → Billing → Abuse Controls.
 
+## Progress
+
+- `2026-03-12`: Milestone 1 implemented in `packages/sps-server` with PostgreSQL pool wiring, migration runner, initial workspace schema/service/routes, and coverage in `tests/db.test.ts`
+- `2026-03-12`: Milestone 2 auth foundation implemented with `users` + `user_sessions` migrations, user/session service, auth routes (`register`, `login`, `refresh`, `logout`, `change-password`, `verify-email`, `me`), and coverage in `tests/auth-routes.test.ts`
+- Remaining work starts at Milestone 3: workspace-scoped SPS identity and tenant isolation across secret/exchange paths
+
 ---
 
 ## Proposed Changes
