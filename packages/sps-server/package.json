@@ -11,6 +11,7 @@
     "dev": "tsx watch src/index.ts",
     "test": "vitest run",
     "test:db": "SPS_PG_INTEGRATION=1 vitest run tests/db.test.ts",
+    "test:e2e": "SPS_PG_INTEGRATION=1 vitest run tests/e2e.test.ts",
     "test:integration": "SPS_REDIS_INTEGRATION=1 vitest run tests/redis-integration.test.ts"
   },
   "dependencies": {

@@ -332,11 +332,11 @@ CREATE INDEX idx_enrolled_agents_workspace_status
 
 | Endpoint | Auth | Behavior |
 |----------|------|----------|
-| `POST /api/v2/agents` | User JWT (admin) | Enroll agent, return bootstrap API key (shown once, format `ak_<random>`) |
+| `POST /api/v2/agents` | User JWT (admin/operator) | Enroll agent, return bootstrap API key (shown once, format `ak_<random>`) |
 | `POST /api/v2/agents/token` | Agent API key | Mint short-lived hosted agent JWT with `workspace_id` + `sub` |
 | `GET /api/v2/agents` | User JWT (admin/operator) | List enrolled agents |
-| `POST /api/v2/agents/:aid/rotate-key` | User JWT (admin) | Rotate bootstrap API key |
-| `DELETE /api/v2/agents/:aid` | User JWT (admin) | Revoke agent credentials |
+| `POST /api/v2/agents/:aid/rotate-key` | User JWT (admin/operator) | Rotate bootstrap API key |
+| `DELETE /api/v2/agents/:aid` | User JWT (admin/operator) | Revoke agent credentials |
 
 User-facing agent management routes derive `workspace_id` from the authenticated user context instead of taking a `:wid` path parameter.
 
@@ -573,18 +573,22 @@ npm test --workspace=packages/sps-server
 - Hosted mode: exchange between different workspaces → denied
 - Local mode: operations work without `workspace_id` (backward compat)
 
-#### Milestone 4: `agents-routes.test.ts`
+#### Milestone 4: `agents-routes.test.ts` + `e2e.test.ts`
 - Enroll agent → get bootstrap API key
 - Re-enroll previously revoked/deleted `agent_id` in the same workspace → success
 - Agent exchanges API key for short-lived JWT → success
 - Agent auth with minted JWT → success
 - Hosted JWT path and legacy external JWKS path both authenticate through `requireAgentAuth`
 - `POST /api/v2/agents/token` is rate-limited after repeated attempts
+- Rotate agent bootstrap key → old key fails, new key succeeds
 - Revoke agent → auth fails
 - Active agent row cannot exist with `api_key_hash = NULL`
+- Owner verification gate blocks high-risk actions until workspace owner email is verified
+- RBAC: `workspace_operator` can manage agents, but member-management routes stay admin-only
 - RBAC: `workspace_viewer` cannot enroll agents → `403`
 - Member role update: `workspace_admin` can demote/promote same-workspace users
 - Last active `workspace_admin` cannot be demoted or suspended
+- Logout revokes refresh capability, but an already-issued access token remains valid until TTL expiry
 
 #### Milestone 5: `billing.test.ts`
 - Create checkout session → returns Stripe URL
