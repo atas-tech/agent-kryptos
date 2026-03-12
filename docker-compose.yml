@@ -11,3 +11,23 @@ services:
       timeout: 3s
       retries: 30
       start_period: 1s
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: agent-kryptos-postgres
+    environment:
+      POSTGRES_DB: agent_kryptos
+      POSTGRES_USER: kryptos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localdev}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kryptos -d agent_kryptos"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:

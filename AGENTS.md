@@ -14,6 +14,7 @@ Planning and security docs are in `docs/`, and executable demos/integration help
 - `npm install`: install workspace dependencies.
 - `npm run build`: build all packages (`tsc` + Vite build where defined).
 - `npm test`: run all workspace tests.
+- `npm run test:e2e --workspace=packages/sps-server`: run PostgreSQL-backed E2E tests (requires `DATABASE_URL` and `SPS_PG_INTEGRATION=1`).
 - `npm run dev --workspace=packages/sps-server`: run SPS server in watch mode.
 - `npm run dev --workspace=packages/browser-ui`: start browser UI locally.
 - `npm run test:integration`: run Redis integration test for SPS server.
@@ -30,6 +31,8 @@ No dedicated lint script is currently enforced; use `npm run build` and `npm tes
 
 ## Testing Guidelines
 Most packages use Vitest with tests under each package `tests/` folder (`*.test.ts`). The OpenClaw plugin uses a Node test script (`tests/index.test.mjs`). Add or update tests with each behavior change, especially around secret handling, transport fallback, and TTL/one-time retrieval logic.
+
+**Phase Testing Rule:** When planning or implementing a new phase or milestone, always define comprehensive End-to-End (E2E) and integration test scenarios in the corresponding test plan document within the `docs/testing/` directory (e.g., `docs/testing/Phase 3A.md`). These scenarios must be implemented alongside the feature code to ensure thorough verification.
 
 ## Commit & Pull Request Guidelines
 Recent history follows Conventional Commits, e.g. `feat(browser-ui): ...`, `fix(openclaw-plugin): ...`, `docs: ...`. Keep subject lines imperative and scoped by package when relevant.

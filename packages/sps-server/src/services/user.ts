@@ -470,7 +470,7 @@ export async function registerUser(
 
     await client.query("COMMIT");
 
-    const latestWorkspace = (await getWorkspace(db, workspace.id)) ?? {
+    const latestWorkspace = (await getWorkspace(client, workspace.id)) ?? {
       ...workspace,
       ownerUserId: user.id
     };

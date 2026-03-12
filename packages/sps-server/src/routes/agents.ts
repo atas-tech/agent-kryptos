@@ -100,7 +100,7 @@ export async function registerAgentRoutes(app: FastifyInstance, opts: AgentRoute
       }
     },
     async (req, reply) => {
-      const user = await requireUserRole("workspace_admin")(req, reply);
+      const user = await requireUserRole("workspace_operator")(req, reply);
       if (!user) {
         return;
       }
@@ -172,7 +172,7 @@ export async function registerAgentRoutes(app: FastifyInstance, opts: AgentRoute
       }
     },
     async (req, reply) => {
-      const user = await requireUserRole("workspace_admin")(req, reply);
+      const user = await requireUserRole("workspace_operator")(req, reply);
       if (!user) {
         return;
       }
@@ -205,7 +205,7 @@ export async function registerAgentRoutes(app: FastifyInstance, opts: AgentRoute
       }
     },
     async (req, reply) => {
-      const user = await requireUserRole("workspace_admin")(req, reply);
+      const user = await requireUserRole("workspace_operator")(req, reply);
       if (!user) {
         return;
       }
