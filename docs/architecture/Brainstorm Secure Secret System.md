@@ -619,23 +619,23 @@ This keeps the wire contract stable while tightening the trust model later.
 - Current implementation snapshot as of `2026-03-12`: Milestones 1-6 are complete in `packages/sps-server`; the remaining Phase 3A work is follow-on hosted operations rather than another numbered core slice
 - Implemented so far in code: PostgreSQL-backed workspaces/users/sessions/enrolled agents, user JWT auth, workspace-scoped SPS identity, hosted agent bootstrap API keys and hosted JWT minting, workspace member management, workspace-local RBAC, Stripe checkout/webhook billing state, free-vs-standard quota enforcement, per-IP auth/token rate limiting, and workspace-scoped PostgreSQL audit persistence/query routes with retention cleanup
 - Still pending in Phase 3A: production hosted deployment/domain cutover, stronger signup/challenge abuse controls, richer onboarding/discovery flows, owner/team policy abstractions beyond explicit allowlists, analytics, and other hosted operations work
-- [ ] Hosted deployment: UI at `https://secret.atas.tech/`, API at `https://sps.atas.tech/`, and gateway/browser allowlists updated to those hosted domains
+- `Moved to Phase 3B`: Hosted deployment, UI dashboards, and advanced signup/abuse controls.
 - [x] Phase 3A is the first pooled hosted SaaS phase: multiple customer workspaces share one control plane, but each workspace/org is the tenant boundary for identity, policy, audit visibility, quotas, and billing
 - [x] Mandatory hosted identity contract: every authenticated human and agent request carries a workspace-scoped identity (`workspace_id` plus stable `sub` / role claims), and SPS resolves policy, audit, and ownership on `(workspace_id, subject)` rather than global IDs alone
-- [~] Self-service human signup exists with email verification and higher-risk action gating, but challenge checks, risk review, and broader signup hardening are still pending; the current entry tier is `free`, not a separate `trial` lifecycle
 - [x] Hosted agent bootstrap and enrollment with workspace-scoped bootstrap credentials is implemented; issued credentials are short-lived, rotatable, revocable, and never reusable across workspaces
 - [x] Multi-user customer RBAC with explicit workspace roles (`workspace_admin`, `workspace_operator`, `workspace_viewer`) for provisioning, approvals, and audit visibility; platform operator roles remain separate and are never exposed as customer roles
-- [ ] Owner/team bindings are part of the hosted policy model if same-owner or same-team rules ship in Phase 3A; if those bindings are disabled, authorization falls back to explicit per-secret allowlists instead of implicit team inference
-- [ ] Agent onboarding supports both paths: validated self-service creation of a tightly limited trial workspace, or enrollment into an existing workspace; includes well-known endpoint discovery, MCP server integration, and concurrent support for OpenClaw and similar agent runtimes
-- [x] Autonomous agent-to-agent exchange is restricted to one workspace/org in Phase 3A, with explicit requester/fulfiller policy rules, ring matching, and approval flows; cross-workspace A2A is explicitly out of scope until Phase 5 and same-owner/same-team abstractions are deferred
-- [~] Free/standard billing tiers and owner-verification gates are implemented; separate `trial` / `verified` / `paid` workspace lifecycle states are deferred
+- [x] Autonomous agent-to-agent exchange is restricted to one workspace/org in Phase 3A, with explicit requester/fulfiller policy rules, ring matching, and approval flows.
 - [x] Traditional billing: Stripe subscriptions and subscription tiers
 - [x] Automatic paid-tier upgrade after verified Stripe webhook settlement; no separate post-payment workspace activation state is implemented yet
-- [ ] Hosted analytics and dashboards are metadata-minimized: aggregate request counts, exchange metrics, workspace activity, error rates, abuse signals, and billing usage only; no secret plaintext, no ciphertext inspection, and defined retention/redaction rules for secret names and user activity
-- [~] Basic hosted-service protections: rate limits, owner-verification gates for higher-risk actions, and customer-visible audit trails are implemented; stronger signup abuse controls, challenge gates, and internal operator tooling are still pending
-- [ ] Agent-specific signup protections: strict trial quotas, runtime/manifest metadata validation, risk scoring, quarantine/manual review for suspicious signups, and no cross-workspace A2A for trial agents
 
-### Phase 3B: Billing, SDKs & Community
+### Phase 3B: UI Dashboard, Operations, SDKs & Community
+- [ ] Hosted deployment: UI Dashboard at `https://app.atas.tech/` (or console), secret input UI at `https://secret.atas.tech/`, API at `https://sps.atas.tech/`, and gateway/browser allowlists updated to those domains
+- [ ] Operator Dashboard UI (`app.atas.tech`): React/Vite/Next.js SPA for workspace human users. Includes auth (signup/login), member management, agent enrollment (generating `ak_` keys), audit log views, and billing portal links.
+- [ ] Self-service human signup lifecycle: challenge checks, risk review, separate `trial` vs `free` tier distinction if needed.
+- [ ] Owner/team bindings: policy abstractions beyond explicit allowlists.
+- [ ] Agent onboarding paths: validated self-service creation of a tightly limited trial workspace, or enrollment into an existing workspace; includes well-known endpoint discovery, MCP server integration.
+- [ ] Hosted analytics and dashboards: aggregate request counts, exchange metrics, workspace activity, error rates, abuse signals.
+- [ ] Advanced abuse controls: stronger signup abuse controls, challenge gates, operator tooling, strict trial quotas, runtime/manifest metadata validation, risk scoring.
 - [ ] x402 (HTTP 402) autonomous agent payments on top of the hosted workspace billing/quota infrastructure, with automatic upgrade after verified settlement
 - [ ] Language SDKs: Python, Go, and published Node.js package(s) from the current `agent-skill` implementation
 - [ ] Docker Compose community guide (builds goodwill while SaaS matures; full self-hosted polish deferred to Phase 4)

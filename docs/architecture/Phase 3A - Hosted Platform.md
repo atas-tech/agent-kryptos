@@ -21,17 +21,7 @@ Build the first hosted SaaS layer on top of the existing SPS core. Multiple cust
 - `2026-03-12`: Milestone 4 implemented with the `enrolled_agents` migration, hosted agent bootstrap API key enrollment and JWT minting routes, workspace member management, shared RBAC helpers, owner-verification gating for higher-risk hosted actions, and PostgreSQL integration coverage in `tests/agents-routes.test.ts`
 - `2026-03-12`: Milestone 5 implemented with the `005_billing.sql` workspace billing state migration, Stripe-backed checkout/webhook routes, mocked Stripe integration coverage in `tests/billing.test.ts`, and free-vs-standard quota enforcement for secret requests, enrolled agents, workspace members, and exchange availability
 - `2026-03-12`: Milestone 6 implemented with reusable per-IP rate limiting for register/login/hosted token minting, durable PostgreSQL-backed audit persistence and query routes, scheduled audit retention cleanup, and PostgreSQL integration coverage in `tests/rate-limit.test.ts`
-- The 6 planned Phase 3A core milestones are now complete; remaining follow-on work is hosted deployment/domain cutover, stronger signup/challenge abuse controls, richer onboarding/discovery, owner/team policy abstractions beyond explicit allowlists, analytics, and later operational hardening
-
-### Remaining Follow-on Work
-
-These items are still part of the broader Phase 3A roadmap, but were not included in core Milestones 1-6:
-
-- Hosted deployment/domain cutover for the real customer-facing UI/API endpoints and allowlists
-- Stronger signup abuse controls beyond basic per-IP rate limits, such as challenge checks and risk review
-- Richer onboarding/discovery flows, including trial-style guided onboarding, well-known discovery, and deeper MCP/OpenClaw integration work
-- Owner/team policy abstractions beyond the current explicit requester/fulfiller and ring-based policy rules
-- Hosted analytics, dashboards, and internal operator tooling
+- The 6 planned Phase 3A core milestones are now complete. All follow-on operational, UI, and deployment hardening work has been explicitly moved to **Phase 3B**.
 
 ---
 
