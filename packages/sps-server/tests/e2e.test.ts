@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbPool } from "../src/db/index.js";
 import { runMigrations } from "../src/db/migrate.js";
 import { buildApp } from "../src/index.js";
+import { cleanupExpiredAuditRecords } from "../src/services/audit.js";
 
 const runPgIntegration = process.env.SPS_PG_INTEGRATION === "1";
 const describePg = runPgIntegration ? describe : describe.skip;
@@ -686,6 +687,176 @@ describePg("Phase 3A E2E", { timeout: 30_000 }, () => {
       // 3. Test Webhook Security (Invalid Signature)
       const securityRes = await simulateStripeWebhook(app, { type: "any" }, "invalid");
       expect(securityRes.statusCode).toBe(400);
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("enforces rate limits for registration, login, and agent token requests", async () => {
+    const { pool, schema } = await createIsolatedPool();
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const app = await createApp(pool);
+
+      const testIp = "1.2.3.4";
+
+      // 1. Test Registration Rate Limit (limit 3 per minute)
+      for (let i = 0; i < 3; i++) {
+        const res = await app.inject({
+          method: "POST",
+          url: "/api/v2/auth/register",
+          headers: { "x-forwarded-for": testIp },
+          payload: {
+            email: `limit-${i}@example.com`,
+            password: "Password123!",
+            workspace_slug: `space-${i}-${Math.random().toString(36).slice(2, 8)}`,
+            display_name: "Space"
+          }
+        });
+        expect(res.statusCode).toBe(201);
+      }
+      const regLimitRes = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/register",
+        headers: { "x-forwarded-for": testIp },
+        payload: {
+          email: "overflow@example.com",
+          password: "Password123!",
+          workspace_slug: "overflow",
+          display_name: "Space"
+        }
+      });
+      expect(regLimitRes.statusCode).toBe(429);
+      expect(regLimitRes.headers["retry-after"]).toBeDefined();
+
+      // 2. Test Login Rate Limit (limit 10 per minute)
+      for (let i = 0; i < 10; i++) {
+        const res = await app.inject({
+          method: "POST",
+          url: "/api/v2/auth/login",
+          headers: { "x-forwarded-for": testIp },
+          payload: { email: "limit-0@example.com", password: "wrong" }
+        });
+        expect(res.statusCode).toBe(401);
+      }
+      const loginLimitRes = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/login",
+        headers: { "x-forwarded-for": testIp },
+        payload: { email: "limit-0@example.com", password: "wrong" }
+      });
+      expect(loginLimitRes.statusCode).toBe(429);
+
+      // 3. Test Agent Token Rate Limit (limit 5 per minute)
+      const owner = await registerOwner(app, "rate-limit-owner");
+      await verifyOwner(app, pool, "rate-limit-owner@example.com");
+      const agentRes = await enrollAgent(app, owner.access_token, "rl-agent");
+      const bootstrapKey = agentRes.json().bootstrap_api_key;
+
+      for (let i = 0; i < 5; i++) {
+        const res = await app.inject({
+          method: "POST",
+          url: "/api/v2/agents/token",
+          headers: {
+            "x-forwarded-for": testIp,
+            authorization: `Bearer ${bootstrapKey}`
+          }
+        });
+        expect(res.statusCode).toBe(200);
+      }
+      const tokenLimitRes = await app.inject({
+        method: "POST",
+        url: "/api/v2/agents/token",
+        headers: {
+          "x-forwarded-for": testIp,
+          authorization: `Bearer ${bootstrapKey}`
+        }
+      });
+      expect(tokenLimitRes.statusCode).toBe(429);
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("provides workspace-scoped audit logs and security", async () => {
+    const { pool, schema } = await createIsolatedPool();
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const app = await createApp(pool);
+
+      const ownerA = await registerOwner(app, "audit-a");
+      await verifyOwner(app, pool, "audit-a@example.com");
+      // Upgrade to standard to allow more members and check more audits
+      await simulateStripeWebhook(app, {
+        type: "checkout.session.completed",
+        data: { object: { customer: "cus_a", subscription: "sub_a", metadata: { workspace_id: ownerA.user.workspace_id } } }
+      });
+
+      const ownerB = await registerOwner(app, "audit-b");
+      await verifyOwner(app, pool, "audit-b@example.com");
+
+      // Perform actions in A
+      await enrollAgent(app, ownerA.access_token, "agent-a");
+      const tempPass = "OperatorPass123!";
+      const memberRes = await app.inject({
+        method: "POST",
+        url: "/api/v2/members",
+        headers: { authorization: `Bearer ${ownerA.access_token}` },
+        payload: { email: "op-a@example.com", temporary_password: tempPass, role: "workspace_operator" }
+      });
+      expect(memberRes.statusCode).toBe(201);
+
+      // Verify Audit Logs for A
+      const auditResA = await app.inject({
+        method: "GET",
+        url: "/api/v2/audit",
+        headers: { authorization: `Bearer ${ownerA.access_token}` }
+      });
+      expect(auditResA.statusCode).toBe(200);
+      const recordsA = auditResA.json().records;
+      
+      // Check for workspace isolation and security
+      expect(recordsA.every((r: any) => r.workspace_id === ownerA.user.workspace_id)).toBe(true);
+      const auditPayload = JSON.stringify(recordsA);
+      expect(auditPayload).not.toContain(tempPass);
+      expect(auditPayload).not.toContain("audit-b"); // Owner B's info shouldn't be here
+
+      // Verify Audit Logs for B (should be empty for now as register/verify are not yet audited)
+      const auditResB = await app.inject({
+        method: "GET",
+        url: "/api/v2/audit",
+        headers: { authorization: `Bearer ${ownerB.access_token}` }
+      });
+      expect(auditResB.json().records.length).toBe(0);
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("removes expired audit records on cleanup", async () => {
+    const { pool, schema } = await createIsolatedPool();
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const app = await createApp(pool);
+      const owner = await registerOwner(app, "cleanup-owner");
+
+      // Manually insert an old audit record
+      await pool.query(
+        "INSERT INTO audit_log (workspace_id, event_type, actor_type, resource_id, created_at) VALUES ($1, $2, $3, $4, $5)",
+        [owner.user.workspace_id, "test_event", "system", "old-resource", new Date(Date.now() - 31 * 24 * 60 * 60 * 1000)]
+      );
+
+      const deleted = await cleanupExpiredAuditRecords(pool, { retentionDays: 30 });
+      expect(deleted).toBeGreaterThan(0);
+
+      const remaining = await pool.query("SELECT * FROM audit_log WHERE resource_id = 'old-resource'");
+      expect(remaining.rowCount).toBe(0);
 
       await app.close();
     } finally {
