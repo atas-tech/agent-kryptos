@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyPluginOptions, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool } from "pg";
 import { requireUserAuth, type AuthenticatedUserClaims } from "../middleware/auth.js";
+import { rateLimitKeyByIp, sendRateLimited, type RateLimitService } from "../middleware/rate-limit.js";
 import {
   authenticateUser,
   changePassword,
@@ -16,6 +17,7 @@ import type { WorkspaceRecord } from "../services/workspace.js";
 
 export interface AuthRoutesOptions extends FastifyPluginOptions {
   db: Pool;
+  rateLimitService?: RateLimitService;
 }
 
 function userAgentFromHeaders(header: string | string[] | undefined): string | null {
@@ -91,6 +93,13 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
       }
     },
     async (req, reply) => {
+      if (opts.rateLimitService) {
+        const rateLimit = await opts.rateLimitService.consume(rateLimitKeyByIp(req, "auth:register"), 3, 60_000);
+        if (!rateLimit.allowed) {
+          return sendRateLimited(reply, rateLimit, "Too many registration attempts");
+        }
+      }
+
       try {
         const result = await registerUser(
           opts.db,
@@ -131,6 +140,13 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
       }
     },
     async (req, reply) => {
+      if (opts.rateLimitService) {
+        const rateLimit = await opts.rateLimitService.consume(rateLimitKeyByIp(req, "auth:login"), 10, 60_000);
+        if (!rateLimit.allowed) {
+          return sendRateLimited(reply, rateLimit, "Too many login attempts");
+        }
+      }
+
       try {
         const result = await authenticateUser(
           opts.db,

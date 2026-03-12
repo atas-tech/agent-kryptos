@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyPluginOptions, FastifyReply } from "fastify";
 import type { Pool } from "pg";
 import { requireUserRole } from "../middleware/auth.js";
+import { logAudit } from "../services/audit.js";
 import { activeMemberLimit } from "../services/quota.js";
 import { isUserRole } from "../services/rbac.js";
 import {
@@ -103,6 +104,20 @@ export async function registerMemberRoutes(app: FastifyInstance, opts: MemberRou
           temporaryPassword: req.body.temporary_password,
           role: req.body.role
         });
+        await logAudit(opts.db, {
+          event: "member_created",
+          workspaceId: user.workspaceId,
+          actorId: user.sub,
+          actorType: "user",
+          resourceId: member.id,
+          metadata: {
+            email: member.email,
+            role: member.role,
+            status: member.status
+          },
+          action: "member_create",
+          ip: req.ip
+        });
 
         return reply.code(201).send({ member: toUserResponse(member) });
       } catch (error) {
@@ -155,6 +170,20 @@ export async function registerMemberRoutes(app: FastifyInstance, opts: MemberRou
         const member = await updateWorkspaceMember(opts.db, user.workspaceId, req.params.uid, {
           role: req.body.role,
           status: req.body.status
+        });
+        await logAudit(opts.db, {
+          event: "member_updated",
+          workspaceId: user.workspaceId,
+          actorId: user.sub,
+          actorType: "user",
+          resourceId: member.id,
+          metadata: {
+            email: member.email,
+            role: member.role,
+            status: member.status
+          },
+          action: "member_update",
+          ip: req.ip
         });
 
         return reply.send({ member: toUserResponse(member) });

@@ -310,10 +310,13 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
       createdAt
     });
 
-    logAudit({
+    await logAudit(opts.db, {
       event: "exchange_approval_requested",
+      actorId: requesterId,
+      actorType: "agent",
       requesterId,
       workspaceId: requesterWorkspaceId ?? null,
+      resourceId: approvalReference,
       fulfilledBy: fulfillerHint,
       secretName,
       policyRuleId: decision.ruleId,
@@ -398,8 +401,10 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         fulfillerHint
       );
       if (!resolvedPolicy) {
-        logAudit({
+        await logAudit(opts.db, {
           event: "exchange_denied",
+          actorId: agent.sub,
+          actorType: "agent",
           requesterId: agent.sub,
           workspaceId: agent.workspaceId ?? null,
           secretName,
@@ -412,8 +417,10 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
 
       const decision = resolvedPolicy.decision;
       if (decision.mode !== "allow") {
-        logAudit({
+        await logAudit(opts.db, {
           event: decision.mode === "pending_approval" ? "exchange_pending_approval" : "exchange_denied",
+          actorId: agent.sub,
+          actorType: "agent",
           requesterId: agent.sub,
           workspaceId: agent.workspaceId ?? null,
           secretName,
@@ -501,8 +508,10 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         createdAt
       });
 
-      logAudit({
+      await logAudit(opts.db, {
         event: "exchange_requested",
+        actorId: agent.sub,
+        actorType: "agent",
         exchangeId,
         requesterId: agent.sub,
         workspaceId: agent.workspaceId ?? null,
@@ -644,8 +653,10 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         createdAt: nowSeconds()
       });
 
-      logAudit({
+      await logAudit(opts.db, {
         event: "exchange_reserved",
+        actorId: agent.sub,
+        actorType: "agent",
         exchangeId: reserved.exchangeId,
         requesterId: reserved.requesterId,
         workspaceId: reserved.workspaceId ?? null,
@@ -741,8 +752,10 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         createdAt: nowSeconds()
       });
 
-      logAudit({
+      await logAudit(opts.db, {
         event: "exchange_submitted",
+        actorId: agent.sub,
+        actorType: "agent",
         exchangeId: submitted.exchangeId,
         requesterId: submitted.requesterId,
         workspaceId: submitted.workspaceId ?? null,
@@ -813,8 +826,10 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         createdAt: nowSeconds()
       });
 
-      logAudit({
+      await logAudit(opts.db, {
         event: "exchange_retrieved",
+        actorId: agent.sub,
+        actorType: "agent",
         exchangeId: retrieved.exchangeId,
         requesterId: agent.sub,
         workspaceId: retrieved.workspaceId ?? agent.workspaceId ?? null,
@@ -927,8 +942,9 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         createdAt: decidedAt
       });
 
-      logAudit({
+      await logAudit(opts.db, {
         event: "exchange_approved",
+        actorType: "agent",
         requesterId: approved.requesterId,
         workspaceId: approved.workspaceId ?? null,
         fulfilledBy: approved.fulfillerHint,
@@ -936,6 +952,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         policyRuleId: approved.ruleId,
         approvalReference: approved.approvalReference,
         agentId: agent.sub,
+        resourceId: approved.approvalReference,
         action: "exchange_approval_approve",
         ip: req.ip
       });
@@ -1011,8 +1028,9 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         createdAt: decidedAt
       });
 
-      logAudit({
+      await logAudit(opts.db, {
         event: "exchange_rejected",
+        actorType: "agent",
         requesterId: rejected.requesterId,
         workspaceId: rejected.workspaceId ?? null,
         fulfilledBy: rejected.fulfillerHint,
@@ -1020,6 +1038,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         policyRuleId: rejected.ruleId,
         approvalReference: rejected.approvalReference,
         agentId: agent.sub,
+        resourceId: rejected.approvalReference,
         action: "exchange_approval_reject",
         ip: req.ip
       });
@@ -1102,8 +1121,10 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         createdAt: nowSeconds()
       });
 
-      logAudit({
+      await logAudit(opts.db, {
         event: "exchange_revoked",
+        actorId: agent.sub,
+        actorType: "agent",
         exchangeId: revoked.exchangeId,
         requesterId: revoked.requesterId,
         workspaceId: revoked.workspaceId ?? null,

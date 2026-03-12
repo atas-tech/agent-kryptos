@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyPluginOptions, FastifyReply } from "fastify";
 import type { Pool } from "pg";
 import { requireUserRole } from "../middleware/auth.js";
+import { rateLimitKeyByIp, sendRateLimited, type RateLimitService } from "../middleware/rate-limit.js";
+import { logAudit } from "../services/audit.js";
 import {
   authenticateAgentApiKey,
   AgentServiceError,
@@ -20,34 +22,8 @@ const AGENT_ID_PATTERN = "^[A-Za-z0-9._:@-]{1,160}$";
 
 export interface AgentRoutesOptions extends FastifyPluginOptions {
   db: Pool;
+  rateLimitService?: RateLimitService;
 }
-
-class FixedWindowRateLimiter {
-  private readonly counts = new Map<string, { count: number; resetAt: number }>();
-
-  consume(key: string, limit: number, windowMs: number): { allowed: boolean; retryAfterSeconds: number } {
-    const now = Date.now();
-    const current = this.counts.get(key);
-
-    if (!current || current.resetAt <= now) {
-      this.counts.set(key, { count: 1, resetAt: now + windowMs });
-      return { allowed: true, retryAfterSeconds: 0 };
-    }
-
-    if (current.count >= limit) {
-      return {
-        allowed: false,
-        retryAfterSeconds: Math.max(1, Math.ceil((current.resetAt - now) / 1000))
-      };
-    }
-
-    current.count += 1;
-    this.counts.set(key, current);
-    return { allowed: true, retryAfterSeconds: 0 };
-  }
-}
-
-const tokenRateLimiter = new FixedWindowRateLimiter();
 
 function toAgentResponse(agent: EnrolledAgentRecord) {
   return {
@@ -127,6 +103,20 @@ export async function registerAgentRoutes(app: FastifyInstance, opts: AgentRoute
         }
 
         const result = await enrollAgent(opts.db, user.workspaceId, req.body.agent_id, req.body.display_name);
+        await logAudit(opts.db, {
+          event: "agent_enrolled",
+          workspaceId: user.workspaceId,
+          actorId: user.sub,
+          actorType: "user",
+          resourceId: result.agent.agentId,
+          metadata: {
+            agent_id: result.agent.agentId,
+            display_name: result.agent.displayName
+          },
+          action: "agent_enroll",
+          ip: req.ip
+        });
+
         return reply.code(201).send({
           agent: toAgentResponse(result.agent),
           bootstrap_api_key: result.apiKey
@@ -148,14 +138,11 @@ export async function registerAgentRoutes(app: FastifyInstance, opts: AgentRoute
   });
 
   app.post("/token", async (req, reply) => {
-    const rateLimitKey = req.ip || "unknown";
-    const rateLimit = tokenRateLimiter.consume(rateLimitKey, 5, 60_000);
-    if (!rateLimit.allowed) {
-      return reply.code(429).send({
-        error: "Too many token requests",
-        code: "rate_limited",
-        retry_after_seconds: rateLimit.retryAfterSeconds
-      });
+    if (opts.rateLimitService) {
+      const rateLimit = await opts.rateLimitService.consume(rateLimitKeyByIp(req, "agents:token"), 5, 60_000);
+      if (!rateLimit.allowed) {
+        return sendRateLimited(reply, rateLimit, "Too many token requests");
+      }
     }
 
     const apiKey = agentApiKeyFromRequest(req.headers as Record<string, unknown>);
@@ -199,6 +186,19 @@ export async function registerAgentRoutes(app: FastifyInstance, opts: AgentRoute
       try {
         await ensureWorkspaceOwnerVerified(opts.db, user.workspaceId);
         const result = await rotateAgentApiKey(opts.db, user.workspaceId, req.params.aid);
+        await logAudit(opts.db, {
+          event: "agent_api_key_rotated",
+          workspaceId: user.workspaceId,
+          actorId: user.sub,
+          actorType: "user",
+          resourceId: result.agent.agentId,
+          metadata: {
+            agent_id: result.agent.agentId
+          },
+          action: "agent_rotate_api_key",
+          ip: req.ip
+        });
+
         return reply.send({
           agent: toAgentResponse(result.agent),
           bootstrap_api_key: result.apiKey
@@ -232,6 +232,19 @@ export async function registerAgentRoutes(app: FastifyInstance, opts: AgentRoute
       try {
         await ensureWorkspaceOwnerVerified(opts.db, user.workspaceId);
         const agent = await revokeAgent(opts.db, user.workspaceId, req.params.aid);
+        await logAudit(opts.db, {
+          event: "agent_revoked",
+          workspaceId: user.workspaceId,
+          actorId: user.sub,
+          actorType: "user",
+          resourceId: agent.agentId,
+          metadata: {
+            agent_id: agent.agentId
+          },
+          action: "agent_revoke",
+          ip: req.ip
+        });
+
         return reply.send({ agent: toAgentResponse(agent) });
       } catch (error) {
         return sendServiceError(reply, error);

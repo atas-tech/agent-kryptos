@@ -128,7 +128,14 @@ describePg("database foundation", () => {
       const firstRun = await runMigrations(pool, { migrationsDir });
       const secondRun = await runMigrations(pool, { migrationsDir });
 
-      expect(firstRun).toEqual(["001_workspaces.sql", "002_users.sql", "003_user_sessions.sql", "004_agents.sql", "005_billing.sql"]);
+      expect(firstRun).toEqual([
+        "001_workspaces.sql",
+        "002_users.sql",
+        "003_user_sessions.sql",
+        "004_agents.sql",
+        "005_billing.sql",
+        "006_audit_log.sql"
+      ]);
       expect(secondRun).toEqual([]);
 
       const table = await pool.query<{ regclass: string | null }>("SELECT to_regclass('workspaces') AS regclass");

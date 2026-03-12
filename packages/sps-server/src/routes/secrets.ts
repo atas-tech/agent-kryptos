@@ -138,7 +138,7 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
       const sigs = generateScopedSigs(requestId, expiresAt, opts.hmacSecret);
       const secretUrl = `${uiBaseUrl}/?id=${requestId}&metadata_sig=${encodeURIComponent(sigs.metadataSig)}&submit_sig=${encodeURIComponent(sigs.submitSig)}`;
 
-      logAudit({
+      await logAudit(opts.db, {
         event: "request_created",
         requestId,
         agentId: payload.sub,
@@ -230,7 +230,7 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
         return reply.code(410).send({ error: "Request expired" });
       }
 
-      logAudit({
+      await logAudit(opts.db, {
         event: "secret_submitted",
         requestId: req.params.id,
         action: "submit",
@@ -276,7 +276,7 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
         return reply.code(410).send({ error: "Not available" });
       }
 
-      logAudit({
+      await logAudit(opts.db, {
         event: "secret_retrieved",
         requestId: req.params.id,
         agentId: payload.sub,
@@ -340,7 +340,7 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
         return reply.code(410).send({ error: "Not available" });
       }
 
-      logAudit({
+      await logAudit(opts.db, {
         event: "request_revoked",
         requestId: req.params.id,
         agentId: payload.sub,

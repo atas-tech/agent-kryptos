@@ -616,9 +616,9 @@ This keeps the wire contract stable while tightening the trust model later.
 - [x] Rotation / re-request lineage linking refreshed exchanges for the same logical secret
 
 ### Phase 3A: Hosted Managed Platform
-- Current implementation snapshot as of `2026-03-12`: Milestones 1-5 are complete in `packages/sps-server`; the next active slice is Milestone 6 (abuse controls and audit persistence)
-- Implemented so far in code: PostgreSQL-backed workspaces/users/sessions/enrolled agents, user JWT auth, workspace-scoped SPS identity, hosted agent bootstrap API keys and hosted JWT minting, workspace member management, workspace-local RBAC, Stripe checkout/webhook billing state, and free-vs-standard quota enforcement
-- Still pending in Phase 3A: production hosted deployment/domain cutover, broader abuse controls, richer onboarding/discovery, audit persistence/query surfaces, analytics, and other hosted operations work
+- Current implementation snapshot as of `2026-03-12`: Milestones 1-6 are complete in `packages/sps-server`; the next remaining Phase 3A work is follow-on hosted operations rather than another numbered core slice
+- Implemented so far in code: PostgreSQL-backed workspaces/users/sessions/enrolled agents, user JWT auth, workspace-scoped SPS identity, hosted agent bootstrap API keys and hosted JWT minting, workspace member management, workspace-local RBAC, Stripe checkout/webhook billing state, free-vs-standard quota enforcement, per-IP auth/token rate limiting, and workspace-scoped PostgreSQL audit persistence/query routes with retention cleanup
+- Still pending in Phase 3A: production hosted deployment/domain cutover, more advanced signup/challenge abuse controls, richer onboarding/discovery, analytics, and other hosted operations work
 - [ ] Hosted deployment: UI at `https://secret.atas.tech/`, API at `https://sps.atas.tech/`, and gateway/browser allowlists updated to those hosted domains
 - [x] Phase 3A is the first pooled hosted SaaS phase: multiple customer workspaces share one control plane, but each workspace/org is the tenant boundary for identity, policy, audit visibility, quotas, and billing
 - [x] Mandatory hosted identity contract: every authenticated human and agent request carries a workspace-scoped identity (`workspace_id` plus stable `sub` / role claims), and SPS resolves policy, audit, and ownership on `(workspace_id, subject)` rather than global IDs alone
@@ -632,7 +632,7 @@ This keeps the wire contract stable while tightening the trust model later.
 - [x] Traditional billing: Stripe subscriptions and subscription tiers
 - [ ] Automatic workspace activation or upgrade after verified human payment settlement
 - [ ] Hosted analytics and dashboards are metadata-minimized: aggregate request counts, exchange metrics, workspace activity, error rates, abuse signals, and billing usage only; no secret plaintext, no ciphertext inspection, and defined retention/redaction rules for secret names and user activity
-- [~] Basic hosted-service protections: rate limits, signup abuse controls, auth hardening, customer-visible audit trails, and internal operator controls with least-privilege access
+- [~] Basic hosted-service protections: rate limits and customer-visible audit trails are implemented; stronger signup abuse controls, challenge gates, and internal operator tooling are still pending
 - [ ] Agent-specific signup protections: strict trial quotas, runtime/manifest metadata validation, risk scoring, quarantine/manual review for suspicious signups, and no cross-workspace A2A for trial agents
 
 ### Phase 3B: Billing, SDKs & Community

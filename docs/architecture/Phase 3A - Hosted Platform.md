@@ -20,7 +20,8 @@ Build the first hosted SaaS layer on top of the existing SPS core. Multiple cust
 - `2026-03-12`: Milestone 3 implemented with hosted-mode `workspace_id` enforcement for agent JWTs, workspace-scoped secret/exchange ownership checks, fulfillment token workspace binding, workspace-aware approval hashing, and hosted/local regression coverage in route tests
 - `2026-03-12`: Milestone 4 implemented with the `enrolled_agents` migration, hosted agent bootstrap API key enrollment and JWT minting routes, workspace member management, shared RBAC helpers, owner-verification gating for higher-risk hosted actions, and PostgreSQL integration coverage in `tests/agents-routes.test.ts`
 - `2026-03-12`: Milestone 5 implemented with the `005_billing.sql` workspace billing state migration, Stripe-backed checkout/webhook routes, mocked Stripe integration coverage in `tests/billing.test.ts`, and free-vs-standard quota enforcement for secret requests, enrolled agents, workspace members, and exchange availability
-- Remaining work starts at Milestone 6: abuse controls and audit persistence
+- `2026-03-12`: Milestone 6 implemented with reusable per-IP rate limiting for register/login/hosted token minting, durable PostgreSQL-backed audit persistence and query routes, scheduled audit retention cleanup, and PostgreSQL integration coverage in `tests/rate-limit.test.ts`
+- The 6 planned Phase 3A core milestones are now complete; remaining follow-on work is hosted deployment/domain cutover, richer onboarding, analytics, and later operational hardening
 
 ---
 
@@ -446,7 +447,7 @@ Rate limiting, signup protections, and free-tier feature restrictions.
 
 - Per-IP rate limiting for auth endpoints (10 req/min for login, 3 req/min for register)
 - Aggressive per-IP rate limiting for `POST /api/v2/agents/token` (for example 5 req/min) because it mints hosted JWTs from bootstrap credentials
-- Per-workspace rate limiting for SPS operations (based on tier quotas)
+- Per-workspace hosted usage caps continue to be enforced through the quota service from Milestone 5
 - Uses Redis `INCR` with key TTL
 - Best-effort only in MVP; not a durable billing ledger
 
@@ -603,12 +604,13 @@ npm test --workspace=packages/sps-server
 #### Milestone 6: `rate-limit.test.ts`
 - 11th login attempt in 1 minute → `429`
 - 4th register attempt in 1 minute → `429`
-- Per-workspace quota resets after TTL
-- Audit endpoint returns only caller workspace records
+- 6th `POST /api/v2/agents/token` attempt in 1 minute → `429`
+- Audit endpoint returns only caller workspace records and excludes bootstrap keys / ciphertext
+- Exchange audit endpoint returns only caller-workspace lifecycle records
 - Application-level audit retention cleanup removes expired records on schedule
 
 > [!NOTE]
-> Tests that need PostgreSQL will use a test database or in-memory mock. Tests that need Stripe will mock the Stripe SDK. The existing test suite (7 test files) must continue to pass unchanged.
+> Tests that need PostgreSQL use an isolated schema under the configured test database, and Stripe paths continue to use a mocked SDK.
 
 ### Manual Verification
 

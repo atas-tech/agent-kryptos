@@ -5,12 +5,15 @@ import type { Pool } from "pg";
 import { createDbPool } from "./db/index.js";
 import { runMigrations } from "./db/migrate.js";
 import { registerAgentRoutes } from "./routes/agents.js";
+import { registerAuditRoutes } from "./routes/audit.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerBillingRoutes } from "./routes/billing.js";
 import { registerExchangeRoutes } from "./routes/exchange.js";
 import { registerMemberRoutes } from "./routes/members.js";
 import { registerSecretRoutes } from "./routes/secrets.js";
 import { registerWorkspaceRoutes } from "./routes/workspace.js";
+import { InMemoryRateLimitService, RedisRateLimitService, type RateLimitService } from "./middleware/rate-limit.js";
+import { cleanupExpiredAuditRecords } from "./services/audit.js";
 import type { StripeClientLike } from "./services/billing.js";
 import { ExchangePolicyEngine, type ExchangePolicyRule, type SecretRegistryEntry } from "./services/policy.js";
 import { InMemoryQuotaService, RedisQuotaService, type QuotaService } from "./services/quota.js";
@@ -19,6 +22,7 @@ import type { RequestStore } from "./types.js";
 export interface BuildAppOptions {
   store?: RequestStore;
   quotaService?: QuotaService;
+  rateLimitService?: RateLimitService;
   stripeClient?: StripeClientLike;
   db?: Pool | null;
   hmacSecret?: string;
@@ -65,6 +69,24 @@ function trustProxyFromEnv(): boolean {
   return raw === "1" || raw === "true" || raw === "yes";
 }
 
+function auditRetentionDaysFromEnv(): number {
+  const raw = Number(process.env.SPS_AUDIT_RETENTION_DAYS ?? 30);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return 30;
+  }
+
+  return Math.floor(raw);
+}
+
+function auditCleanupIntervalMsFromEnv(): number {
+  const raw = Number(process.env.SPS_AUDIT_CLEANUP_INTERVAL_MS ?? 24 * 60 * 60 * 1000);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return 24 * 60 * 60 * 1000;
+  }
+
+  return Math.floor(raw);
+}
+
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   if (options.db && options.runMigrations) {
     await runMigrations(options.db);
@@ -100,15 +122,18 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   let store = options.store;
   let quotaService = options.quotaService;
+  let rateLimitService = options.rateLimitService;
   if (!store) {
     if (shouldUseInMemoryStore || process.env.NODE_ENV === "test") {
       store = new InMemoryRequestStore();
       quotaService ??= new InMemoryQuotaService();
+      rateLimitService ??= new InMemoryRateLimitService();
     } else {
       const client = createRedisClient();
       await client.connect();
       store = new RedisRequestStore(client);
       quotaService ??= new RedisQuotaService(client);
+      rateLimitService ??= new RedisRateLimitService(client);
       app.addHook("onClose", async () => {
         await client.quit();
       });
@@ -116,6 +141,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   }
 
   quotaService ??= new InMemoryQuotaService();
+  rateLimitService ??= new InMemoryRateLimitService();
 
   const policyEngine = new ExchangePolicyEngine(
     options.secretRegistry ?? secretRegistryFromEnv(),
@@ -154,8 +180,15 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   }, { prefix: "/api/v2/secret/exchange" });
 
   if (options.db) {
+    await app.register(async (auditRoutesApp) => {
+      await registerAuditRoutes(auditRoutesApp, { db: options.db! });
+    }, { prefix: "/api/v2/audit" });
+
     await app.register(async (authRoutesApp) => {
-      await registerAuthRoutes(authRoutesApp, { db: options.db! });
+      await registerAuthRoutes(authRoutesApp, {
+        db: options.db!,
+        rateLimitService
+      });
     }, { prefix: "/api/v2/auth" });
 
     await app.register(async (workspaceRoutesApp) => {
@@ -163,7 +196,10 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     }, { prefix: "/api/v2/workspace" });
 
     await app.register(async (agentRoutesApp) => {
-      await registerAgentRoutes(agentRoutesApp, { db: options.db! });
+      await registerAgentRoutes(agentRoutesApp, {
+        db: options.db!,
+        rateLimitService
+      });
     }, { prefix: "/api/v2/agents" });
 
     await app.register(async (memberRoutesApp) => {
@@ -176,6 +212,19 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
         stripeClient: options.stripeClient
       });
     }, { prefix: "/api/v2" });
+
+    const intervalMs = auditCleanupIntervalMsFromEnv();
+    const retentionDays = auditRetentionDaysFromEnv();
+    const cleanupTimer = setInterval(() => {
+      void cleanupExpiredAuditRecords(options.db!, { retentionDays }).catch((error) => {
+        app.log.error({ err: error }, "failed to clean up expired audit records");
+      });
+    }, intervalMs);
+    cleanupTimer.unref();
+
+    app.addHook("onClose", async () => {
+      clearInterval(cleanupTimer);
+    });
   }
 
   app.get("/healthz", async () => ({ ok: true }));

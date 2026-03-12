@@ -15,6 +15,7 @@ Phase 3A E2E coverage is PostgreSQL-backed and is skipped unless `DATABASE_URL` 
 
 Useful companion commands:
 - `npm run test:db --workspace=packages/sps-server`
+- `npm run test:rate-limit --workspace=packages/sps-server`
 - `npm test --workspace=packages/sps-server`
 
 ## Milestone 1-3: Foundation & Core Identity
@@ -77,13 +78,18 @@ Useful companion commands:
 
 ## Milestone 6: Abuse Controls & Hardening
 
-- [ ] **Rate Limiting**
-    - [ ] Auth endpoints: Send >10 login attempts in 1 minute from the same IP (should fail with `429`).
-    - [ ] Token generation: Send >5 `POST /api/v2/agents/token` requests in 1 minute (should fail with `429`).
-    - [ ] Verify `Retry-After` headers are present and correct.
+- [x] **Rate Limiting**
+    - [x] Auth endpoints: Send >10 login attempts in 1 minute from the same IP (should fail with `429`).
+    - [x] Register endpoint: Send >3 signup attempts in 1 minute from the same IP (should fail with `429`).
+    - [x] Token generation: Send >5 `POST /api/v2/agents/token` requests in 1 minute (should fail with `429`).
+    - [x] Verify `Retry-After` headers are present and correct.
 
-- [ ] **Audit Logging (Workspace Scoped)**
-    - [ ] Perform various actions (enroll agent, read secret, change member role).
-    - [ ] Operator calls `GET /api/v2/audit`. Verify all actions are logged accurately.
-    - [ ] Verify audit records do not contain plaintext secrets or raw tokens.
-    - [ ] Workspace A attempts to read Workspace B's audit logs (should fail or return empty).
+- [x] **Audit Logging (Workspace Scoped)**
+    - [x] Perform various actions (enroll agent, read secret, change member role).
+    - [x] Operator calls `GET /api/v2/audit`. Verify all actions are logged accurately.
+    - [x] Verify audit records do not contain bootstrap API keys, temporary passwords, or ciphertext payloads.
+    - [x] Workspace A attempts to read Workspace B's audit logs (returns no cross-workspace records).
+    - [x] `GET /api/v2/audit/exchange/:id` returns only the caller workspace exchange lifecycle records.
+    - [x] Retention cleanup removes expired audit rows on schedule.
+
+- [x] Covered by PostgreSQL integration tests in `tests/rate-limit.test.ts`
