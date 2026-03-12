@@ -1,8 +1,10 @@
 import type { FastifyInstance, FastifyPluginOptions, FastifyReply } from "fastify";
 import type { Pool } from "pg";
 import { requireUserRole } from "../middleware/auth.js";
+import { activeMemberLimit } from "../services/quota.js";
 import { isUserRole } from "../services/rbac.js";
 import {
+  countActiveWorkspaceUsers,
   createWorkspaceMember,
   ensureWorkspaceOwnerVerified,
   listWorkspaceUsers,
@@ -10,6 +12,7 @@ import {
   UserServiceError,
   type UserRecord
 } from "../services/user.js";
+import { getWorkspace } from "../services/workspace.js";
 
 export interface MemberRoutesOptions extends FastifyPluginOptions {
   db: Pool;
@@ -79,6 +82,22 @@ export async function registerMemberRoutes(app: FastifyInstance, opts: MemberRou
 
       try {
         await ensureWorkspaceOwnerVerified(opts.db, user.workspaceId);
+        const workspace = await getWorkspace(opts.db, user.workspaceId, { activeOnly: true });
+        if (!workspace) {
+          return reply.code(404).send({ error: "Workspace not found", code: "workspace_not_found" });
+        }
+
+        const activeUsers = await countActiveWorkspaceUsers(opts.db, user.workspaceId);
+        const limit = activeMemberLimit(workspace.tier);
+        if (activeUsers >= limit) {
+          return reply.code(429).send({
+            error: "Member quota exceeded",
+            code: "quota_exceeded",
+            limit,
+            used: activeUsers
+          });
+        }
+
         const member = await createWorkspaceMember(opts.db, user.workspaceId, {
           email: req.body.email,
           temporaryPassword: req.body.temporary_password,

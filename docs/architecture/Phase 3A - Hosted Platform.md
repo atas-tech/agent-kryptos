@@ -19,7 +19,8 @@ Build the first hosted SaaS layer on top of the existing SPS core. Multiple cust
 - `2026-03-12`: Milestone 2 auth foundation implemented with `users` + `user_sessions` migrations, user/session service, auth routes (`register`, `login`, `refresh`, `logout`, `change-password`, `verify-email`, `me`), and coverage in `tests/auth-routes.test.ts`
 - `2026-03-12`: Milestone 3 implemented with hosted-mode `workspace_id` enforcement for agent JWTs, workspace-scoped secret/exchange ownership checks, fulfillment token workspace binding, workspace-aware approval hashing, and hosted/local regression coverage in route tests
 - `2026-03-12`: Milestone 4 implemented with the `enrolled_agents` migration, hosted agent bootstrap API key enrollment and JWT minting routes, workspace member management, shared RBAC helpers, owner-verification gating for higher-risk hosted actions, and PostgreSQL integration coverage in `tests/agents-routes.test.ts`
-- Remaining work starts at Milestone 5: billing and Stripe integration
+- `2026-03-12`: Milestone 5 implemented with the `005_billing.sql` workspace billing state migration, Stripe-backed checkout/webhook routes, mocked Stripe integration coverage in `tests/billing.test.ts`, and free-vs-standard quota enforcement for secret requests, enrolled agents, workspace members, and exchange availability
+- Remaining work starts at Milestone 6: abuse controls and audit persistence
 
 ---
 
@@ -597,6 +598,7 @@ npm test --workspace=packages/sps-server
 - Webhook `customer.subscription.deleted` → tier downgraded
 - Duplicate Stripe customer/subscription IDs across workspaces are rejected by DB constraints
 - Quota enforcement: 11th request on free tier → `429`
+- Quota enforcement: 6th active enrolled agent on free tier → `429`
 
 #### Milestone 6: `rate-limit.test.ts`
 - 11th login attempt in 1 minute → `429`

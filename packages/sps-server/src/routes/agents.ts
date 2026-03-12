@@ -4,6 +4,7 @@ import { requireUserRole } from "../middleware/auth.js";
 import {
   authenticateAgentApiKey,
   AgentServiceError,
+  countActiveAgents,
   enrollAgent,
   listAgents,
   mintAgentAccessToken,
@@ -11,7 +12,9 @@ import {
   rotateAgentApiKey,
   type EnrolledAgentRecord
 } from "../services/agent.js";
+import { activeAgentLimit } from "../services/quota.js";
 import { ensureWorkspaceOwnerVerified, UserServiceError } from "../services/user.js";
+import { getWorkspace } from "../services/workspace.js";
 
 const AGENT_ID_PATTERN = "^[A-Za-z0-9._:@-]{1,160}$";
 
@@ -107,6 +110,22 @@ export async function registerAgentRoutes(app: FastifyInstance, opts: AgentRoute
 
       try {
         await ensureWorkspaceOwnerVerified(opts.db, user.workspaceId);
+        const workspace = await getWorkspace(opts.db, user.workspaceId, { activeOnly: true });
+        if (!workspace) {
+          return reply.code(404).send({ error: "Workspace not found", code: "workspace_not_found" });
+        }
+
+        const activeAgents = await countActiveAgents(opts.db, user.workspaceId);
+        const limit = activeAgentLimit(workspace.tier);
+        if (activeAgents >= limit) {
+          return reply.code(429).send({
+            error: "Agent quota exceeded",
+            code: "quota_exceeded",
+            limit,
+            used: activeAgents
+          });
+        }
+
         const result = await enrollAgent(opts.db, user.workspaceId, req.body.agent_id, req.body.display_name);
         return reply.code(201).send({
           agent: toAgentResponse(result.agent),

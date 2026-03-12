@@ -1,7 +1,10 @@
 import type { FastifyInstance, FastifyPluginOptions } from "fastify";
+import type { Pool } from "pg";
 import { generateConfirmationCode, generateRequestId, generateScopedSigs } from "../services/crypto.js";
 import { requireBrowserSig, requireGatewayAuth } from "../middleware/auth.js";
 import { logAudit } from "../services/audit.js";
+import type { QuotaService } from "../services/quota.js";
+import { getWorkspace } from "../services/workspace.js";
 import type { RequestStore } from "../types.js";
 
 const REQUEST_ID_PATTERN = "^[a-f0-9]{64}$";
@@ -32,6 +35,8 @@ export interface SecretRoutesOptions extends FastifyPluginOptions {
   requestTtlSeconds?: number;
   submittedTtlSeconds?: number;
   uiBaseUrl?: string;
+  db?: Pool | null;
+  quotaService?: QuotaService;
 }
 
 function nowSeconds(): number {
@@ -90,6 +95,24 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
 
       if (!req.body.description.trim()) {
         return reply.code(400).send({ error: "description must not be blank" });
+      }
+
+      if (opts.db && opts.quotaService && payload.workspaceId) {
+        const workspace = await getWorkspace(opts.db, payload.workspaceId, { activeOnly: true });
+        if (!workspace) {
+          return reply.code(404).send({ error: "Workspace not found", code: "workspace_not_found" });
+        }
+
+        const quota = await opts.quotaService.consumeDailyQuota(payload.workspaceId, "secret_request", workspace.tier);
+        if (!quota.allowed) {
+          return reply.code(429).send({
+            error: "Secret request quota exceeded",
+            code: "quota_exceeded",
+            limit: quota.limit,
+            used: quota.used,
+            reset_at: quota.resetAt
+          });
+        }
       }
 
       const requestId = generateRequestId();

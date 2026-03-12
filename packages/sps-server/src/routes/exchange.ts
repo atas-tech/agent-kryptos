@@ -1,6 +1,10 @@
 import type { FastifyInstance, FastifyPluginOptions, FastifyReply } from "fastify";
+import type { Pool } from "pg";
 import { requireAdminAgentAuth, requireAgentAuth } from "../middleware/auth.js";
 import { generateRequestId, signFulfillmentToken, verifyFulfillmentToken } from "../services/crypto.js";
+import type { QuotaService } from "../services/quota.js";
+import { exchangeAllowed } from "../services/quota.js";
+import { getWorkspace } from "../services/workspace.js";
 import {
   approvalMatches,
   buildApprovalReference,
@@ -182,6 +186,8 @@ export interface ExchangeRoutesOptions extends FastifyPluginOptions {
   store: RequestStore;
   hmacSecret: string;
   policyEngine: ExchangePolicyEngine;
+  db?: Pool | null;
+  quotaService?: QuotaService;
   requestTtlSeconds?: number;
   submittedTtlSeconds?: number;
   revokedTtlSeconds?: number;
@@ -358,6 +364,30 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
       }
       if (priorExchangeId && !(await validatePriorExchange(opts.store, priorExchangeId, agent.sub, secretName, agent.workspaceId ?? undefined))) {
         return reply.code(409).send({ error: "prior_exchange_id does not match requester or secret_name" });
+      }
+
+      if (opts.db && agent.workspaceId) {
+        const workspace = await getWorkspace(opts.db, agent.workspaceId, { activeOnly: true });
+        if (!workspace) {
+          return reply.code(404).send({ error: "Workspace not found", code: "workspace_not_found" });
+        }
+
+        if (!exchangeAllowed(workspace.tier)) {
+          return reply.code(403).send({ error: "Exchange is not available on the free tier", code: "feature_not_available" });
+        }
+
+        if (opts.quotaService) {
+          const quota = await opts.quotaService.consumeDailyQuota(agent.workspaceId, "exchange_request", workspace.tier);
+          if (!quota.allowed) {
+            return reply.code(429).send({
+              error: "Exchange request quota exceeded",
+              code: "quota_exceeded",
+              limit: quota.limit,
+              used: quota.used,
+              reset_at: quota.resetAt
+            });
+          }
+        }
       }
 
       const resolvedPolicy = await resolveDecision(

@@ -201,6 +201,20 @@ export async function listAgents(db: Pool, workspaceId: string): Promise<Enrolle
   return result.rows.map(toAgentRecord);
 }
 
+export async function countActiveAgents(db: Pool, workspaceId: string): Promise<number> {
+  const result = await db.query<{ count: string }>(
+    `
+      SELECT COUNT(*)::text AS count
+      FROM enrolled_agents
+      WHERE workspace_id = $1
+        AND status = 'active'
+    `,
+    [workspaceId]
+  );
+
+  return Number(result.rows[0]?.count ?? "0");
+}
+
 export async function rotateAgentApiKey(
   db: Pool,
   workspaceId: string,

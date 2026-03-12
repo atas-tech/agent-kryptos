@@ -54,26 +54,26 @@ Useful companion commands:
 
 ## Milestone 5: Billing & Stripe Integration
 
-- [ ] **Subscription Upgrade Flow**
-    - [ ] Workspace admin creates a Stripe Checkout session.
-    - [ ] Simulate successful payment via Stripe webhook (`checkout.session.completed`).
-    - [ ] Verify workspace tier is upgraded to `standard` and subscription status is `active`.
+- [x] **Subscription Upgrade Flow**
+    - [x] Workspace admin creates a Stripe Checkout session.
+    - [x] Simulate successful payment via Stripe webhook (`checkout.session.completed`).
+    - [x] Verify workspace tier is upgraded to `standard` and subscription status is `active`.
 
-- [ ] **Subscription Downgrade & Cancellation**
-    - [ ] Simulate subscription deletion via Stripe webhook (`customer.subscription.deleted`).
-    - [ ] Verify workspace tier reverts to `free` and subscription status is `canceled`.
-    - [ ] Verify features restricted to `standard` tier (e.g., A2A exchange) are now blocked for the workspace.
+- [x] **Subscription Downgrade & Cancellation**
+    - [x] Simulate subscription deletion via Stripe webhook (`customer.subscription.deleted`).
+    - [x] Verify workspace tier reverts to `free` and subscription status is `canceled`.
+    - [x] Verify features restricted to `standard` tier (A2A exchange) are blocked again after downgrade.
 
-- [ ] **Quota Enforcement (Free Tier)**
-    - [ ] Send 10 secret requests (success).
-    - [ ] Send 11th secret request (should fail with `429 Too Many Requests`).
-    - [ ] Enroll 5 agents (success).
-    - [ ] Attempt to enroll 6th agent (should fail with quota exceeded error).
+- [x] **Quota Enforcement (Free Tier)**
+    - [x] Send 10 secret requests (success).
+    - [x] Send 11th secret request (should fail with `429 Too Many Requests`).
+    - [x] Enroll 5 agents (success).
+    - [x] Attempt to enroll 6th agent (should fail with quota exceeded error).
 
-- [ ] **Webhook Security**
-    - [ ] Send a mutated or unsigned webhook payload.
-    - [ ] Verify the server rejects the payload with `401/403` (Invalid Signature).
-    - [ ] Send a replay attack webhook (if Stripe SDK handles it) and verify rejection.
+- [x] **Webhook Security**
+    - [x] Send an invalidly signed webhook payload.
+    - [x] Verify the server rejects the payload with `400` (`invalid_stripe_signature`).
+    - [x] Verify duplicate Stripe customer/subscription identifiers across workspaces are rejected.
 
 ## Milestone 6: Abuse Controls & Hardening
 

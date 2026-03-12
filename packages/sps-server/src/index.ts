@@ -6,15 +6,20 @@ import { createDbPool } from "./db/index.js";
 import { runMigrations } from "./db/migrate.js";
 import { registerAgentRoutes } from "./routes/agents.js";
 import { registerAuthRoutes } from "./routes/auth.js";
+import { registerBillingRoutes } from "./routes/billing.js";
 import { registerExchangeRoutes } from "./routes/exchange.js";
 import { registerMemberRoutes } from "./routes/members.js";
 import { registerSecretRoutes } from "./routes/secrets.js";
 import { registerWorkspaceRoutes } from "./routes/workspace.js";
+import type { StripeClientLike } from "./services/billing.js";
 import { ExchangePolicyEngine, type ExchangePolicyRule, type SecretRegistryEntry } from "./services/policy.js";
+import { InMemoryQuotaService, RedisQuotaService, type QuotaService } from "./services/quota.js";
 import { InMemoryRequestStore, RedisRequestStore, createRedisClient } from "./services/redis.js";
 import type { RequestStore } from "./types.js";
 export interface BuildAppOptions {
   store?: RequestStore;
+  quotaService?: QuotaService;
+  stripeClient?: StripeClientLike;
   db?: Pool | null;
   hmacSecret?: string;
   baseUrl?: string;
@@ -94,18 +99,23 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   }
 
   let store = options.store;
+  let quotaService = options.quotaService;
   if (!store) {
     if (shouldUseInMemoryStore || process.env.NODE_ENV === "test") {
       store = new InMemoryRequestStore();
+      quotaService ??= new InMemoryQuotaService();
     } else {
       const client = createRedisClient();
       await client.connect();
       store = new RedisRequestStore(client);
+      quotaService ??= new RedisQuotaService(client);
       app.addHook("onClose", async () => {
         await client.quit();
       });
     }
   }
+
+  quotaService ??= new InMemoryQuotaService();
 
   const policyEngine = new ExchangePolicyEngine(
     options.secretRegistry ?? secretRegistryFromEnv(),
@@ -121,6 +131,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(async (secretRoutesApp) => {
     await registerSecretRoutes(secretRoutesApp, {
       store,
+      db: options.db,
+      quotaService,
       hmacSecret,
       requestTtlSeconds: 180,
       submittedTtlSeconds: 60,
@@ -131,6 +143,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(async (exchangeRoutesApp) => {
     await registerExchangeRoutes(exchangeRoutesApp, {
       store,
+      db: options.db,
+      quotaService,
       hmacSecret,
       policyEngine,
       requestTtlSeconds: 180,
@@ -155,6 +169,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     await app.register(async (memberRoutesApp) => {
       await registerMemberRoutes(memberRoutesApp, { db: options.db! });
     }, { prefix: "/api/v2/members" });
+
+    await app.register(async (billingRoutesApp) => {
+      await registerBillingRoutes(billingRoutesApp, {
+        db: options.db!,
+        stripeClient: options.stripeClient
+      });
+    }, { prefix: "/api/v2" });
   }
 
   app.get("/healthz", async () => ({ ok: true }));

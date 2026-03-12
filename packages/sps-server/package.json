@@ -21,7 +21,8 @@
     "fastify": "^5.6.1",
     "ioredis": "^5.8.1",
     "jose": "^6.1.0",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "stripe": "^20.4.1"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

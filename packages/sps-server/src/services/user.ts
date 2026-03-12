@@ -809,6 +809,20 @@ export async function listWorkspaceUsers(db: Pool, workspaceId: string): Promise
   return result.rows.map(toUserRecord);
 }
 
+export async function countActiveWorkspaceUsers(db: Pool, workspaceId: string): Promise<number> {
+  const result = await db.query<{ count: string }>(
+    `
+      SELECT COUNT(*)::text AS count
+      FROM users
+      WHERE workspace_id = $1
+        AND status = 'active'
+    `,
+    [workspaceId]
+  );
+
+  return Number(result.rows[0]?.count ?? "0");
+}
+
 export async function getWorkspaceOwnerVerificationState(
   db: Pool,
   workspaceId: string
