@@ -9,6 +9,7 @@ describe("exchange routes", () => {
   const originalJwksUrl = process.env.SPS_GATEWAY_JWKS_URL;
   const originalJwksTtl = process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS;
   const originalProviders = process.env.SPS_AGENT_AUTH_PROVIDERS_JSON;
+  const originalHostedMode = process.env.SPS_HOSTED_MODE;
   let authFixture: GatewayAuthFixture;
 
   beforeEach(async () => {
@@ -18,6 +19,7 @@ describe("exchange routes", () => {
     process.env.SPS_GATEWAY_JWKS_URL = "";
     process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = "";
     process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = "";
+    process.env.SPS_HOSTED_MODE = "";
     __resetJwksCacheForTests();
   });
 
@@ -27,6 +29,7 @@ describe("exchange routes", () => {
     process.env.SPS_GATEWAY_JWKS_URL = originalJwksUrl;
     process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = originalJwksTtl;
     process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = originalProviders;
+    process.env.SPS_HOSTED_MODE = originalHostedMode;
     __resetJwksCacheForTests();
     await authFixture.cleanup();
   });
@@ -139,6 +142,68 @@ describe("exchange routes", () => {
       fulfilled_by: "agent:payment-bot"
     });
 
+    await app.close();
+  });
+
+  it("denies cross-workspace fulfillment in hosted mode", async () => {
+    process.env.SPS_HOSTED_MODE = "1";
+    const app = await buildApp({
+      useInMemoryStore: true,
+      hmacSecret: "test-hmac",
+      secretRegistry: [
+        {
+          secretName: "stripe.api_key.prod",
+          classification: "credential"
+        }
+      ],
+      exchangePolicyRules: [
+        {
+          ruleId: "stripe-prod",
+          secretName: "stripe.api_key.prod",
+          requesterIds: ["agent:crm-bot"],
+          fulfillerIds: ["agent:payment-bot"]
+        }
+      ]
+    });
+
+    const requesterJwt = await authFixture.issueToken({
+      agentId: "agent:crm-bot",
+      claims: { role: "gateway", workspace_id: "ws-alpha" }
+    });
+    const fulfillerJwt = await authFixture.issueToken({
+      agentId: "agent:payment-bot",
+      claims: { role: "gateway", workspace_id: "ws-beta" }
+    });
+
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/v2/secret/exchange/request",
+      headers: {
+        authorization: `Bearer ${requesterJwt}`
+      },
+      payload: {
+        public_key: "cHVibGlj",
+        secret_name: "stripe.api_key.prod",
+        purpose: "charge-order",
+        fulfiller_hint: "agent:payment-bot"
+      }
+    });
+
+    expect(createRes.statusCode).toBe(201);
+    const created = createRes.json() as { fulfillment_token: string };
+
+    const fulfillRes = await app.inject({
+      method: "POST",
+      url: "/api/v2/secret/exchange/fulfill",
+      headers: {
+        authorization: `Bearer ${fulfillerJwt}`
+      },
+      payload: {
+        fulfillment_token: created.fulfillment_token
+      }
+    });
+
+    expect(fulfillRes.statusCode).toBe(410);
     await app.close();
   });
 

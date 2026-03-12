@@ -17,6 +17,8 @@ export type LifecycleEventType =
 
 export interface StoredRequest {
   requestId: string;
+  requesterId?: string;
+  workspaceId?: string;
   publicKey: string;
   description: string;
   confirmationCode: string;
@@ -41,6 +43,7 @@ export interface PolicyDecision {
 export interface StoredExchange {
   exchangeId: string;
   requesterId: string;
+  workspaceId?: string;
   requesterPublicKey: string;
   secretName: string;
   purpose: string;
@@ -61,6 +64,7 @@ export interface StoredExchange {
 export interface StoredApprovalRequest {
   approvalReference: string;
   requesterId: string;
+  workspaceId?: string;
   secretName: string;
   purpose: string;
   fulfillerHint: string;
@@ -83,6 +87,7 @@ export interface ExchangeLifecycleRecord {
   exchangeId?: string | null;
   approvalReference?: string | null;
   requesterId: string;
+  workspaceId?: string;
   secretName: string;
   purpose: string;
   fulfillerHint?: string | null;
@@ -99,8 +104,8 @@ export interface RequestStore {
   setRequest(data: StoredRequest, ttlSeconds: number): Promise<void>;
   getRequest(requestId: string): Promise<StoredRequest | null>;
   updateRequest(requestId: string, patch: Partial<StoredRequest>, ttlSeconds?: number): Promise<StoredRequest | null>;
-  atomicRetrieveAndDelete(requestId: string): Promise<StoredRequest | null>;
-  deleteRequest(requestId: string): Promise<boolean>;
+  atomicRetrieveAndDelete(requestId: string, requesterId?: string, workspaceId?: string): Promise<StoredRequest | null>;
+  deleteRequest(requestId: string, requesterId?: string, workspaceId?: string): Promise<boolean>;
   setExchange(data: StoredExchange, ttlSeconds: number): Promise<void>;
   getExchange(exchangeId: string): Promise<StoredExchange | null>;
   revokeExchange(exchangeId: string, ttlSeconds: number): Promise<StoredExchange | null>;
@@ -113,7 +118,7 @@ export interface RequestStore {
     expiresAt: number,
     ttlSeconds: number
   ): Promise<StoredExchange | null>;
-  atomicRetrieveExchange(exchangeId: string, requesterId: string): Promise<StoredExchange | null>;
+  atomicRetrieveExchange(exchangeId: string, requesterId: string, workspaceId?: string): Promise<StoredExchange | null>;
   setApprovalRequest(data: StoredApprovalRequest, ttlSeconds: number): Promise<void>;
   getApprovalRequest(approvalReference: string): Promise<StoredApprovalRequest | null>;
   updateApprovalRequest(

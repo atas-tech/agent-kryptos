@@ -38,6 +38,7 @@ describe("secret routes", () => {
   const originalAgentIssuers = process.env.SPS_AGENT_JWT_ISSUERS;
   const originalAgentAudiences = process.env.SPS_AGENT_JWT_AUDIENCES;
   const originalProviders = process.env.SPS_AGENT_AUTH_PROVIDERS_JSON;
+  const originalHostedMode = process.env.SPS_HOSTED_MODE;
   let authFixture: GatewayAuthFixture;
 
   beforeEach(async () => {
@@ -50,6 +51,7 @@ describe("secret routes", () => {
     process.env.SPS_AGENT_JWT_ISSUERS = "";
     process.env.SPS_AGENT_JWT_AUDIENCES = "";
     process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = "";
+    process.env.SPS_HOSTED_MODE = "";
     __resetJwksCacheForTests();
   });
 
@@ -62,6 +64,7 @@ describe("secret routes", () => {
     process.env.SPS_AGENT_JWT_ISSUERS = originalAgentIssuers;
     process.env.SPS_AGENT_JWT_AUDIENCES = originalAgentAudiences;
     process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = originalProviders;
+    process.env.SPS_HOSTED_MODE = originalHostedMode;
     __resetJwksCacheForTests();
     vi.restoreAllMocks();
     await authFixture.cleanup();
@@ -155,6 +158,79 @@ describe("secret routes", () => {
     });
 
     expect(response.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("requires workspace_id on workload JWTs in hosted mode", async () => {
+    process.env.SPS_HOSTED_MODE = "1";
+    const app = await buildApp({ useInMemoryStore: true, hmacSecret: "test-hmac" });
+    const jwt = await authFixture.issueToken({ agentId: "agent-hosted-missing" });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v2/secret/request",
+      headers: {
+        authorization: `Bearer ${jwt}`
+      },
+      payload: {
+        public_key: "cHVi",
+        description: "API key"
+      }
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ error: "workspace_id claim required in hosted mode" });
+    await app.close();
+  });
+
+  it("isolates secret retrieval by workspace in hosted mode", async () => {
+    process.env.SPS_HOSTED_MODE = "1";
+    const app = await buildApp({
+      useInMemoryStore: true,
+      hmacSecret: "test-hmac",
+      baseUrl: "http://localhost:3100"
+    });
+
+    const ownerJwt = await authFixture.issueToken({
+      agentId: "agent-shared-id",
+      claims: { role: "gateway", workspace_id: "ws-alpha" }
+    });
+    const otherWorkspaceJwt = await authFixture.issueToken({
+      agentId: "agent-shared-id",
+      claims: { role: "gateway", workspace_id: "ws-beta" }
+    });
+
+    const created = await createRequest(app, ownerJwt);
+    const submitSig = queryParam(created.secret_url, "submit_sig");
+
+    const submitRes = await app.inject({
+      method: "POST",
+      url: `/api/v2/secret/submit/${created.request_id}?sig=${encodeURIComponent(submitSig)}`,
+      payload: {
+        enc: "ZW5j",
+        ciphertext: "Y2lwaGVy"
+      }
+    });
+    expect(submitRes.statusCode).toBe(201);
+
+    const wrongWorkspaceRetrieve = await app.inject({
+      method: "GET",
+      url: `/api/v2/secret/retrieve/${created.request_id}`,
+      headers: {
+        authorization: `Bearer ${otherWorkspaceJwt}`
+      }
+    });
+    expect(wrongWorkspaceRetrieve.statusCode).toBe(410);
+
+    const ownerRetrieve = await app.inject({
+      method: "GET",
+      url: `/api/v2/secret/retrieve/${created.request_id}`,
+      headers: {
+        authorization: `Bearer ${ownerJwt}`
+      }
+    });
+    expect(ownerRetrieve.statusCode).toBe(200);
+
     await app.close();
   });
 

@@ -38,6 +38,30 @@ function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
 }
 
+function isHostedModeEnabled(): boolean {
+  const raw = process.env.SPS_HOSTED_MODE?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
+function requestOwnedByAgent(
+  request: { requesterId?: string; workspaceId?: string },
+  agent: { sub: string; workspaceId?: string | null }
+): boolean {
+  if (request.requesterId && request.requesterId !== agent.sub) {
+    return false;
+  }
+
+  if (isHostedModeEnabled()) {
+    return !!request.workspaceId && !!agent.workspaceId && request.workspaceId === agent.workspaceId;
+  }
+
+  if (request.workspaceId && agent.workspaceId && request.workspaceId !== agent.workspaceId) {
+    return false;
+  }
+
+  return true;
+}
+
 export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRoutesOptions): Promise<void> {
   const requestTtl = opts.requestTtlSeconds ?? 180;
   const submittedTtl = opts.submittedTtlSeconds ?? 60;
@@ -76,6 +100,8 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
       await opts.store.setRequest(
         {
           requestId,
+          requesterId: payload.sub,
+          workspaceId: payload.workspaceId ?? undefined,
           publicKey: req.body.public_key,
           description: req.body.description,
           confirmationCode,
@@ -93,6 +119,7 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
         event: "request_created",
         requestId,
         agentId: payload.sub,
+        workspaceId: payload.workspaceId ?? null,
         action: "request",
         ip: req.ip
       });
@@ -209,11 +236,19 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
         return reply.code(410).send({ error: "Not available" });
       }
 
+      if (!requestOwnedByAgent(current, payload)) {
+        return reply.code(410).send({ error: "Not available" });
+      }
+
       if (current.status !== "submitted") {
         return reply.code(409).send({ error: "Not submitted yet" });
       }
 
-      const retrieved = await opts.store.atomicRetrieveAndDelete(req.params.id);
+      const retrieved = await opts.store.atomicRetrieveAndDelete(
+        req.params.id,
+        current.requesterId ?? payload.sub,
+        current.workspaceId ?? payload.workspaceId ?? undefined
+      );
       if (!retrieved || !retrieved.enc || !retrieved.ciphertext) {
         return reply.code(410).send({ error: "Not available" });
       }
@@ -222,6 +257,7 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
         event: "secret_retrieved",
         requestId: req.params.id,
         agentId: payload.sub,
+        workspaceId: payload.workspaceId ?? null,
         action: "retrieve",
         ip: req.ip
       });
@@ -251,6 +287,10 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
         return reply.code(410).send({ status: "expired" });
       }
 
+      if (!requestOwnedByAgent(record, payload)) {
+        return reply.code(410).send({ status: "expired" });
+      }
+
       return reply.send({ status: record.status });
     }
   );
@@ -268,12 +308,20 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
         return;
       }
 
-      await opts.store.deleteRequest(req.params.id);
+      const deleted = await opts.store.deleteRequest(
+        req.params.id,
+        payload.sub,
+        payload.workspaceId ?? undefined
+      );
+      if (!deleted) {
+        return reply.code(410).send({ error: "Not available" });
+      }
 
       logAudit({
         event: "request_revoked",
         requestId: req.params.id,
         agentId: payload.sub,
+        workspaceId: payload.workspaceId ?? null,
         action: "revoke",
         ip: req.ip
       });

@@ -39,6 +39,26 @@ function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
 }
 
+function isHostedModeEnabled(): boolean {
+  const raw = process.env.SPS_HOSTED_MODE?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
+function workspaceMatches(
+  resourceWorkspaceId: string | undefined,
+  agentWorkspaceId: string | null | undefined
+): boolean {
+  if (isHostedModeEnabled()) {
+    return !!resourceWorkspaceId && !!agentWorkspaceId && resourceWorkspaceId === agentWorkspaceId;
+  }
+
+  if (resourceWorkspaceId && agentWorkspaceId && resourceWorkspaceId !== agentWorkspaceId) {
+    return false;
+  }
+
+  return true;
+}
+
 function toPolicyResponse(decision: PolicyDecision) {
   return {
     mode: decision.mode,
@@ -122,15 +142,25 @@ async function validatePriorExchange(
   store: RequestStore,
   priorExchangeId: string,
   requesterId: string,
-  secretName: string
+  secretName: string,
+  workspaceId?: string
 ): Promise<boolean> {
   const exchange = await store.getExchange(priorExchangeId);
   if (exchange) {
-    return exchange.requesterId === requesterId && exchange.secretName === secretName;
+    return (
+      exchange.requesterId === requesterId &&
+      exchange.secretName === secretName &&
+      workspaceMatches(exchange.workspaceId, workspaceId)
+    );
   }
 
   const lifecycle = await store.listLifecycleRecordsByExchange(priorExchangeId);
-  return lifecycle.some((record) => record.requesterId === requesterId && record.secretName === secretName);
+  return lifecycle.some(
+    (record) =>
+      record.requesterId === requesterId &&
+      record.secretName === secretName &&
+      workspaceMatches(record.workspaceId, workspaceId)
+  );
 }
 
 function notAvailable(reply: FastifyReply) {
@@ -166,9 +196,11 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
 
   async function resolveDecision(
     requesterId: string,
+    requesterWorkspaceId: string | undefined,
     secretName: string,
     purpose: string,
-    fulfillerHint: string
+    fulfillerHint: string,
+    fulfillerWorkspaceId?: string
   ): Promise<{
     decision: PolicyDecision;
     allowedFulfillerId: string | null;
@@ -176,9 +208,11 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
   } | null> {
     const evaluated = opts.policyEngine.evaluate({
       requesterId,
+      requesterWorkspaceId,
       secretName,
       purpose,
-      fulfillerHint
+      fulfillerHint,
+      fulfillerWorkspaceId
     });
     if (!evaluated) {
       return null;
@@ -193,6 +227,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
 
     const approvalReference = buildApprovalReference({
       requesterId,
+      workspaceId: requesterWorkspaceId,
       secretName,
       purpose,
       fulfillerHint,
@@ -201,7 +236,17 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
     const decision = attachApprovalReference(evaluated.decision, approvalReference);
     const approvalRecord = await opts.store.getApprovalRequest(approvalReference);
 
-    if (approvalRecord && approvalMatches(approvalRecord, { requesterId, secretName, purpose, fulfillerHint, ruleId: decision.ruleId })) {
+    if (
+      approvalRecord &&
+      approvalMatches(approvalRecord, {
+        requesterId,
+        workspaceId: requesterWorkspaceId,
+        secretName,
+        purpose,
+        fulfillerHint,
+        ruleId: decision.ruleId
+      })
+    ) {
       if (approvalRecord.status === "approved") {
         return {
           decision: promoteApprovedDecision(decision, approvalReference, approvalRecord.decidedBy),
@@ -222,6 +267,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
       createApprovalRequest({
         approvalReference,
         requesterId,
+        workspaceId: requesterWorkspaceId,
         secretName,
         purpose,
         fulfillerHint,
@@ -242,6 +288,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
       exchangeId: null,
       approvalReference,
       requesterId,
+      workspaceId: requesterWorkspaceId,
       secretName,
       purpose,
       fulfillerHint,
@@ -260,6 +307,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
     logAudit({
       event: "exchange_approval_requested",
       requesterId,
+      workspaceId: requesterWorkspaceId ?? null,
       fulfilledBy: fulfillerHint,
       secretName,
       policyRuleId: decision.ruleId,
@@ -308,15 +356,22 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
       if (!secretName || !purpose || !fulfillerHint) {
         return reply.code(400).send({ error: "secret_name, purpose, and fulfiller_hint must not be blank" });
       }
-      if (priorExchangeId && !(await validatePriorExchange(opts.store, priorExchangeId, agent.sub, secretName))) {
+      if (priorExchangeId && !(await validatePriorExchange(opts.store, priorExchangeId, agent.sub, secretName, agent.workspaceId ?? undefined))) {
         return reply.code(409).send({ error: "prior_exchange_id does not match requester or secret_name" });
       }
 
-      const resolvedPolicy = await resolveDecision(agent.sub, secretName, purpose, fulfillerHint);
+      const resolvedPolicy = await resolveDecision(
+        agent.sub,
+        agent.workspaceId ?? undefined,
+        secretName,
+        purpose,
+        fulfillerHint
+      );
       if (!resolvedPolicy) {
         logAudit({
           event: "exchange_denied",
           requesterId: agent.sub,
+          workspaceId: agent.workspaceId ?? null,
           secretName,
           fulfilledBy: fulfillerHint,
           action: "exchange_request_denied",
@@ -330,6 +385,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         logAudit({
           event: decision.mode === "pending_approval" ? "exchange_pending_approval" : "exchange_denied",
           requesterId: agent.sub,
+          workspaceId: agent.workspaceId ?? null,
           secretName,
           fulfilledBy: fulfillerHint,
           policyRuleId: decision.ruleId,
@@ -357,11 +413,12 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
       const createdAt = nowSeconds();
       const expiresAt = createdAt + requestTtl;
       const exchangeId = generateRequestId();
-      const policyHash = hashPolicyDecision(decision, allowedFulfillerId);
+      const policyHash = hashPolicyDecision(decision, allowedFulfillerId, agent.workspaceId ?? undefined);
       const fulfillmentToken = await signFulfillmentToken(
         {
           exchange_id: exchangeId,
           requester_id: agent.sub,
+          workspace_id: agent.workspaceId ?? undefined,
           secret_name: secretName,
           purpose,
           policy_hash: policyHash,
@@ -375,6 +432,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         {
           exchangeId,
           requesterId: agent.sub,
+          workspaceId: agent.workspaceId ?? undefined,
           requesterPublicKey: req.body.public_key,
           secretName,
           purpose,
@@ -396,6 +454,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         exchangeId,
         approvalReference: decision.approvalReference ?? null,
         requesterId: agent.sub,
+        workspaceId: agent.workspaceId ?? undefined,
         secretName,
         purpose,
         fulfillerHint,
@@ -416,6 +475,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         event: "exchange_requested",
         exchangeId,
         requesterId: agent.sub,
+        workspaceId: agent.workspaceId ?? null,
         secretName,
         policyRuleId: decision.ruleId,
         approvalReference: decision.approvalReference ?? null,
@@ -467,17 +527,24 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
 
       if (
         exchange.requesterId !== claims.requester_id ||
+        exchange.workspaceId !== (claims.workspace_id ?? exchange.workspaceId) ||
         exchange.secretName !== claims.secret_name ||
         exchange.purpose !== claims.purpose
       ) {
         return reply.code(409).send({ error: "Exchange token no longer matches request" });
       }
 
+      if (!workspaceMatches(exchange.workspaceId, agent.workspaceId)) {
+        return notAvailable(reply);
+      }
+
       const currentPolicy = opts.policyEngine.evaluate({
         requesterId: exchange.requesterId,
+        requesterWorkspaceId: exchange.workspaceId,
         secretName: exchange.secretName,
         purpose: exchange.purpose,
-        fulfillerHint: agent.sub
+        fulfillerHint: agent.sub,
+        fulfillerWorkspaceId: agent.workspaceId ?? undefined
       });
       if (!currentPolicy) {
         return reply.code(409).send({ error: "Exchange policy no longer allows fulfillment" });
@@ -485,9 +552,11 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
 
       const resolvedCurrentPolicy = await resolveDecision(
         exchange.requesterId,
+        exchange.workspaceId,
         exchange.secretName,
         exchange.purpose,
-        agent.sub
+        agent.sub,
+        agent.workspaceId ?? undefined
       );
       if (!resolvedCurrentPolicy) {
         return reply.code(409).send({ error: "Exchange policy no longer allows fulfillment" });
@@ -505,7 +574,11 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         });
       }
 
-      const currentPolicyHash = hashPolicyDecision(currentDecision, resolvedCurrentPolicy.allowedFulfillerId);
+      const currentPolicyHash = hashPolicyDecision(
+        currentDecision,
+        resolvedCurrentPolicy.allowedFulfillerId,
+        exchange.workspaceId
+      );
       if (currentPolicyHash !== claims.policy_hash || currentPolicyHash !== exchange.policyHash) {
         return reply.code(409).send({ error: "Exchange policy changed; requester must create a new exchange" });
       }
@@ -528,6 +601,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         exchangeId: reserved.exchangeId,
         approvalReference: reserved.policyDecision.approvalReference ?? null,
         requesterId: reserved.requesterId,
+        workspaceId: reserved.workspaceId,
         secretName: reserved.secretName,
         purpose: reserved.purpose,
         fulfillerHint: reserved.fulfillerHint,
@@ -544,6 +618,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         event: "exchange_reserved",
         exchangeId: reserved.exchangeId,
         requesterId: reserved.requesterId,
+        workspaceId: reserved.workspaceId ?? null,
         fulfilledBy: agent.sub,
         secretName: reserved.secretName,
         policyRuleId: reserved.policyDecision.ruleId,
@@ -593,6 +668,10 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         return notAvailable(reply);
       }
 
+      if (!workspaceMatches(exchange.workspaceId, agent.workspaceId)) {
+        return notAvailable(reply);
+      }
+
       if (exchange.status !== "reserved") {
         return reply.code(409).send({ error: "Exchange is not reserved" });
       }
@@ -619,6 +698,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         exchangeId: submitted.exchangeId,
         approvalReference: submitted.policyDecision.approvalReference ?? null,
         requesterId: submitted.requesterId,
+        workspaceId: submitted.workspaceId,
         secretName: submitted.secretName,
         purpose: submitted.purpose,
         fulfillerHint: submitted.fulfillerHint,
@@ -635,6 +715,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         event: "exchange_submitted",
         exchangeId: submitted.exchangeId,
         requesterId: submitted.requesterId,
+        workspaceId: submitted.workspaceId ?? null,
         fulfilledBy: agent.sub,
         secretName: submitted.secretName,
         policyRuleId: submitted.policyDecision.ruleId,
@@ -665,7 +746,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
       }
 
       const exchange = await opts.store.getExchange(req.params.id);
-      if (!exchange || exchange.requesterId !== agent.sub) {
+      if (!exchange || exchange.requesterId !== agent.sub || !workspaceMatches(exchange.workspaceId, agent.workspaceId)) {
         return notAvailable(reply);
       }
 
@@ -673,7 +754,11 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         return reply.code(409).send({ error: "Exchange is not ready" });
       }
 
-      const retrieved = await opts.store.atomicRetrieveExchange(exchange.exchangeId, agent.sub);
+      const retrieved = await opts.store.atomicRetrieveExchange(
+        exchange.exchangeId,
+        agent.sub,
+        exchange.workspaceId ?? agent.workspaceId ?? undefined
+      );
       if (!retrieved || !retrieved.enc || !retrieved.ciphertext) {
         return notAvailable(reply);
       }
@@ -683,6 +768,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         exchangeId: retrieved.exchangeId,
         approvalReference: retrieved.policyDecision.approvalReference ?? null,
         requesterId: retrieved.requesterId,
+        workspaceId: retrieved.workspaceId,
         secretName: retrieved.secretName,
         purpose: retrieved.purpose,
         fulfillerHint: retrieved.fulfillerHint,
@@ -701,6 +787,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         event: "exchange_retrieved",
         exchangeId: retrieved.exchangeId,
         requesterId: agent.sub,
+        workspaceId: retrieved.workspaceId ?? agent.workspaceId ?? null,
         fulfilledBy: retrieved.fulfilledBy,
         secretName: retrieved.secretName,
         policyRuleId: retrieved.policyDecision.ruleId,
@@ -736,6 +823,10 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         return notAvailable(reply);
       }
 
+      if (!workspaceMatches(approval.workspaceId, agent.workspaceId)) {
+        return notAvailable(reply);
+      }
+
       if (approval.requesterId !== agent.sub && !isApproverAuthorized(approval, agent.sub)) {
         return notAvailable(reply);
       }
@@ -759,6 +850,10 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
 
       const approval = await opts.store.getApprovalRequest(req.params.id);
       if (!approval) {
+        return notAvailable(reply);
+      }
+
+      if (!workspaceMatches(approval.workspaceId, agent.workspaceId)) {
         return notAvailable(reply);
       }
 
@@ -789,6 +884,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         exchangeId: null,
         approvalReference: approved.approvalReference,
         requesterId: approved.requesterId,
+        workspaceId: approved.workspaceId,
         secretName: approved.secretName,
         purpose: approved.purpose,
         fulfillerHint: approved.fulfillerHint,
@@ -804,6 +900,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
       logAudit({
         event: "exchange_approved",
         requesterId: approved.requesterId,
+        workspaceId: approved.workspaceId ?? null,
         fulfilledBy: approved.fulfillerHint,
         secretName: approved.secretName,
         policyRuleId: approved.ruleId,
@@ -840,6 +937,10 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         return notAvailable(reply);
       }
 
+      if (!workspaceMatches(approval.workspaceId, agent.workspaceId)) {
+        return notAvailable(reply);
+      }
+
       if (!isApproverAuthorized(approval, agent.sub)) {
         return notAvailable(reply);
       }
@@ -867,6 +968,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         exchangeId: null,
         approvalReference: rejected.approvalReference,
         requesterId: rejected.requesterId,
+        workspaceId: rejected.workspaceId,
         secretName: rejected.secretName,
         purpose: rejected.purpose,
         fulfillerHint: rejected.fulfillerHint,
@@ -882,6 +984,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
       logAudit({
         event: "exchange_rejected",
         requesterId: rejected.requesterId,
+        workspaceId: rejected.workspaceId ?? null,
         fulfilledBy: rejected.fulfillerHint,
         secretName: rejected.secretName,
         policyRuleId: rejected.ruleId,
@@ -914,7 +1017,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
       }
 
       const exchange = await opts.store.getExchange(req.params.id);
-      if (!exchange || exchange.requesterId !== agent.sub) {
+      if (!exchange || exchange.requesterId !== agent.sub || !workspaceMatches(exchange.workspaceId, agent.workspaceId)) {
         return notAvailable(reply);
       }
 
@@ -937,7 +1040,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
 
       const exchange = await opts.store.getExchange(req.params.id);
       const isAdmin = agent.admin === true;
-      if (!exchange || (exchange.requesterId !== agent.sub && !isAdmin)) {
+      if (!exchange || !workspaceMatches(exchange.workspaceId, agent.workspaceId) || (exchange.requesterId !== agent.sub && !isAdmin)) {
         return notAvailable(reply);
       }
 
@@ -956,6 +1059,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         exchangeId: revoked.exchangeId,
         approvalReference: revoked.policyDecision.approvalReference ?? null,
         requesterId: revoked.requesterId,
+        workspaceId: revoked.workspaceId,
         secretName: revoked.secretName,
         purpose: revoked.purpose,
         fulfillerHint: revoked.fulfillerHint,
@@ -972,6 +1076,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         event: "exchange_revoked",
         exchangeId: revoked.exchangeId,
         requesterId: revoked.requesterId,
+        workspaceId: revoked.workspaceId ?? null,
         fulfilledBy: revoked.fulfilledBy,
         secretName: revoked.secretName,
         policyRuleId: revoked.policyDecision.ruleId,
@@ -998,7 +1103,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
       }
 
       const exchange = await opts.store.getExchange(req.params.id);
-      if (!exchange) {
+      if (!exchange || !workspaceMatches(exchange.workspaceId, agent.workspaceId)) {
         return notAvailable(reply);
       }
 
@@ -1020,13 +1125,16 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
       }
 
       const records = await opts.store.listLifecycleRecordsByExchange(req.params.id);
-      if (records.length === 0) {
+      if (
+        records.length === 0 ||
+        !records.some((record) => workspaceMatches(record.workspaceId, agent.workspaceId))
+      ) {
         return notAvailable(reply);
       }
 
       return reply.send({
         exchange_id: req.params.id,
-        records: records.map(toLifecycleResponse)
+        records: records.filter((record) => workspaceMatches(record.workspaceId, agent.workspaceId)).map(toLifecycleResponse)
       });
     }
   );
@@ -1046,14 +1154,17 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
 
       const approval = await opts.store.getApprovalRequest(req.params.id);
       const records = await opts.store.listLifecycleRecordsByApproval(req.params.id);
-      if (!approval && records.length === 0) {
+      if (
+        (!approval || !workspaceMatches(approval.workspaceId, agent.workspaceId)) &&
+        !records.some((record) => workspaceMatches(record.workspaceId, agent.workspaceId))
+      ) {
         return notAvailable(reply);
       }
 
       return reply.send({
         approval_reference: req.params.id,
-        approval: approval ? toApprovalResponse(approval) : null,
-        records: records.map(toLifecycleResponse)
+        approval: approval && workspaceMatches(approval.workspaceId, agent.workspaceId) ? toApprovalResponse(approval) : null,
+        records: records.filter((record) => workspaceMatches(record.workspaceId, agent.workspaceId)).map(toLifecycleResponse)
       });
     }
   );

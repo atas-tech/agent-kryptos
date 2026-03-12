@@ -23,6 +23,7 @@ export interface AuditEvent {
   secretName?: string;
   policyRuleId?: string;
   approvalReference?: string | null;
+  workspaceId?: string | null;
   action: string;
   ip?: string;
 }
@@ -36,6 +37,7 @@ export function logAudit(event: AuditEvent): void {
     agent_id: event.agentId ?? null,
     requester_id: event.requesterId ?? null,
     fulfilled_by: event.fulfilledBy ?? null,
+    workspace_id: event.workspaceId ?? null,
     secret_name: event.secretName ?? null,
     policy_rule_id: event.policyRuleId ?? null,
     approval_reference: event.approvalReference ?? null,

@@ -24,6 +24,7 @@ export interface AuthenticatedAgentClaims extends JWTPayload {
   sub: string;
   role: string;
   admin?: boolean;
+  workspaceId?: string | null;
   authProvider?: string | null;
   spiffeId?: string | null;
   workloadMode?: string | null;
@@ -261,6 +262,11 @@ function requiresSpiffeIdentity(): boolean {
   return raw === "1" || raw === "true" || raw === "yes";
 }
 
+function isHostedModeEnabled(): boolean {
+  const raw = process.env.SPS_HOSTED_MODE?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
 function extractSpiffeId(payload: JWTPayload): string | null {
   const claim = typeof payload.spiffe_id === "string" && payload.spiffe_id.trim() ? payload.spiffe_id.trim() : null;
   const subject = typeof payload.sub === "string" && payload.sub.startsWith("spiffe://") ? payload.sub : null;
@@ -272,7 +278,10 @@ function extractSpiffeId(payload: JWTPayload): string | null {
   return claim ?? subject;
 }
 
-export async function requireGatewayAuth(req: FastifyRequest, reply: FastifyReply): Promise<JWTPayload | null> {
+export async function requireGatewayAuth(
+  req: FastifyRequest,
+  reply: FastifyReply
+): Promise<AuthenticatedAgentClaims | null> {
   return requireAuthenticatedWorkload(req, reply);
 }
 
@@ -475,8 +484,18 @@ async function requireAuthenticatedWorkload(
     return null;
   }
 
+  const workspaceId = typeof payload.workspace_id === "string" && payload.workspace_id.trim()
+    ? payload.workspace_id.trim()
+    : null;
+
+  if (isHostedModeEnabled() && !workspaceId) {
+    reply.code(401).send({ error: "workspace_id claim required in hosted mode" });
+    return null;
+  }
+
   return {
     ...(payload as JWTPayload & { sub: string; role: string; admin?: boolean }),
+    workspaceId,
     authProvider: typeof payload.auth_provider === "string" ? payload.auth_provider : null,
     spiffeId,
     workloadMode: typeof payload.workload_mode === "string" ? payload.workload_mode : null

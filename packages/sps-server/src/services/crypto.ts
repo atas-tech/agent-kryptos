@@ -33,6 +33,7 @@ interface CanonicalPayload {
 export interface FulfillmentTokenClaims {
   exchange_id: string;
   requester_id: string;
+  workspace_id?: string;
   secret_name: string;
   purpose: string;
   policy_hash: string;
@@ -113,12 +114,14 @@ export async function signFulfillmentToken(
   return new SignJWT({
     exchange_id: claims.exchange_id,
     requester_id: claims.requester_id,
+    workspace_id: claims.workspace_id ?? null,
     secret_name: claims.secret_name,
     purpose: claims.purpose,
     policy_hash: claims.policy_hash,
     approval_reference: claims.approval_reference ?? null
   })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setSubject(claims.workspace_id ?? claims.requester_id)
     .setIssuer("sps")
     .setAudience("agent-fulfill")
     .setIssuedAt(now)
@@ -134,6 +137,7 @@ export async function verifyFulfillmentToken(token: string, secret: string): Pro
 
   const exchangeId = typeof payload.exchange_id === "string" ? payload.exchange_id : null;
   const requesterId = typeof payload.requester_id === "string" ? payload.requester_id : null;
+  const workspaceId = typeof payload.workspace_id === "string" ? payload.workspace_id : undefined;
   const secretName = typeof payload.secret_name === "string" ? payload.secret_name : null;
   const purpose = typeof payload.purpose === "string" ? payload.purpose : null;
   const policyHash = typeof payload.policy_hash === "string" ? payload.policy_hash : null;
@@ -147,6 +151,7 @@ export async function verifyFulfillmentToken(token: string, secret: string): Pro
   return {
     exchange_id: exchangeId,
     requester_id: requesterId,
+    workspace_id: workspaceId,
     secret_name: secretName,
     purpose,
     policy_hash: policyHash,

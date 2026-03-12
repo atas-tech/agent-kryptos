@@ -58,11 +58,20 @@ export class RedisRequestStore implements RequestStore {
     return next;
   }
 
-  async atomicRetrieveAndDelete(requestId: string): Promise<StoredRequest | null> {
+  async atomicRetrieveAndDelete(requestId: string, requesterId?: string, workspaceId?: string): Promise<StoredRequest | null> {
     const script = `
       local key = KEYS[1]
+      local requester_id = ARGV[1]
+      local workspace_id = ARGV[2]
       local data = redis.call('GET', key)
       if data then
+        local decoded = cjson.decode(data)
+        if requester_id ~= '' and decoded["requesterId"] ~= requester_id then
+          return nil
+        end
+        if workspace_id ~= '' and decoded["workspaceId"] ~= workspace_id then
+          return nil
+        end
         redis.call('DEL', key)
         return data
       else
@@ -70,7 +79,7 @@ export class RedisRequestStore implements RequestStore {
       end
     `;
 
-    const raw = await this.redis.eval(script, 1, keyForRequest(requestId));
+    const raw = await this.redis.eval(script, 1, keyForRequest(requestId), requesterId ?? "", workspaceId ?? "");
     if (typeof raw !== "string") {
       return null;
     }
@@ -78,8 +87,31 @@ export class RedisRequestStore implements RequestStore {
     return JSON.parse(raw) as StoredRequest;
   }
 
-  async deleteRequest(requestId: string): Promise<boolean> {
-    return (await this.redis.del(keyForRequest(requestId))) > 0;
+  async deleteRequest(requestId: string, requesterId?: string, workspaceId?: string): Promise<boolean> {
+    if (!requesterId && !workspaceId) {
+      return (await this.redis.del(keyForRequest(requestId))) > 0;
+    }
+
+    const script = `
+      local key = KEYS[1]
+      local requester_id = ARGV[1]
+      local workspace_id = ARGV[2]
+      local data = redis.call('GET', key)
+      if not data then
+        return 0
+      end
+      local decoded = cjson.decode(data)
+      if requester_id ~= '' and decoded["requesterId"] ~= requester_id then
+        return 0
+      end
+      if workspace_id ~= '' and decoded["workspaceId"] ~= workspace_id then
+        return 0
+      end
+      redis.call('DEL', key)
+      return 1
+    `;
+
+    return Number(await this.redis.eval(script, 1, keyForRequest(requestId), requesterId ?? "", workspaceId ?? "")) > 0;
   }
 
   async setExchange(data: StoredExchange, ttlSeconds: number): Promise<void> {
@@ -195,10 +227,11 @@ export class RedisRequestStore implements RequestStore {
     return JSON.parse(raw) as StoredExchange;
   }
 
-  async atomicRetrieveExchange(exchangeId: string, requesterId: string): Promise<StoredExchange | null> {
+  async atomicRetrieveExchange(exchangeId: string, requesterId: string, workspaceId?: string): Promise<StoredExchange | null> {
     const script = `
       local key = KEYS[1]
       local requester_id = ARGV[1]
+      local workspace_id = ARGV[2]
       local raw = redis.call('GET', key)
       if not raw then
         return nil
@@ -206,6 +239,9 @@ export class RedisRequestStore implements RequestStore {
 
       local data = cjson.decode(raw)
       if data["requesterId"] ~= requester_id then
+        return nil
+      end
+      if workspace_id ~= '' and data["workspaceId"] ~= workspace_id then
         return nil
       end
       if data["status"] ~= "submitted" then
@@ -216,7 +252,7 @@ export class RedisRequestStore implements RequestStore {
       return raw
     `;
 
-    const raw = await this.redis.eval(script, 1, keyForExchange(exchangeId), requesterId);
+    const raw = await this.redis.eval(script, 1, keyForExchange(exchangeId), requesterId, workspaceId ?? "");
     if (typeof raw !== "string") {
       return null;
     }
@@ -313,9 +349,13 @@ export class InMemoryRequestStore implements RequestStore {
     return next;
   }
 
-  async atomicRetrieveAndDelete(requestId: string): Promise<StoredRequest | null> {
+  async atomicRetrieveAndDelete(requestId: string, requesterId?: string, workspaceId?: string): Promise<StoredRequest | null> {
     const current = this.data.get(requestId);
-    if (!current) {
+    if (
+      !current ||
+      (requesterId && current.requesterId !== requesterId) ||
+      (workspaceId && current.workspaceId !== workspaceId)
+    ) {
       return null;
     }
     this.clearExpiry(requestId);
@@ -323,7 +363,16 @@ export class InMemoryRequestStore implements RequestStore {
     return current;
   }
 
-  async deleteRequest(requestId: string): Promise<boolean> {
+  async deleteRequest(requestId: string, requesterId?: string, workspaceId?: string): Promise<boolean> {
+    const current = this.data.get(requestId);
+    if (
+      !current ||
+      (requesterId && current.requesterId !== requesterId) ||
+      (workspaceId && current.workspaceId !== workspaceId)
+    ) {
+      return false;
+    }
+
     const existed = this.data.delete(requestId);
     this.clearExpiry(requestId);
     return existed;
@@ -413,9 +462,14 @@ export class InMemoryRequestStore implements RequestStore {
     return next;
   }
 
-  async atomicRetrieveExchange(exchangeId: string, requesterId: string): Promise<StoredExchange | null> {
+  async atomicRetrieveExchange(exchangeId: string, requesterId: string, workspaceId?: string): Promise<StoredExchange | null> {
     const current = this.exchanges.get(exchangeId);
-    if (!current || current.requesterId !== requesterId || current.status !== "submitted") {
+    if (
+      !current ||
+      current.requesterId !== requesterId ||
+      (workspaceId && current.workspaceId !== workspaceId) ||
+      current.status !== "submitted"
+    ) {
       return null;
     }
 

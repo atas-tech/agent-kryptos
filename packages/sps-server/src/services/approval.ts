@@ -3,6 +3,7 @@ import type { PolicyDecision, StoredApprovalRequest } from "../types.js";
 
 export interface ApprovalTuple {
   requesterId: string;
+  workspaceId?: string;
   secretName: string;
   purpose: string;
   fulfillerHint: string;
@@ -11,6 +12,7 @@ export interface ApprovalTuple {
 
 export interface CreateApprovalRequestParams extends ApprovalTuple {
   approvalReference: string;
+  workspaceId?: string;
   reason: string;
   requesterRing?: string | null;
   fulfillerRing?: string | null;
@@ -38,6 +40,7 @@ export function buildApprovalReference(input: ApprovalTuple): string {
     .update(
       JSON.stringify({
         requesterId: input.requesterId,
+        ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
         secretName: input.secretName,
         purpose: input.purpose,
         fulfillerHint: input.fulfillerHint,
@@ -53,6 +56,7 @@ export function createApprovalRequest(params: CreateApprovalRequestParams): Stor
   return {
     approvalReference: params.approvalReference,
     requesterId: params.requesterId,
+    workspaceId: params.workspaceId,
     secretName: params.secretName,
     purpose: params.purpose,
     fulfillerHint: params.fulfillerHint,
@@ -71,6 +75,7 @@ export function createApprovalRequest(params: CreateApprovalRequestParams): Stor
 export function approvalMatches(record: StoredApprovalRequest, tuple: ApprovalTuple): boolean {
   return (
     record.requesterId === tuple.requesterId &&
+    (record.workspaceId ?? null) === (tuple.workspaceId ?? null) &&
     record.secretName === tuple.secretName &&
     record.purpose === tuple.purpose &&
     record.fulfillerHint === tuple.fulfillerHint &&

@@ -26,9 +26,11 @@ export interface ExchangePolicyRule {
 
 export interface EvaluateExchangePolicyInput {
   requesterId: string;
+  requesterWorkspaceId?: string;
   secretName: string;
   purpose: string;
   fulfillerHint: string;
+  fulfillerWorkspaceId?: string;
 }
 
 function normalizeList(values: string[]): string[] {
@@ -111,6 +113,14 @@ export class ExchangePolicyEngine {
       return null;
     }
 
+    if (
+      input.requesterWorkspaceId &&
+      input.fulfillerWorkspaceId &&
+      input.requesterWorkspaceId !== input.fulfillerWorkspaceId
+    ) {
+      return null;
+    }
+
     const requesterRing = ringFromAgentId(input.requesterId);
     const fulfillerRing = ringFromAgentId(input.fulfillerHint);
     const matchedRule = this.rules.find((rule) => {
@@ -172,7 +182,11 @@ export class ExchangePolicyEngine {
   }
 }
 
-export function hashPolicyDecision(decision: PolicyDecision, allowedFulfillerId: string | null): string {
+export function hashPolicyDecision(
+  decision: PolicyDecision,
+  allowedFulfillerId: string | null,
+  workspaceId?: string | null
+): string {
   const payload = JSON.stringify({
     mode: decision.mode,
     approvalRequired: decision.approvalRequired,
@@ -182,7 +196,8 @@ export function hashPolicyDecision(decision: PolicyDecision, allowedFulfillerId:
     requesterRing: decision.requesterRing ?? null,
     fulfillerRing: decision.fulfillerRing ?? null,
     secretName: decision.secretName,
-    allowedFulfillerId: allowedFulfillerId ?? null
+    allowedFulfillerId: allowedFulfillerId ?? null,
+    workspaceId: workspaceId ?? null
   });
   return createHash("sha256").update(payload).digest("hex");
 }

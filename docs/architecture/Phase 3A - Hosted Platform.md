@@ -17,7 +17,8 @@ Build the first hosted SaaS layer on top of the existing SPS core. Multiple cust
 
 - `2026-03-12`: Milestone 1 implemented in `packages/sps-server` with PostgreSQL pool wiring, migration runner, initial workspace schema/service/routes, and coverage in `tests/db.test.ts`
 - `2026-03-12`: Milestone 2 auth foundation implemented with `users` + `user_sessions` migrations, user/session service, auth routes (`register`, `login`, `refresh`, `logout`, `change-password`, `verify-email`, `me`), and coverage in `tests/auth-routes.test.ts`
-- Remaining work starts at Milestone 3: workspace-scoped SPS identity and tenant isolation across secret/exchange paths
+- `2026-03-12`: Milestone 3 implemented with hosted-mode `workspace_id` enforcement for agent JWTs, workspace-scoped secret/exchange ownership checks, fulfillment token workspace binding, workspace-aware approval hashing, and hosted/local regression coverage in route tests
+- Remaining work starts at Milestone 4: hosted agent enrollment, bootstrap auth, and workspace RBAC
 
 ---
 
