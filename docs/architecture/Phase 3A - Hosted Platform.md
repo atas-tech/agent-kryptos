@@ -21,7 +21,17 @@ Build the first hosted SaaS layer on top of the existing SPS core. Multiple cust
 - `2026-03-12`: Milestone 4 implemented with the `enrolled_agents` migration, hosted agent bootstrap API key enrollment and JWT minting routes, workspace member management, shared RBAC helpers, owner-verification gating for higher-risk hosted actions, and PostgreSQL integration coverage in `tests/agents-routes.test.ts`
 - `2026-03-12`: Milestone 5 implemented with the `005_billing.sql` workspace billing state migration, Stripe-backed checkout/webhook routes, mocked Stripe integration coverage in `tests/billing.test.ts`, and free-vs-standard quota enforcement for secret requests, enrolled agents, workspace members, and exchange availability
 - `2026-03-12`: Milestone 6 implemented with reusable per-IP rate limiting for register/login/hosted token minting, durable PostgreSQL-backed audit persistence and query routes, scheduled audit retention cleanup, and PostgreSQL integration coverage in `tests/rate-limit.test.ts`
-- The 6 planned Phase 3A core milestones are now complete; remaining follow-on work is hosted deployment/domain cutover, richer onboarding, analytics, and later operational hardening
+- The 6 planned Phase 3A core milestones are now complete; remaining follow-on work is hosted deployment/domain cutover, stronger signup/challenge abuse controls, richer onboarding/discovery, owner/team policy abstractions beyond explicit allowlists, analytics, and later operational hardening
+
+### Remaining Follow-on Work
+
+These items are still part of the broader Phase 3A roadmap, but were not included in core Milestones 1-6:
+
+- Hosted deployment/domain cutover for the real customer-facing UI/API endpoints and allowlists
+- Stronger signup abuse controls beyond basic per-IP rate limits, such as challenge checks and risk review
+- Richer onboarding/discovery flows, including trial-style guided onboarding, well-known discovery, and deeper MCP/OpenClaw integration work
+- Owner/team policy abstractions beyond the current explicit requester/fulfiller and ring-based policy rules
+- Hosted analytics, dashboards, and internal operator tooling
 
 ---
 
@@ -441,7 +451,7 @@ CREATE UNIQUE INDEX idx_workspaces_stripe_subscription_unique
 
 ### Milestone 6: Abuse Controls & Hardening
 
-Rate limiting, signup protections, and free-tier feature restrictions.
+Rate limiting, basic signup abuse controls, and durable workspace audit visibility.
 
 #### [NEW] [middleware/rate-limit.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/middleware/rate-limit.ts)
 
@@ -489,7 +499,7 @@ CREATE INDEX idx_audit_event_time ON audit_log(event_type, created_at DESC);
 | `GET /api/v2/audit` | User JWT (admin/operator/viewer) | Paginated audit stream for the caller workspace with filters (`event_type`, `actor_type`, `resource_id`, `from`, `to`, `limit`) |
 | `GET /api/v2/audit/exchange/:id` | User JWT (admin/operator/viewer) | Return caller-workspace exchange lifecycle + approval history for one exchange |
 
-**Acceptance**: Excessive requests are rate-limited. Signup abuse is controlled. Audit events persist in PostgreSQL and are visible through workspace-scoped customer audit endpoints.
+**Acceptance**: Excessive requests are rate-limited. Basic signup abuse controls are in place. Audit events persist in PostgreSQL and are visible through workspace-scoped customer audit endpoints.
 
 ---
 
@@ -638,13 +648,18 @@ npm test --workspace=packages/sps-server
 - **Bootstrap API key format** → `ak_<random>` prefix for operator clarity and leak detection
 - **Agent re-enrollment semantics** → revoked/deleted agents are retained for history but may be re-enrolled later under the same `agent_id`
 - **Billing tiers** → Free + Standard ($9/mo) with quotas as defined above; `free` is the entry-tier label, not `trial`
+- **Workspace lifecycle model** → current implementation uses `active/suspended/deleted` status plus `free/standard` billing tier; separate `trial` / `verified` / `paid` workspace lifecycle states are deferred
+- **Post-payment activation** → Stripe webhooks upgrade the billing tier automatically, but there is no separate post-payment workspace activation state yet
 - **Customer audit visibility** → caller-workspace audit endpoints ship in Phase 3A
 - **Email verification gating** → unverified accounts may log in, but verified-only actions stay blocked until manual verification or future SMTP flow completes
+- **Signup abuse controls** → current Phase 3A ships per-IP rate limiting and owner-verification gates for higher-risk actions; CAPTCHA/challenge/risk-review flows are deferred
 - **Refresh rotation semantics** → strict single-use rotation in Phase 3A; concurrent refresh races may force one tab/client to re-authenticate
 - **Access token revocation model** → access tokens are stateless and not checked against PostgreSQL on every request; logout/revocation blocks refresh immediately and existing access tokens age out within 15 minutes
 - **Force-password-change enforcement** → encoded as `fpc` in the access token so protected-route checks stay stateless
 - **Status enforcement** → suspended/deleted users and workspaces are hard-blocked across auth and runtime access paths
 - **Last-admin safety** → the final active workspace admin cannot be removed without assigning another active admin first
+- **Hosted policy model** → current Phase 3A ships explicit requester/fulfiller and ring-based policy rules; owner/team abstractions are deferred
+- **Hosted onboarding scope** → current Phase 3A covers workspace signup and admin-enrolled agents; guided trial onboarding, discovery, and deeper MCP/OpenClaw packaging are deferred
 - **Proxy-aware IP handling** → hosted deployments must configure Fastify `trustProxy` correctly for rate limiting and audit IP accuracy
 - **Stripe webhook verification** → `/api/v2/webhook/stripe` uses raw-body verification before JSON parsing
 - **Audit retention** → Phase 3A includes a simple application-level scheduled cleanup policy (for example 30 days for all workspaces); tier-specific retention is deferred
