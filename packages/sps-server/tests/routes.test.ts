@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SignJWT } from "jose";
 import { buildApp } from "../src/index.js";
 import { __resetJwksCacheForTests } from "../src/middleware/auth.js";
 import { createGatewayAuthFixture, type GatewayAuthFixture } from "./gateway-auth.fixture.js";
@@ -39,6 +40,7 @@ describe("secret routes", () => {
   const originalAgentAudiences = process.env.SPS_AGENT_JWT_AUDIENCES;
   const originalProviders = process.env.SPS_AGENT_AUTH_PROVIDERS_JSON;
   const originalHostedMode = process.env.SPS_HOSTED_MODE;
+  const originalAgentJwtSecret = process.env.SPS_AGENT_JWT_SECRET;
   let authFixture: GatewayAuthFixture;
 
   beforeEach(async () => {
@@ -52,6 +54,7 @@ describe("secret routes", () => {
     process.env.SPS_AGENT_JWT_AUDIENCES = "";
     process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = "";
     process.env.SPS_HOSTED_MODE = "";
+    process.env.SPS_AGENT_JWT_SECRET = "";
     __resetJwksCacheForTests();
   });
 
@@ -65,6 +68,7 @@ describe("secret routes", () => {
     process.env.SPS_AGENT_JWT_AUDIENCES = originalAgentAudiences;
     process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = originalProviders;
     process.env.SPS_HOSTED_MODE = originalHostedMode;
+    process.env.SPS_AGENT_JWT_SECRET = originalAgentJwtSecret;
     __resetJwksCacheForTests();
     vi.restoreAllMocks();
     await authFixture.cleanup();
@@ -180,6 +184,35 @@ describe("secret routes", () => {
 
     expect(response.statusCode).toBe(401);
     expect(response.json()).toEqual({ error: "workspace_id claim required in hosted mode" });
+    await app.close();
+  });
+
+  it("accepts hosted SPS-minted agent JWTs through requireGatewayAuth", async () => {
+    process.env.SPS_HOSTED_MODE = "1";
+    process.env.SPS_AGENT_JWT_SECRET = "hosted-agent-secret";
+    const app = await buildApp({
+      useInMemoryStore: true,
+      hmacSecret: "test-hmac",
+      baseUrl: "http://localhost:3100"
+    });
+
+    const now = Math.floor(Date.now() / 1000);
+    const hostedJwt = await new SignJWT({
+      role: "gateway",
+      workspace_id: "ws-hosted",
+      workload_mode: "hosted"
+    })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setIssuer("sps")
+      .setAudience("sps-agent")
+      .setSubject("hosted-agent")
+      .setIssuedAt(now)
+      .setExpirationTime(now + 300)
+      .sign(new TextEncoder().encode(process.env.SPS_AGENT_JWT_SECRET));
+
+    const created = await createRequest(app, hostedJwt);
+    expect(created.request_id).toEqual(expect.any(String));
+
     await app.close();
   });
 

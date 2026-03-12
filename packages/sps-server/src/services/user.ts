@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import type { Pool, PoolClient } from "pg";
-import type { UserRole } from "../middleware/auth.js";
+import { isUserRole, type UserRole } from "./rbac.js";
 import type { WorkspaceRecord } from "./workspace.js";
 import { createWorkspace, getWorkspace } from "./workspace.js";
 
@@ -11,8 +11,10 @@ const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 const PASSWORD_HASH_ROUNDS = 12;
 const PASSWORD_MIN_LENGTH = 8;
+const TEMPORARY_PASSWORD_MIN_LENGTH = 12;
+const WEAK_TEMPORARY_PASSWORDS = new Set(["password123", "password123!", "changeme123", "temporary123"]);
 
-type UserStatus = "active" | "suspended" | "deleted";
+export type UserStatus = "active" | "suspended" | "deleted";
 
 interface UserRow {
   id: string;
@@ -51,6 +53,22 @@ export interface UserRecord {
 export interface UserWithWorkspace {
   user: UserRecord;
   workspace: WorkspaceRecord;
+}
+
+export interface WorkspaceOwnerVerificationState {
+  ownerUserId: string | null;
+  ownerEmailVerified: boolean;
+}
+
+export interface CreateWorkspaceMemberInput {
+  email: string;
+  temporaryPassword: string;
+  role: UserRole;
+}
+
+export interface UpdateWorkspaceMemberInput {
+  role?: UserRole;
+  status?: UserStatus;
 }
 
 export interface AuthTokens {
@@ -110,6 +128,22 @@ function normalizePassword(password: string): string {
   return password;
 }
 
+function normalizeTemporaryPassword(password: string): string {
+  if (password.length < TEMPORARY_PASSWORD_MIN_LENGTH) {
+    throw new UserServiceError(
+      400,
+      "invalid_temporary_password",
+      `temporary password must be at least ${TEMPORARY_PASSWORD_MIN_LENGTH} characters`
+    );
+  }
+
+  if (WEAK_TEMPORARY_PASSWORDS.has(password.trim().toLowerCase())) {
+    throw new UserServiceError(400, "invalid_temporary_password", "temporary password is too weak");
+  }
+
+  return password;
+}
+
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
@@ -126,6 +160,15 @@ function generateVerificationToken(): string {
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
+}
+
+function logVerificationUrl(email: string, verificationToken: string): void {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  const baseUrl = process.env.SPS_BASE_URL?.trim() || "http://localhost:3100";
+  console.info(`Email verification URL for ${email}: ${baseUrl}/api/v2/auth/verify-email/${verificationToken}`);
 }
 
 function toUserRecord(row: UserRow): UserRecord {
@@ -224,6 +267,51 @@ async function queryUserWithWorkspaceById(client: PoolClient, userId: string): P
   );
 
   return result.rows[0] ?? null;
+}
+
+async function queryWorkspaceOwnerVerificationState(
+  client: PoolClient,
+  workspaceId: string
+): Promise<WorkspaceOwnerVerificationState | null> {
+  const result = await client.query<{ owner_user_id: string | null; owner_email_verified: boolean | null }>(
+    `
+      SELECT
+        w.owner_user_id,
+        u.email_verified AS owner_email_verified
+      FROM workspaces w
+      LEFT JOIN users u ON u.id = w.owner_user_id
+      WHERE w.id = $1
+      LIMIT 1
+    `,
+    [workspaceId]
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    return null;
+  }
+
+  return {
+    ownerUserId: row.owner_user_id,
+    ownerEmailVerified: row.owner_email_verified === true
+  };
+}
+
+async function listOtherActiveAdmins(client: PoolClient, workspaceId: string, excludedUserId: string): Promise<string[]> {
+  const result = await client.query<{ id: string }>(
+    `
+      SELECT id
+      FROM users
+      WHERE workspace_id = $1
+        AND role = 'workspace_admin'
+        AND status = 'active'
+        AND id <> $2
+      FOR UPDATE
+    `,
+    [workspaceId, excludedUserId]
+  );
+
+  return result.rows.map((row) => row.id);
 }
 
 function enforceActiveAccess(user: UserRecord, workspace: WorkspaceRecord): void {
@@ -387,10 +475,7 @@ export async function registerUser(
       ownerUserId: user.id
     };
 
-    if (process.env.NODE_ENV !== "production") {
-      const baseUrl = process.env.SPS_BASE_URL?.trim() || "http://localhost:3100";
-      console.info(`Email verification URL for ${normalizedEmail}: ${baseUrl}/api/v2/auth/verify-email/${verificationToken}`);
-    }
+    logVerificationUrl(normalizedEmail, verificationToken);
 
     return {
       user,
@@ -705,6 +790,158 @@ export async function getUserContext(db: Pool, userId: string): Promise<UserWith
       user: toUserRecord(row),
       workspace: requireWorkspaceRecord(row)
     };
+  } finally {
+    client.release();
+  }
+}
+
+export async function listWorkspaceUsers(db: Pool, workspaceId: string): Promise<UserRecord[]> {
+  const result = await db.query<UserRow>(
+    `
+      SELECT id, email, password_hash, force_password_change, email_verified, verification_token, workspace_id, role, status, created_at, updated_at
+      FROM users
+      WHERE workspace_id = $1
+      ORDER BY created_at ASC
+    `,
+    [workspaceId]
+  );
+
+  return result.rows.map(toUserRecord);
+}
+
+export async function getWorkspaceOwnerVerificationState(
+  db: Pool,
+  workspaceId: string
+): Promise<WorkspaceOwnerVerificationState | null> {
+  const client = await db.connect();
+
+  try {
+    return await queryWorkspaceOwnerVerificationState(client, workspaceId);
+  } finally {
+    client.release();
+  }
+}
+
+export async function ensureWorkspaceOwnerVerified(db: Pool, workspaceId: string): Promise<void> {
+  const state = await getWorkspaceOwnerVerificationState(db, workspaceId);
+  if (!state) {
+    throw new UserServiceError(404, "workspace_not_found", "Workspace not found");
+  }
+
+  if (!state.ownerUserId) {
+    throw new UserServiceError(409, "workspace_owner_missing", "Workspace owner is not configured");
+  }
+
+  if (!state.ownerEmailVerified) {
+    throw new UserServiceError(
+      403,
+      "workspace_owner_unverified",
+      "Workspace owner email must be verified before performing this action"
+    );
+  }
+}
+
+export async function createWorkspaceMember(
+  db: Pool,
+  workspaceId: string,
+  input: CreateWorkspaceMemberInput
+): Promise<UserRecord> {
+  const normalizedEmail = normalizeEmail(input.email);
+  validateEmail(normalizedEmail);
+  if (!isUserRole(input.role)) {
+    throw new UserServiceError(400, "invalid_role", "Invalid user role");
+  }
+
+  const normalizedPassword = normalizeTemporaryPassword(input.temporaryPassword);
+  const passwordHash = await bcrypt.hash(normalizedPassword, PASSWORD_HASH_ROUNDS);
+  const verificationToken = generateVerificationToken();
+
+  try {
+    const inserted = await db.query<UserRow>(
+      `
+        INSERT INTO users (email, password_hash, force_password_change, verification_token, workspace_id, role, status)
+        VALUES ($1, $2, true, $3, $4, $5, 'active')
+        RETURNING id, email, password_hash, force_password_change, email_verified, verification_token, workspace_id, role, status, created_at, updated_at
+      `,
+      [normalizedEmail, passwordHash, verificationToken, workspaceId, input.role]
+    );
+
+    logVerificationUrl(normalizedEmail, verificationToken);
+    return toUserRecord(inserted.rows[0]);
+  } catch (error) {
+    mapPgError(error);
+  }
+}
+
+export async function updateWorkspaceMember(
+  db: Pool,
+  workspaceId: string,
+  userId: string,
+  updates: UpdateWorkspaceMemberInput
+): Promise<UserRecord> {
+  if (updates.role !== undefined && !isUserRole(updates.role)) {
+    throw new UserServiceError(400, "invalid_role", "Invalid user role");
+  }
+
+  if (updates.status !== undefined && updates.status !== "active" && updates.status !== "suspended" && updates.status !== "deleted") {
+    throw new UserServiceError(400, "invalid_status", "Invalid user status");
+  }
+
+  if (updates.role === undefined && updates.status === undefined) {
+    throw new UserServiceError(400, "invalid_update", "At least one field must be provided");
+  }
+
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const current = await client.query<UserRow>(
+      `
+        SELECT id, email, password_hash, force_password_change, email_verified, verification_token, workspace_id, role, status, created_at, updated_at
+        FROM users
+        WHERE id = $1
+          AND workspace_id = $2
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [userId, workspaceId]
+    );
+
+    const row = current.rows[0];
+    if (!row) {
+      throw new UserServiceError(404, "user_not_found", "User not found");
+    }
+
+    const nextRole = updates.role ?? row.role;
+    const nextStatus = updates.status ?? row.status;
+    if (row.role === "workspace_admin" && row.status === "active" && (nextRole !== "workspace_admin" || nextStatus !== "active")) {
+      const otherAdminIds = await listOtherActiveAdmins(client, workspaceId, row.id);
+      if (otherAdminIds.length === 0) {
+        throw new UserServiceError(
+          409,
+          "last_admin_lockout",
+          "The last active workspace_admin cannot be demoted, suspended, or deleted"
+        );
+      }
+    }
+
+    const updated = await client.query<UserRow>(
+      `
+        UPDATE users
+        SET role = $3,
+            status = $4,
+            updated_at = now()
+        WHERE id = $1
+          AND workspace_id = $2
+        RETURNING id, email, password_hash, force_password_change, email_verified, verification_token, workspace_id, role, status, created_at, updated_at
+      `,
+      [userId, workspaceId, nextRole, nextStatus]
+    );
+
+    await client.query("COMMIT");
+    return toUserRecord(updated.rows[0]);
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
   } finally {
     client.release();
   }

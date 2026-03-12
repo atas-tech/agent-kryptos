@@ -9,7 +9,7 @@ Implementation plans for each phase of the Agent Kryptos secure secret provision
 | [Phase 1](Phase%201%20-%20Core%20MVP.md) | Core MVP — Human → Agent | ✅ Complete |
 | [Phase 2A](Phase%202A%20-%20Agent%20to%20Agent%20Exchange.md) | Pull-Based Agent-to-Agent (Local/Dev) | ✅ Complete |
 | [Phase 2B](Phase%202B%20-%20Production%20A2A.md) | Production Networked Agent-to-Agent | ✅ Largely Complete |
-| [Phase 3A](Phase%203A%20-%20Hosted%20Platform.md) | Hosted Managed Platform | 🚧 In Progress (Milestones 1-3 complete) |
+| [Phase 3A](Phase%203A%20-%20Hosted%20Platform.md) | Hosted Managed Platform | 🚧 In Progress (Milestones 1-4 complete) |
 
 ## Reference
 

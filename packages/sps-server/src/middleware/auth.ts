@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { createLocalJWKSet, jwtVerify, type JSONWebKeySet, type JWTPayload } from "jose";
 import { verifyPayload } from "../services/crypto.js";
+import { checkPermission, isUserRole, type UserRole } from "../services/rbac.js";
 import type { RequestScope } from "../types.js";
 
 interface JwksCacheEntry {
@@ -30,8 +31,6 @@ export interface AuthenticatedAgentClaims extends JWTPayload {
   workloadMode?: string | null;
 }
 
-export type UserRole = "workspace_admin" | "workspace_operator" | "workspace_viewer";
-
 export interface AuthenticatedUserClaims extends JWTPayload {
   sub: string;
   role: UserRole;
@@ -46,12 +45,6 @@ export interface RequireUserAuthOptions {
 }
 
 const jwksCache = new Map<string, JwksCacheEntry>();
-const USER_ROLE_PRIORITY: Record<UserRole, number> = {
-  workspace_viewer: 0,
-  workspace_operator: 1,
-  workspace_admin: 2
-};
-
 function getJwksCacheTtlMs(): number {
   const raw = process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS;
   if (!raw) {
@@ -317,8 +310,17 @@ function userJwtSecret(): Uint8Array {
   return new TextEncoder().encode(process.env.SPS_USER_JWT_SECRET?.trim() || "local-dev-user-jwt-secret");
 }
 
-function isUserRole(value: unknown): value is UserRole {
-  return value === "workspace_admin" || value === "workspace_operator" || value === "workspace_viewer";
+function agentJwtSecret(): Uint8Array | null {
+  const configured = process.env.SPS_AGENT_JWT_SECRET?.trim();
+  if (configured) {
+    return new TextEncoder().encode(configured);
+  }
+
+  if (isHostedModeEnabled()) {
+    return new TextEncoder().encode("local-dev-agent-jwt-secret");
+  }
+
+  return null;
 }
 
 export async function requireUserAuth(
@@ -383,7 +385,7 @@ export function requireUserRole(minRole: UserRole) {
       return null;
     }
 
-    if (USER_ROLE_PRIORITY[payload.role] < USER_ROLE_PRIORITY[minRole]) {
+    if (!checkPermission(payload.role, minRole)) {
       reply.code(403).send({ error: "Insufficient role" });
       return null;
     }
@@ -393,63 +395,75 @@ export function requireUserRole(minRole: UserRole) {
 }
 
 async function verifyGatewayLikeToken(
-  req: FastifyRequest,
-  reply: FastifyReply
+  token: string
 ): Promise<(JWTPayload & { auth_provider?: string }) | null> {
-  const token = bearerToken(req);
-  if (!token) {
-    reply.code(401).send({ error: "Missing bearer token" });
-    return null;
-  }
-
   let providers: AuthProviderConfig[];
   try {
     providers = authProviders();
   } catch {
-    reply.code(500).send({ error: "Invalid workload auth provider config" });
-    return null;
+    throw new Error("Invalid workload auth provider config");
   }
 
   if (providers.length === 0) {
-    reply.code(500).send({ error: "Gateway JWK not configured" });
+    return null;
+  }
+
+  let verifiedPayload: JWTPayload | null = null;
+  let matchedProvider: AuthProviderConfig | null = null;
+
+  for (const provider of providers) {
+    let jwks;
+    try {
+      jwks = await getJwksVerifier(provider);
+    } catch {
+      throw new Error("Gateway JWK unavailable");
+    }
+
+    try {
+      const { payload } = await jwtVerify(token, jwks, {
+        issuer: provider.issuers,
+        audience: provider.audiences
+      });
+      verifiedPayload = payload;
+      matchedProvider = provider;
+      break;
+    } catch {
+      // Try next provider.
+    }
+  }
+
+  if (!verifiedPayload || !matchedProvider) {
+    return null;
+  }
+
+  if (verifiedPayload.role !== "gateway" || !verifiedPayload.sub) {
+    throw new Error("Invalid gateway claims");
+  }
+
+  return {
+    ...verifiedPayload,
+    auth_provider: matchedProvider.name
+  };
+}
+
+async function verifyHostedAgentToken(token: string): Promise<JWTPayload | null> {
+  const secret = agentJwtSecret();
+  if (!secret) {
     return null;
   }
 
   try {
-    let verifiedPayload: JWTPayload | null = null;
-    let matchedProvider: AuthProviderConfig | null = null;
+    const { payload } = await jwtVerify(token, secret, {
+      issuer: "sps",
+      audience: "sps-agent"
+    });
 
-    for (const provider of providers) {
-      const jwks = await getJwksVerifier(provider);
-      try {
-        const { payload } = await jwtVerify(token, jwks, {
-          issuer: provider.issuers,
-          audience: provider.audiences
-        });
-        verifiedPayload = payload;
-        matchedProvider = provider;
-        break;
-      } catch {
-        // Try next provider.
-      }
+    if (payload.role !== "gateway" || typeof payload.sub !== "string" || !payload.sub.trim()) {
+      throw new Error("Invalid hosted agent claims");
     }
 
-    if (!verifiedPayload || !matchedProvider) {
-      reply.code(401).send({ error: "Invalid token" });
-      return null;
-    }
-
-    if (verifiedPayload.role !== "gateway" || !verifiedPayload.sub) {
-      reply.code(401).send({ error: "Invalid gateway claims" });
-      return null;
-    }
-
-    return {
-      ...verifiedPayload,
-      auth_provider: matchedProvider.name
-    };
+    return payload;
   } catch {
-    reply.code(500).send({ error: "Gateway JWK unavailable" });
     return null;
   }
 }
@@ -458,8 +472,34 @@ async function requireAuthenticatedWorkload(
   req: FastifyRequest,
   reply: FastifyReply
 ): Promise<AuthenticatedAgentClaims | null> {
-  const payload = await verifyGatewayLikeToken(req, reply);
+  const token = bearerToken(req);
+  if (!token) {
+    reply.code(401).send({ error: "Missing bearer token" });
+    return null;
+  }
+
+  let payload = await verifyHostedAgentToken(token);
   if (!payload) {
+    try {
+      payload = await verifyGatewayLikeToken(token);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Gateway JWK unavailable";
+
+      if (message === "Invalid workload auth provider config") {
+        reply.code(500).send({ error: message });
+      } else if (message === "Invalid gateway claims") {
+        reply.code(401).send({ error: message });
+      } else if (message === "Gateway JWK unavailable") {
+        reply.code(500).send({ error: message });
+      } else {
+        reply.code(401).send({ error: "Invalid token" });
+      }
+      return null;
+    }
+  }
+
+  if (!payload) {
+    reply.code(401).send({ error: "Invalid token" });
     return null;
   }
 

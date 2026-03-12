@@ -4,8 +4,10 @@ import Fastify, { type FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 import { createDbPool } from "./db/index.js";
 import { runMigrations } from "./db/migrate.js";
+import { registerAgentRoutes } from "./routes/agents.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerExchangeRoutes } from "./routes/exchange.js";
+import { registerMemberRoutes } from "./routes/members.js";
 import { registerSecretRoutes } from "./routes/secrets.js";
 import { registerWorkspaceRoutes } from "./routes/workspace.js";
 import { ExchangePolicyEngine, type ExchangePolicyRule, type SecretRegistryEntry } from "./services/policy.js";
@@ -145,6 +147,14 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     await app.register(async (workspaceRoutesApp) => {
       await registerWorkspaceRoutes(workspaceRoutesApp, { db: options.db! });
     }, { prefix: "/api/v2/workspace" });
+
+    await app.register(async (agentRoutesApp) => {
+      await registerAgentRoutes(agentRoutesApp, { db: options.db! });
+    }, { prefix: "/api/v2/agents" });
+
+    await app.register(async (memberRoutesApp) => {
+      await registerMemberRoutes(memberRoutesApp, { db: options.db! });
+    }, { prefix: "/api/v2/members" });
   }
 
   app.get("/healthz", async () => ({ ok: true }));
