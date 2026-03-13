@@ -47,8 +47,8 @@ function setStoredRefreshToken(token: string | null): void {
 }
 
 async function readError(response: Response, fallback: string): Promise<Error> {
-  const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-  return new Error(payload?.error ?? fallback);
+  const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
+  return new Error(payload?.message ?? payload?.error ?? fallback);
 }
 
 function updateTokens(setAccessToken: (token: string | null) => void, accessToken: string, refreshToken?: string): void {
@@ -79,31 +79,45 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setStoredRefreshToken(null);
   }
 
+  let refreshPromise: Promise<string | null> | null = null;
+
   async function refresh(explicitRefreshToken?: string): Promise<string | null> {
-    const refreshToken = explicitRefreshToken ?? getStoredRefreshToken();
-    if (!refreshToken) {
-      clearAuth();
-      return null;
+    if (refreshPromise) {
+      return refreshPromise;
     }
 
-    const response = await fetch(`${apiBaseUrl()}/api/v2/auth/refresh`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        refresh_token: refreshToken
-      })
-    });
+    refreshPromise = (async () => {
+      try {
+        const refreshToken = explicitRefreshToken ?? getStoredRefreshToken();
+        if (!refreshToken) {
+          clearAuth();
+          return null;
+        }
 
-    if (!response.ok) {
-      clearAuth();
-      return null;
-    }
+        const response = await fetch(`${apiBaseUrl()}/api/v2/auth/refresh`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            refresh_token: refreshToken
+          })
+        });
 
-    const payload = (await response.json()) as AuthApiResponse;
-    applyAuth(payload);
-    return payload.access_token;
+        if (!response.ok) {
+          clearAuth();
+          return null;
+        }
+
+        const payload = (await response.json()) as AuthApiResponse;
+        applyAuth(payload);
+        return payload.access_token;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+
+    return refreshPromise;
   }
 
   useEffect(() => {

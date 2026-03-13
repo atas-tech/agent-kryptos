@@ -244,7 +244,19 @@ async function findWorkspaceByStripeReference(
 
 export function createStripeClient(apiKey = process.env.STRIPE_SECRET_KEY?.trim()): StripeClientLike {
   if (!apiKey) {
-    throw new BillingServiceError(500, "stripe_not_configured", "Stripe secret key is not configured");
+    if (process.env.NODE_ENV === "production") {
+      throw new BillingServiceError(500, "stripe_not_configured", "Stripe secret key is not configured");
+    }
+
+    // In non-production, return a dummy client that only throws if a method is actually called.
+    // This prevents the server from crashing during registration if the key is missing.
+    return new Proxy({} as StripeClientLike, {
+      get() {
+        return () => {
+          throw new BillingServiceError(500, "stripe_not_configured", "Stripe secret key is not configured. Check your .env file.");
+        };
+      }
+    }) as unknown as StripeClientLike;
   }
 
   return new Stripe(apiKey);

@@ -29,29 +29,34 @@ Useful companion commands:
 - [x] Mobile navigation collapse is designed and reviewed
 - [x] Desktop variants (1280px) generated and verified for all 14 screens
 
-## Milestone 2: Dashboard Shell & Authentication UI
-
-Implementation note:
-- `2026-03-13`: Component coverage for the Milestone 2 dashboard shell shipped in `packages/dashboard/src/test/dashboard.test.tsx`, covering auth storage, protected-route redirects, login/register flows, and the API client's 401-refresh retry path.
-
-- [ ] **Auth lifecycle**
-  - [ ] Admin registers a new workspace from the dashboard
-  - [ ] Admin is redirected into the authenticated shell
-- [ ] Admin logout clears in-memory access state and persisted refresh token
-- [ ] Admin logout invalidates the refresh token on the server
-- [ ] Refresh flow rotates tokens and keeps the session alive after page reload
-- [ ] **Security check**: Verify access tokens are NOT stored in `localStorage` or `sessionStorage`
-
-- [ ] **Force password change**
-  - [ ] Admin creates a member with a temporary password
-  - [ ] That member logs in and is redirected to `/change-password`
-  - [ ] That member cannot access role pages until password change succeeds
-
-- [ ] **Role-based routing**
-  - [ ] `workspace_admin` can access the admin-only home route
-  - [ ] `workspace_operator` is redirected away from the home route to `/agents`
-  - [ ] `workspace_viewer` is redirected away from the home route to `/audit`
-  - [ ] Sidebar navigation hides disallowed pages for each role
+- [x] **E2E: Dashboard Shell & Auth (Playwright)**
+  - [x] **Scenario 001: First-time Registration**
+    - Navigate to `/register`, fill workspace & owner details.
+    - Assert success toast/redirect.
+    - Verify `localStorage` does NOT contain access tokens.
+    - Verify app shell renders with "Workspace Admin" role features.
+  - [x] **Scenario 002: Login & Session Persistence**
+    - Log in with verified credentials.
+    - Verify redirect to `/` (Admin Home).
+    - Reload page; verify session persists via refresh token rotation.
+    - Verify deep link to `/agents` persists after login.
+  - [x] **Scenario 003: Logout Flow**
+    - Click logout in sidebar.
+    - Verify redirect to `/login`.
+    - Attempt to visit `/` and verify redirect back to `/login`.
+  - [x] **Scenario 004: Force Password Change Enforcement**
+    - Create a member via API/Admin UI with `force_password_change: true`.
+    - Log in as that member.
+    - Assert immediate redirect to `/change-password`.
+    - Attempt to visit `/agents` (or any other route) and verify redirect back to `/change-password`.
+    - Complete password change and verify access to `/agents` is restored.
+  - [x] **Scenario 005: Role-based Navigation & Redirects**
+    - Log in as `operator`.
+    - Verify sidebar *hides* Billing, Settings, and Members.
+    - Attempt to visit `/settings` and verify redirect to `/agents` (default for operator).
+    - Log in as `viewer`.
+    - Verify sidebar *hides* everything except Audit and Analytics.
+    - Attempt to visit `/agents` and verify redirect to `/audit`.
 
 ## Milestone 3: Agent & Member Management UI
 

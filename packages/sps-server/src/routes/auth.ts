@@ -67,6 +67,14 @@ function sendServiceError(reply: FastifyReply, error: unknown) {
     return reply.code(error.statusCode).send({ error: error.message, code: error.code });
   }
 
+  if (error instanceof Error && (
+    error.message.includes("slug") ||
+    error.message.includes("displayName") ||
+    error.message.includes("blank")
+  )) {
+    return reply.code(400).send({ error: error.message, code: "invalid_input" });
+  }
+
   throw error;
 }
 
@@ -94,7 +102,8 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
     },
     async (req, reply) => {
       if (opts.rateLimitService) {
-        const rateLimit = await opts.rateLimitService.consume(rateLimitKeyByIp(req, "auth:register"), 3, 60_000);
+        const limit = Number(process.env.SPS_AUTH_REGISTRATION_LIMIT) || 3;
+        const rateLimit = await opts.rateLimitService.consume(rateLimitKeyByIp(req, "auth:register"), limit, 60_000);
         if (!rateLimit.allowed) {
           return sendRateLimited(reply, rateLimit, "Too many registration attempts");
         }
@@ -141,7 +150,8 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
     },
     async (req, reply) => {
       if (opts.rateLimitService) {
-        const rateLimit = await opts.rateLimitService.consume(rateLimitKeyByIp(req, "auth:login"), 10, 60_000);
+        const limit = Number(process.env.SPS_AUTH_LOGIN_LIMIT) || 10;
+        const rateLimit = await opts.rateLimitService.consume(rateLimitKeyByIp(req, "auth:login"), limit, 60_000);
         if (!rateLimit.allowed) {
           return sendRateLimited(reply, rateLimit, "Too many login attempts");
         }
