@@ -28,6 +28,8 @@ packages/dashboard/                       # [NEW] Operator Dashboard SPA
   package.json
   vite.config.ts
   tsconfig.json
+  tailwind.config.ts
+  postcss.config.js
   index.html
   src/
     main.tsx                              # React entry point
@@ -37,13 +39,13 @@ packages/dashboard/                       # [NEW] Operator Dashboard SPA
     auth/
       AuthContext.tsx                      # React context for session state (user, workspace, tokens)
       useAuth.ts                          # Hook: login, logout, refresh, isAuthenticated
-      ProtectedRoute.tsx                  # Route guard: redirect to /login if unauthenticated, block if fpc=true
+      ProtectedRoute.tsx                  # Route guard: redirect to /login if unauthenticated, block if fpc=true, enforce allowed roles
     pages/
       Login.tsx                           # Email + password login
       Register.tsx                        # Signup: email, password, workspace slug, display name
       ForgotPassword.tsx                  # Placeholder — wired when SMTP lands
       ChangePassword.tsx                  # Force-change on first login when fpc=true
-      Dashboard.tsx                       # Home: workspace overview, quota summary, quick actions
+      Dashboard.tsx                       # Admin-only home: workspace overview, quota summary, quick actions
       Agents.tsx                          # List agents, enroll new, rotate key, revoke
       Members.tsx                         # List users, create with temp password, change role
       Audit.tsx                           # Paginated audit log viewer with filters
@@ -52,7 +54,7 @@ packages/dashboard/                       # [NEW] Operator Dashboard SPA
       Analytics.tsx                       # Workspace metrics (Milestone 6)
       Settings.tsx                        # Workspace display name, slug (read-only in MVP)
     components/
-      Layout.tsx                          # App shell: sidebar nav, header, content area
+      Layout.tsx                          # App shell: role-aware sidebar nav, header, content area
       ApiKeyReveal.tsx                    # One-time display of ak_ key with copy button
       QuotaMeter.tsx                      # Visual gauge for daily usage vs limit
       DataTable.tsx                       # Reusable sortable/filterable table
@@ -60,10 +62,10 @@ packages/dashboard/                       # [NEW] Operator Dashboard SPA
       EmptyState.tsx                      # Friendly zero-state illustrations
       ConfirmDialog.tsx                   # Destructive action confirmation modal
     styles/
-      index.css                           # Design system tokens, global styles
+      index.css                           # Tailwind layers + design tokens + global styles
       theme.ts                            # Dark/light theme config
     hooks/
-      usePagination.ts                    # Cursor/offset pagination for audit, agents, members
+      usePagination.ts                    # Cursor pagination for audit, agents, members
       useQuota.ts                         # Fetch + cache workspace quota state
 
 deploy/
@@ -73,8 +75,10 @@ deploy/
 packages/sps-server/src/
   routes/
     health.ts                             # [NEW] Health/readiness endpoints
+    dashboard.ts                          # [NEW] Dashboard summary endpoint
     analytics.ts                          # [NEW] Workspace metrics endpoints
   services/
+    dashboard.ts                          # [NEW] Workspace overview + quota summary aggregation
     analytics.ts                          # [NEW] Workspace aggregate metrics
 ```
 
@@ -91,7 +95,7 @@ Design all dashboard screens using **Stitch via MCP** before writing any React c
 | **Login** | Email + password form | Branded header, form fields, "Register" link, Turnstile placeholder |
 | **Register** | Signup form | Email, password, workspace slug, display name fields, validation hints |
 | **Change Password** | Force-change on first login | Current password, new password, confirm, guidance text |
-| **Dashboard Home** | Workspace overview | Quota meters (requests, agents, members), quick action cards, workspace name/tier badge |
+| **Dashboard Home** | Admin-only workspace overview | Quota meters (requests, agents, members), quick action cards, workspace name/tier badge |
 | **Agents** | Agent management | Data table with Status badge, "Enroll Agent" button, row actions (rotate/revoke) |
 | **Agent Enroll Modal** | Bootstrap key reveal | Agent ID input, generated `ak_` key display with copy button, "I've saved this" checkbox |
 | **Members** | Member management | Data table, "Add Member" button, role dropdown per row, last-admin lockout indicator |
@@ -137,14 +141,14 @@ Initialize with Vite + React + TypeScript:
 npx -y create-vite@latest ./ --template react-ts
 ```
 
-Key dependencies: `react-router-dom` (routing). No CSS framework — use vanilla CSS adapted from Stitch designs with a custom design system for visual consistency.
+Key dependencies: `react-router-dom` (routing) and Tailwind CSS for adapting Stitch output into reusable React components while keeping shared design tokens in `styles/index.css`.
 
 #### Core Architecture
 
 - **`api/client.ts`**: Typed fetch wrapper. In local dev, configured with `VITE_SPS_API_URL` (default `http://localhost:3100`). Automatically attaches `Authorization: Bearer <accessToken>` from `AuthContext`. Implements a 401-interceptor that attempts a single `POST /api/v2/auth/refresh` before redirecting to `/login`.
 - **`auth/AuthContext.tsx`**: Stores `{ user, workspace, accessToken, refreshToken }` in React context. Persists refresh token in `localStorage` (access token in memory only). Exposes `login()`, `logout()`, `refresh()`, `isAuthenticated`.
-- **`auth/ProtectedRoute.tsx`**: Wraps routes that require auth. Redirects to `/login` if unauthenticated. Redirects to `/change-password` if `fpc === true` in the access token claims.
-- **`components/Layout.tsx`**: App shell adapted from Stitch design — sidebar navigation (Dashboard, Agents, Members, Audit, Approvals, Billing, Settings), header with workspace name and user dropdown.
+- **`auth/ProtectedRoute.tsx`**: Wraps routes that require auth. Redirects to `/login` if unauthenticated, to `/change-password` if `fpc === true` in the access token claims, and to the caller's first allowed route when role-gated pages are not permitted.
+- **`components/Layout.tsx`**: App shell adapted from Stitch design with role-aware sidebar navigation. `workspace_admin` sees Dashboard, Agents, Members, Audit, Approvals, Billing, Analytics, Settings; `workspace_operator` lands on Agents; `workspace_viewer` lands on Audit.
 
 #### Auth Pages
 
@@ -163,7 +167,7 @@ Key dependencies: `react-router-dom` (routing). No CSS framework — use vanilla
 4. Wire up API calls to the SPS backend
 5. Verify visual fidelity against the Stitch designs
 
-**Acceptance**: User can run `npm run dev --workspace=packages/dashboard`, navigate to `localhost:5173`, register a new workspace, log in, see the dashboard shell with sidebar nav, log out. Force-password-change redirect works for admin-created users. Visual output matches Stitch designs.
+**Acceptance**: User can run `npm run dev --workspace=packages/dashboard`, navigate to `localhost:5173`, register a new workspace, log in, see the dashboard shell with role-aware sidebar nav, log out, and refresh the page without losing the session. Force-password-change redirect works for admin-created users, and non-admin roles are redirected to their first allowed route. Visual output matches Stitch designs.
 
 ---
 
@@ -194,7 +198,14 @@ Build the CRUD interfaces for the two most common workspace admin tasks.
 - `workspace_admin` can edit display name via `PATCH /api/v2/workspace`
 - Owner email verification status indicator
 
-**Acceptance**: Workspace admin can enroll an agent and see the bootstrap key exactly once, rotate keys, revoke agents. Admin can create workspace members with temporary passwords and manage roles. Last-admin lockout protection is visually enforced.
+#### [MODIFY] Backend list endpoints for dashboard pagination
+
+| Endpoint | Auth | Behavior |
+|----------|------|----------|
+| `GET /api/v2/agents` | User JWT (admin/operator) | Add `limit`, `cursor`, optional `status`; return paginated agent rows plus `next_cursor` |
+| `GET /api/v2/members` | User JWT (admin) | Add `limit`, `cursor`, optional `status`; return paginated member rows plus `next_cursor` |
+
+**Acceptance**: Workspace admin can enroll an agent and see the bootstrap key exactly once, rotate keys, revoke agents, and page through the agent list. Admin can create workspace members with temporary passwords, manage roles, and page through the member list. Last-admin lockout protection is visually enforced.
 
 ---
 
@@ -209,6 +220,12 @@ Surface the existing Phase 3A audit and approval endpoints in the dashboard.
 - **Row expansion**: click a row to see full metadata JSON (sanitized — no ciphertext, no tokens)
 - **Exchange drill-down**: click an exchange-related event → navigate to exchange detail view calling `GET /api/v2/audit/exchange/:id`, showing the full lifecycle timeline (requested → reserved → submitted → retrieved) with approval history interleaved
 - RBAC: all roles (`workspace_admin`, `workspace_operator`, `workspace_viewer`) can view audit; viewer is read-only throughout the entire dashboard
+
+#### [MODIFY] Backend: audit pagination contract
+
+| Endpoint | Auth | Behavior |
+|----------|------|----------|
+| `GET /api/v2/audit` | User JWT (admin/operator/viewer) | Add `cursor` alongside existing filters and `limit`; return `records` plus `next_cursor` |
 
 #### Approvals Inbox Page (`/approvals`)
 
@@ -234,27 +251,29 @@ Give workspace admins visibility into their subscription and usage.
 - **Upgrade button** (Free tier only): calls `POST /api/v2/billing/checkout` → redirects to Stripe Checkout
 - **Manage subscription link** (Standard tier): opens Stripe Customer Portal using an auto-generated portal session URL
 - **Subscription status badge**: active, past_due, canceled, etc.
-- RBAC: only `workspace_admin` can manage billing; other roles see current tier read-only
+- RBAC: only `workspace_admin` can access this page in the MVP
 
 #### Quota Usage Section (on Dashboard home page)
 
+- Admin-only. `workspace_operator` and `workspace_viewer` do not land on the home route.
 - **`QuotaMeter` components** showing daily usage vs. limits for:
   - Secret requests (10/day free, 1,000/day standard)
   - Enrolled agents (5 free, 50 standard)
   - Workspace members (1 free, 10 standard)
   - A2A exchange availability (❌ free, ✅ standard)
 - Gauges use color coding: green (<70%), amber (70-90%), red (>90%)
-- Data source: derive from existing API responses — agent count from `GET /api/v2/agents`, member count from `GET /api/v2/members`, billing status from `GET /api/v2/billing`
+- Data source: prefer a dedicated admin-only summary endpoint so the home page does not fan out across multiple list endpoints for counts and quota state
 
-#### [NEW] Backend: Stripe Customer Portal Session
+#### [NEW] Backend: dashboard summary + Stripe Customer Portal Session
 
 | Endpoint | Auth | Behavior |
 |----------|------|----------|
+| `GET /api/v2/dashboard/summary` | User JWT (admin) | Return workspace display info, tier, billing status, quota usage, and top-level counts for the home page |
 | `POST /api/v2/billing/portal` | User JWT (admin) | Create Stripe Customer Portal session → return URL |
 
-This is the only new backend route in this milestone. It wraps `stripe.billingPortal.sessions.create()` for the workspace's Stripe customer.
+This milestone adds one dashboard read-model endpoint and one billing endpoint. `POST /api/v2/billing/portal` wraps `stripe.billingPortal.sessions.create()` for the workspace's Stripe customer.
 
-**Acceptance**: Free-tier admin sees the upgrade CTA and completes a test Stripe Checkout flow. Standard-tier admin can access the Stripe portal. Quota meters display accurate counts on the home dashboard.
+**Acceptance**: Free-tier admin sees the upgrade CTA and completes a test Stripe Checkout flow. Standard-tier admin can access the Stripe portal. The admin-only home dashboard renders from `GET /api/v2/dashboard/summary`, and quota meters display accurate counts.
 
 ---
 
@@ -268,7 +287,6 @@ Metadata-minimized, zero-knowledge-preserving workspace metrics:
 
 - **Request volume**: daily secret request count over last 30 days (bar chart)
 - **Exchange metrics**: successful vs. failed/expired/denied exchanges over last 30 days
-- **Error rates**: 4xx/5xx response ratio trend
 - **Active agents**: count of agents that minted a JWT in the last 24 hours
 
 #### [NEW] [services/analytics.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/services/analytics.ts)
@@ -280,6 +298,7 @@ Backend aggregate queries over the `audit_log` table, scoped by `workspace_id`:
 - `getActiveAgentCount(workspaceId, hours)` → distinct `actor_id` where `actor_type = 'agent'`
 
 All queries return counts and timestamps only — never secret names, agent identifiers beyond counts, or ciphertext.
+Analytics in Phase 3B is intentionally limited to business-event telemetry sourced from audit events; HTTP response-class metrics and infrastructure telemetry are out of scope.
 
 #### [NEW] [routes/analytics.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/routes/analytics.ts)
 
@@ -312,7 +331,7 @@ Strengthen protections beyond Phase 3A's per-IP rate limiting:
 - Add anomaly burst detection: if a single workspace exceeds 5× its tier quota within a sliding hour window, emit an `abuse_alert` audit event and temporarily throttle to 1 req/min for that workspace
 - Workspace-level throttle is self-clearing after the hour window passes
 
-**Acceptance**: Analytics page renders request volume and exchange metrics charts. Turnstile challenge blocks automated signup in hosted mode. Burst anomaly detection throttles and logs abuse attempts.
+**Acceptance**: Analytics page renders business-event charts for request volume, exchange outcomes, and active agents. Turnstile challenge blocks automated signup in hosted mode. Burst anomaly detection throttles and logs abuse attempts.
 
 ---
 
@@ -434,13 +453,15 @@ Update the SPS egress URL filter allowlist to match the production domains:
 | Variable | Used By | Purpose |
 |----------|---------|---------|
 | `SPS_TURNSTILE_SECRET` | sps-server | Cloudflare Turnstile server-side validation key |
-| `SPS_TURNSTILE_SITE_KEY` | dashboard | Turnstile widget site key (public, baked into build) |
+| `VITE_TURNSTILE_SITE_KEY` | dashboard | Turnstile widget site key (public, baked into build) |
 | `STRIPE_PORTAL_RETURN_URL` | sps-server | URL to redirect after Stripe portal session (default: `https://app.atas.tech/billing`) |
 | `VITE_SPS_API_URL` | dashboard, browser-ui | SPS API base URL (baked at build time) |
 
 ---
 
 ## Verification Plan
+
+Detailed E2E and integration scenarios for this phase live in `docs/testing/Phase 3B.md`.
 
 ### Automated Tests
 
@@ -460,6 +481,7 @@ npm test --workspace=packages/dashboard
 - `AuthContext` stores token on login and clears on logout
 - `ProtectedRoute` redirects unauthenticated users to `/login`
 - `ProtectedRoute` redirects `fpc=true` users to `/change-password`
+- Non-admin users are redirected away from the admin-only home route after login
 - Login page submits credentials and stores returned tokens
 - Register page creates workspace and redirects to dashboard
 - API client attaches auth header and retries on 401
@@ -469,6 +491,7 @@ npm test --workspace=packages/dashboard
 - `ApiKeyReveal` copy-to-clipboard works and dismisses on confirmation
 - Last-admin lockout disables demotion controls correctly
 - Member creation enforces minimum 12-character temporary password
+- Paginated agent/member table fetches append rows correctly from `next_cursor`
 
 #### Milestone 4: `dashboard` component tests
 - Audit table renders paginated results with correct filters
@@ -477,6 +500,7 @@ npm test --workspace=packages/dashboard
 - `workspace_viewer` sees approve/deny buttons as disabled
 
 #### Milestone 5: `billing-portal.test.ts` (sps-server)
+- `GET /api/v2/dashboard/summary` returns admin-only workspace overview and quota state
 - `POST /api/v2/billing/portal` returns Stripe portal URL for standard-tier workspace
 - `POST /api/v2/billing/portal` returns `400` for workspace without Stripe customer
 - Quota meter component renders correct percentages and color states
@@ -520,10 +544,11 @@ npm test --workspace=packages/dashboard
 - **Dashboard framework** → Vite + React (TypeScript) in a new `packages/dashboard` package; not merged with `browser-ui`
 - **Dashboard CSS** → **Tailwind CSS** is approved for the dashboard to accelerate UI development and component styling.
 - **Design workflow** → All screens designed first in Stitch (MCP), then implemented by extracting HTML/Tailwind CSS and adapting into React components
+- **Dashboard home** → admin-only. Operators land on Agents; viewers land on Audit.
 - **Browser-UI isolation** → `browser-ui` (zero-knowledge sandbox) and `dashboard` (control plane) are separate packages, separate containers, separate domains; they share no runtime code or session state
 - **Reverse proxy** → Operator-managed (Nginx Proxy Manager, Traefik, etc. on Unraid); no bundled reverse proxy
 - **Turnstile** → Cloudflare Turnstile for signup/login challenge; behind an env-var gate so local/dev skips it
-- **Analytics scope** → Counts and timestamps only; never exposes secret names, ciphertext, token values, or specific agent identifiers
+- **Analytics scope** → Business-event counts and timestamps only; never exposes secret names, ciphertext, token values, specific agent identifiers, or HTTP response-class telemetry
 - **SDK priority** → Node.js first (existing `agent-skill` code), then Python, then Go
 - **API documentation** → OpenAPI 3.0 spec; hand-written initially, auto-generation deferred
 - **Domain strategy** → `app.atas.tech` for dashboard, `secret.atas.tech` for sandbox, `sps.atas.tech` for API
