@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type KeyboardEvent, type ReactNode } from "react";
 
 interface DataTableColumn<T> {
   key: string;
@@ -13,6 +13,9 @@ interface DataTableProps<T> {
   emptyState: ReactNode;
   loading?: boolean;
   footer?: ReactNode;
+  expandedRowKey?: string | null;
+  renderExpandedRow?: (row: T) => ReactNode;
+  onRowClick?: (row: T) => void;
 }
 
 export function DataTable<T>({
@@ -21,8 +24,22 @@ export function DataTable<T>({
   rowKey,
   emptyState,
   loading = false,
-  footer
+  footer,
+  expandedRowKey,
+  renderExpandedRow,
+  onRowClick
 }: DataTableProps<T>) {
+  function handleKeyDown(event: KeyboardEvent<HTMLTableRowElement>, row: T): void {
+    if (!onRowClick) {
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onRowClick(row);
+    }
+  }
+
   return (
     <div className="table-card">
       <div className="table-scroll">
@@ -37,13 +54,30 @@ export function DataTable<T>({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={rowKey(row)}>
-                {columns.map((column) => (
-                  <td key={column.key}>{column.render(row)}</td>
-                ))}
-              </tr>
-            ))}
+            {rows.map((row) => {
+              const key = rowKey(row);
+              const isExpanded = expandedRowKey === key && renderExpandedRow;
+
+              return (
+                <Fragment key={key}>
+                  <tr
+                    className={onRowClick ? "data-table__row data-table__row--interactive" : "data-table__row"}
+                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                    onKeyDown={(event) => handleKeyDown(event, row)}
+                    tabIndex={onRowClick ? 0 : undefined}
+                  >
+                    {columns.map((column) => (
+                      <td key={column.key}>{column.render(row)}</td>
+                    ))}
+                  </tr>
+                  {isExpanded ? (
+                    <tr className="data-table__expanded">
+                      <td colSpan={columns.length}>{renderExpandedRow(row)}</td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -16,7 +16,7 @@ function parseOptionalDate(value: string | undefined): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function toAuditResponse(record: Awaited<ReturnType<typeof listAuditRecords>>[number]) {
+function toAuditResponse(record: Awaited<ReturnType<typeof listAuditRecords>>["records"][number]) {
   return {
     id: record.id,
     workspace_id: record.workspaceId,
@@ -39,6 +39,7 @@ export async function registerAuditRoutes(app: FastifyInstance, opts: AuditRoute
       from?: string;
       to?: string;
       limit?: number;
+      cursor?: string;
     };
   }>(
     "/",
@@ -53,7 +54,8 @@ export async function registerAuditRoutes(app: FastifyInstance, opts: AuditRoute
             resource_id: { type: "string", minLength: 1, maxLength: 256 },
             from: { type: "string", format: "date-time" },
             to: { type: "string", format: "date-time" },
-            limit: { type: "integer", minimum: 1, maximum: 200 }
+            limit: { type: "integer", minimum: 1, maximum: 200 },
+            cursor: { type: "string", minLength: 1, maxLength: 512 }
           }
         }
       }
@@ -73,18 +75,28 @@ export async function registerAuditRoutes(app: FastifyInstance, opts: AuditRoute
         return reply.code(400).send({ error: "Invalid to timestamp", code: "invalid_to" });
       }
 
-      const records = await listAuditRecords(opts.db, user.workspaceId, {
-        eventType: req.query.event_type,
-        actorType: req.query.actor_type,
-        resourceId: req.query.resource_id,
-        from: from ?? undefined,
-        to: to ?? undefined,
-        limit: req.query.limit
-      });
+      try {
+        const page = await listAuditRecords(opts.db, user.workspaceId, {
+          eventType: req.query.event_type,
+          actorType: req.query.actor_type,
+          resourceId: req.query.resource_id,
+          from: from ?? undefined,
+          to: to ?? undefined,
+          limit: req.query.limit,
+          cursor: req.query.cursor
+        });
 
-      return reply.send({
-        records: records.map(toAuditResponse)
-      });
+        return reply.send({
+          records: page.records.map(toAuditResponse),
+          next_cursor: page.nextCursor
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message === "cursor is invalid") {
+          return reply.code(400).send({ error: "Invalid cursor", code: "invalid_cursor" });
+        }
+
+        throw error;
+      }
     }
   );
 

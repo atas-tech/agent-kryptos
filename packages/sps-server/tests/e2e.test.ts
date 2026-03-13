@@ -4,6 +4,7 @@ import { createDbPool } from "../src/db/index.js";
 import { runMigrations } from "../src/db/migrate.js";
 import { buildApp } from "../src/index.js";
 import { cleanupExpiredAuditRecords } from "../src/services/audit.js";
+import { findAuditLeaks } from "./helpers/audit-leak-scanner.js";
 
 const runPgIntegration = process.env.SPS_PG_INTEGRATION === "1";
 const describePg = runPgIntegration ? describe : describe.skip;
@@ -813,17 +814,29 @@ describePg("Phase 3A E2E", { timeout: 30_000 }, () => {
       // Verify Audit Logs for A
       const auditResA = await app.inject({
         method: "GET",
-        url: "/api/v2/audit",
+        url: "/api/v2/audit?limit=1",
         headers: { authorization: `Bearer ${ownerA.access_token}` }
       });
       expect(auditResA.statusCode).toBe(200);
-      const recordsA = auditResA.json().records;
+      const auditPayloadA = auditResA.json() as { records: Array<any>; next_cursor: string | null };
+      const recordsA = auditPayloadA.records;
+      expect(auditPayloadA.next_cursor).toEqual(expect.any(String));
       
       // Check for workspace isolation and security
       expect(recordsA.every((r: any) => r.workspace_id === ownerA.user.workspace_id)).toBe(true);
+      const leaks = findAuditLeaks(recordsA);
+      expect(leaks).toEqual([]);
       const auditPayload = JSON.stringify(recordsA);
       expect(auditPayload).not.toContain(tempPass);
       expect(auditPayload).not.toContain("audit-b"); // Owner B's info shouldn't be here
+
+      const auditResPage2 = await app.inject({
+        method: "GET",
+        url: `/api/v2/audit?limit=1&cursor=${encodeURIComponent(auditPayloadA.next_cursor ?? "")}`,
+        headers: { authorization: `Bearer ${ownerA.access_token}` }
+      });
+      expect(auditResPage2.statusCode).toBe(200);
+      expect((auditResPage2.json() as { records: Array<any> }).records.length).toBe(1);
 
       // Verify Audit Logs for B (should be empty for now as register/verify are not yet audited)
       const auditResB = await app.inject({

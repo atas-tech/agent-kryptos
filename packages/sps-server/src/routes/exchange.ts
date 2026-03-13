@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyPluginOptions, FastifyReply } from "fastify";
 import type { Pool } from "pg";
-import { requireAdminAgentAuth, requireAgentAuth } from "../middleware/auth.js";
+import { requireAdminAgentAuth, requireAgentAuth, requireUserRole } from "../middleware/auth.js";
 import { generateRequestId, signFulfillmentToken, verifyFulfillmentToken } from "../services/crypto.js";
 import type { QuotaService } from "../services/quota.js";
 import { exchangeAllowed } from "../services/quota.js";
@@ -88,6 +88,7 @@ function toApprovalResponse(approval: StoredApprovalRequest) {
     reason: approval.reason,
     requester_ring: approval.requesterRing ?? null,
     fulfiller_ring: approval.fulfillerRing ?? null,
+    created_at: approval.createdAt,
     decided_at: approval.decidedAt ?? null,
     decided_by: approval.decidedBy ?? null,
     expires_at: approval.expiresAt
@@ -199,6 +200,101 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
   const submittedTtl = opts.submittedTtlSeconds ?? 60;
   const revokedTtl = opts.revokedTtlSeconds ?? 300;
   const approvalTtl = opts.approvalTtlSeconds ?? 600;
+
+  async function decideApproval(params: {
+    approvalReference: string;
+    status: "approved" | "rejected";
+    actorId: string;
+    actorType: "agent" | "user";
+    workspaceId?: string;
+    ip?: string;
+  }): Promise<
+    | { kind: "not_available" }
+    | { kind: "conflict" }
+    | {
+        kind: "ok";
+        approval: StoredApprovalRequest;
+      }
+  > {
+    const approval = await opts.store.getApprovalRequest(params.approvalReference);
+    if (!approval) {
+      return { kind: "not_available" };
+    }
+
+    if (params.workspaceId && approval.workspaceId !== params.workspaceId) {
+      return { kind: "not_available" };
+    }
+
+    if (params.actorType === "agent") {
+      if (!workspaceMatches(approval.workspaceId, params.workspaceId)) {
+        return { kind: "not_available" };
+      }
+
+      if (!isApproverAuthorized(approval, params.actorId)) {
+        return { kind: "not_available" };
+      }
+    }
+
+    if (approval.status !== "pending") {
+      return { kind: "conflict" };
+    }
+
+    const decidedAt = nowSeconds();
+    const nextApproval = await opts.store.updateApprovalRequest(
+      approval.approvalReference,
+      {
+        status: params.status,
+        decidedAt,
+        decidedBy: params.actorId
+      },
+      approvalTtl
+    );
+
+    if (!nextApproval) {
+      return { kind: "not_available" };
+    }
+
+    await appendLifecycleRecord(opts.store, {
+      eventType: "approval_decided",
+      exchangeId: null,
+      approvalReference: nextApproval.approvalReference,
+      requesterId: nextApproval.requesterId,
+      workspaceId: nextApproval.workspaceId,
+      secretName: nextApproval.secretName,
+      purpose: nextApproval.purpose,
+      fulfillerHint: nextApproval.fulfillerHint,
+      actorId: params.actorId,
+      status: nextApproval.status,
+      priorStatus: approval.status,
+      reason: nextApproval.reason,
+      policyRuleId: nextApproval.ruleId,
+      metadata: null,
+      createdAt: decidedAt
+    });
+
+    await logAudit(opts.db, {
+      event: params.status === "approved" ? "exchange_approved" : "exchange_rejected",
+      actorType: params.actorType,
+      actorId: params.actorId,
+      requesterId: nextApproval.requesterId,
+      workspaceId: nextApproval.workspaceId ?? null,
+      fulfilledBy: nextApproval.fulfillerHint,
+      secretName: nextApproval.secretName,
+      policyRuleId: nextApproval.ruleId,
+      approvalReference: nextApproval.approvalReference,
+      resourceId: nextApproval.approvalReference,
+      metadata: {
+        purpose: nextApproval.purpose
+      },
+      action: params.status === "approved" ? "exchange_approval_approve" : "exchange_approval_reject",
+      ip: params.ip
+    });
+
+    return {
+      kind: "ok",
+      approval: nextApproval
+    };
+  }
 
   async function resolveDecision(
     requesterId: string,
@@ -321,6 +417,9 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
       secretName,
       policyRuleId: decision.ruleId,
       approvalReference,
+      metadata: {
+        purpose
+      },
       action: "exchange_approval_request",
       ip: undefined
     });
@@ -892,76 +991,28 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
       if (!agent) {
         return;
       }
-
-      const approval = await opts.store.getApprovalRequest(req.params.id);
-      if (!approval) {
-        return notAvailable(reply);
-      }
-
-      if (!workspaceMatches(approval.workspaceId, agent.workspaceId)) {
-        return notAvailable(reply);
-      }
-
-      if (!isApproverAuthorized(approval, agent.sub)) {
-        return notAvailable(reply);
-      }
-
-      if (approval.status !== "pending") {
-        return reply.code(409).send({ error: "Approval is no longer pending" });
-      }
-
-      const decidedAt = nowSeconds();
-      const approved = await opts.store.updateApprovalRequest(
-        approval.approvalReference,
-        {
-          status: "approved",
-          decidedAt,
-          decidedBy: agent.sub
-        },
-        approvalTtl
-      );
-      if (!approved) {
-        return notAvailable(reply);
-      }
-
-      await appendLifecycleRecord(opts.store, {
-        eventType: "approval_decided",
-        exchangeId: null,
-        approvalReference: approved.approvalReference,
-        requesterId: approved.requesterId,
-        workspaceId: approved.workspaceId,
-        secretName: approved.secretName,
-        purpose: approved.purpose,
-        fulfillerHint: approved.fulfillerHint,
+      const result = await decideApproval({
+        approvalReference: req.params.id,
+        status: "approved",
         actorId: agent.sub,
-        status: approved.status,
-        priorStatus: approval.status,
-        reason: approved.reason,
-        policyRuleId: approved.ruleId,
-        metadata: null,
-        createdAt: decidedAt
-      });
-
-      await logAudit(opts.db, {
-        event: "exchange_approved",
         actorType: "agent",
-        requesterId: approved.requesterId,
-        workspaceId: approved.workspaceId ?? null,
-        fulfilledBy: approved.fulfillerHint,
-        secretName: approved.secretName,
-        policyRuleId: approved.ruleId,
-        approvalReference: approved.approvalReference,
-        agentId: agent.sub,
-        resourceId: approved.approvalReference,
-        action: "exchange_approval_approve",
+        workspaceId: agent.workspaceId ?? undefined,
         ip: req.ip
       });
 
+      if (result.kind === "not_available") {
+        return notAvailable(reply);
+      }
+
+      if (result.kind === "conflict") {
+        return reply.code(409).send({ error: "Approval is no longer pending" });
+      }
+
       return reply.send({
-        approval_reference: approved.approvalReference,
-        status: approved.status,
-        decided_at: approved.decidedAt,
-        decided_by: approved.decidedBy
+        approval_reference: result.approval.approvalReference,
+        status: result.approval.status,
+        decided_at: result.approval.decidedAt,
+        decided_by: result.approval.decidedBy
       });
     }
   );
@@ -978,76 +1029,106 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
       if (!agent) {
         return;
       }
-
-      const approval = await opts.store.getApprovalRequest(req.params.id);
-      if (!approval) {
-        return notAvailable(reply);
-      }
-
-      if (!workspaceMatches(approval.workspaceId, agent.workspaceId)) {
-        return notAvailable(reply);
-      }
-
-      if (!isApproverAuthorized(approval, agent.sub)) {
-        return notAvailable(reply);
-      }
-
-      if (approval.status !== "pending") {
-        return reply.code(409).send({ error: "Approval is no longer pending" });
-      }
-
-      const decidedAt = nowSeconds();
-      const rejected = await opts.store.updateApprovalRequest(
-        approval.approvalReference,
-        {
-          status: "rejected",
-          decidedAt,
-          decidedBy: agent.sub
-        },
-        approvalTtl
-      );
-      if (!rejected) {
-        return notAvailable(reply);
-      }
-
-      await appendLifecycleRecord(opts.store, {
-        eventType: "approval_decided",
-        exchangeId: null,
-        approvalReference: rejected.approvalReference,
-        requesterId: rejected.requesterId,
-        workspaceId: rejected.workspaceId,
-        secretName: rejected.secretName,
-        purpose: rejected.purpose,
-        fulfillerHint: rejected.fulfillerHint,
+      const result = await decideApproval({
+        approvalReference: req.params.id,
+        status: "rejected",
         actorId: agent.sub,
-        status: rejected.status,
-        priorStatus: approval.status,
-        reason: rejected.reason,
-        policyRuleId: rejected.ruleId,
-        metadata: null,
-        createdAt: decidedAt
-      });
-
-      await logAudit(opts.db, {
-        event: "exchange_rejected",
         actorType: "agent",
-        requesterId: rejected.requesterId,
-        workspaceId: rejected.workspaceId ?? null,
-        fulfilledBy: rejected.fulfillerHint,
-        secretName: rejected.secretName,
-        policyRuleId: rejected.ruleId,
-        approvalReference: rejected.approvalReference,
-        agentId: agent.sub,
-        resourceId: rejected.approvalReference,
-        action: "exchange_approval_reject",
+        workspaceId: agent.workspaceId ?? undefined,
         ip: req.ip
       });
 
+      if (result.kind === "not_available") {
+        return notAvailable(reply);
+      }
+
+      if (result.kind === "conflict") {
+        return reply.code(409).send({ error: "Approval is no longer pending" });
+      }
+
       return reply.send({
-        approval_reference: rejected.approvalReference,
-        status: rejected.status,
-        decided_at: rejected.decidedAt,
-        decided_by: rejected.decidedBy
+        approval_reference: result.approval.approvalReference,
+        status: result.approval.status,
+        decided_at: result.approval.decidedAt,
+        decided_by: result.approval.decidedBy
+      });
+    }
+  );
+
+  app.post<{ Params: { id: string } }>(
+    "/admin/approval/:id/approve",
+    {
+      schema: {
+        params: approvalParamsSchema
+      }
+    },
+    async (req, reply) => {
+      const user = await requireUserRole("workspace_operator")(req, reply);
+      if (!user) {
+        return;
+      }
+
+      const result = await decideApproval({
+        approvalReference: req.params.id,
+        status: "approved",
+        actorId: user.sub,
+        actorType: "user",
+        workspaceId: user.workspaceId,
+        ip: req.ip
+      });
+
+      if (result.kind === "not_available") {
+        return notAvailable(reply);
+      }
+
+      if (result.kind === "conflict") {
+        return reply.code(409).send({ error: "Approval is no longer pending" });
+      }
+
+      return reply.send({
+        approval_reference: result.approval.approvalReference,
+        status: result.approval.status,
+        decided_at: result.approval.decidedAt,
+        decided_by: result.approval.decidedBy
+      });
+    }
+  );
+
+  app.post<{ Params: { id: string } }>(
+    "/admin/approval/:id/reject",
+    {
+      schema: {
+        params: approvalParamsSchema
+      }
+    },
+    async (req, reply) => {
+      const user = await requireUserRole("workspace_operator")(req, reply);
+      if (!user) {
+        return;
+      }
+
+      const result = await decideApproval({
+        approvalReference: req.params.id,
+        status: "rejected",
+        actorId: user.sub,
+        actorType: "user",
+        workspaceId: user.workspaceId,
+        ip: req.ip
+      });
+
+      if (result.kind === "not_available") {
+        return notAvailable(reply);
+      }
+
+      if (result.kind === "conflict") {
+        return reply.code(409).send({ error: "Approval is no longer pending" });
+      }
+
+      return reply.send({
+        approval_reference: result.approval.approvalReference,
+        status: result.approval.status,
+        decided_at: result.approval.decidedAt,
+        decided_by: result.approval.decidedBy
       });
     }
   );

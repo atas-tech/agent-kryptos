@@ -1,3 +1,4 @@
+import { SignJWT } from "jose";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/index.js";
 import { __resetJwksCacheForTests } from "../src/middleware/auth.js";
@@ -10,6 +11,7 @@ describe("exchange routes", () => {
   const originalJwksTtl = process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS;
   const originalProviders = process.env.SPS_AGENT_AUTH_PROVIDERS_JSON;
   const originalHostedMode = process.env.SPS_HOSTED_MODE;
+  const originalUserJwtSecret = process.env.SPS_USER_JWT_SECRET;
   let authFixture: GatewayAuthFixture;
 
   beforeEach(async () => {
@@ -20,6 +22,7 @@ describe("exchange routes", () => {
     process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = "";
     process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = "";
     process.env.SPS_HOSTED_MODE = "";
+    process.env.SPS_USER_JWT_SECRET = "test-user-jwt-secret";
     __resetJwksCacheForTests();
   });
 
@@ -30,9 +33,28 @@ describe("exchange routes", () => {
     process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = originalJwksTtl;
     process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = originalProviders;
     process.env.SPS_HOSTED_MODE = originalHostedMode;
+    process.env.SPS_USER_JWT_SECRET = originalUserJwtSecret;
     __resetJwksCacheForTests();
     await authFixture.cleanup();
   });
+
+  async function signUserToken(
+    workspaceId: string,
+    role: "workspace_admin" | "workspace_operator" | "workspace_viewer",
+    subject: string
+  ) {
+    return new SignJWT({
+      email: `${subject}@example.com`,
+      workspace_id: workspaceId,
+      role
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuer("sps")
+      .setAudience("sps-user")
+      .setSubject(subject)
+      .setExpirationTime("15m")
+      .sign(new TextEncoder().encode("test-user-jwt-secret"));
+  }
 
   it("supports create -> fulfill -> submit -> retrieve flow with ownership binding", async () => {
     const app = await buildApp({
@@ -902,6 +924,128 @@ describe("exchange routes", () => {
       expect.objectContaining({ event_type: "approval_requested", status: "pending" }),
       expect.objectContaining({ event_type: "approval_decided", status: "approved" })
     ]);
+
+    await app.close();
+  });
+
+  it("allows workspace operators to approve pending approvals through user auth", async () => {
+    process.env.SPS_HOSTED_MODE = "1";
+
+    const app = await buildApp({
+      useInMemoryStore: true,
+      hmacSecret: "test-hmac",
+      secretRegistry: [
+        {
+          secretName: "stripe.api_key.prod",
+          classification: "credential"
+        }
+      ],
+      exchangePolicyRules: [
+        {
+          ruleId: "finance-to-ops-approval",
+          secretName: "stripe.api_key.prod",
+          requesterIds: ["agent:requester-bot"],
+          fulfillerIds: ["agent:fulfiller-bot"],
+          approverIds: ["agent:security-lead"],
+          mode: "pending_approval",
+          reason: "cross-ring exchange requires human approval"
+        }
+      ]
+    });
+
+    const workspaceId = "workspace-alpha";
+    const requesterJwt = await authFixture.issueToken({
+      agentId: "agent:requester-bot",
+      claims: { role: "gateway", workspace_id: workspaceId }
+    });
+    const operatorJwt = await signUserToken(workspaceId, "workspace_operator", "user-operator");
+
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/v2/secret/exchange/request",
+      headers: { authorization: `Bearer ${requesterJwt}` },
+      payload: {
+        public_key: "cHVibGlj",
+        secret_name: "stripe.api_key.prod",
+        purpose: "charge-order",
+        fulfiller_hint: "agent:fulfiller-bot"
+      }
+    });
+    expect(createRes.statusCode).toBe(403);
+
+    const approvalReference = (createRes.json() as { policy: { approval_reference: string } }).policy.approval_reference;
+    const approveRes = await app.inject({
+      method: "POST",
+      url: `/api/v2/secret/exchange/admin/approval/${approvalReference}/approve`,
+      headers: { authorization: `Bearer ${operatorJwt}` }
+    });
+
+    expect(approveRes.statusCode).toBe(200);
+    expect(approveRes.json()).toMatchObject({
+      approval_reference: approvalReference,
+      status: "approved",
+      decided_by: "user-operator"
+    });
+
+    await app.close();
+  });
+
+  it("keeps workspace viewers read-only on user approval actions", async () => {
+    process.env.SPS_HOSTED_MODE = "1";
+
+    const app = await buildApp({
+      useInMemoryStore: true,
+      hmacSecret: "test-hmac",
+      secretRegistry: [
+        {
+          secretName: "stripe.api_key.prod",
+          classification: "credential"
+        }
+      ],
+      exchangePolicyRules: [
+        {
+          ruleId: "finance-to-ops-approval",
+          secretName: "stripe.api_key.prod",
+          requesterIds: ["agent:requester-bot"],
+          fulfillerIds: ["agent:fulfiller-bot"],
+          approverIds: ["agent:security-lead"],
+          mode: "pending_approval",
+          reason: "cross-ring exchange requires human approval"
+        }
+      ]
+    });
+
+    const workspaceId = "workspace-alpha";
+    const requesterJwt = await authFixture.issueToken({
+      agentId: "agent:requester-bot",
+      claims: { role: "gateway", workspace_id: workspaceId }
+    });
+    const viewerJwt = await signUserToken(workspaceId, "workspace_viewer", "user-viewer");
+
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/v2/secret/exchange/request",
+      headers: { authorization: `Bearer ${requesterJwt}` },
+      payload: {
+        public_key: "cHVibGlj",
+        secret_name: "stripe.api_key.prod",
+        purpose: "charge-order",
+        fulfiller_hint: "agent:fulfiller-bot"
+      }
+    });
+    expect(createRes.statusCode).toBe(403);
+
+    const approvalReference = (createRes.json() as { policy: { approval_reference: string } }).policy.approval_reference;
+    const rejectRes = await app.inject({
+      method: "POST",
+      url: `/api/v2/secret/exchange/admin/approval/${approvalReference}/reject`,
+      headers: { authorization: `Bearer ${viewerJwt}` }
+    });
+
+    expect(rejectRes.statusCode).toBe(403);
+    expect(rejectRes.json()).toMatchObject({
+      error: "Insufficient role"
+    });
 
     await app.close();
   });

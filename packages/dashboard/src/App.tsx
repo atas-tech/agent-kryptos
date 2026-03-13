@@ -91,6 +91,14 @@ export function App() {
           }
         />
         <Route
+          path="/audit/exchange/:exchangeId"
+          element={
+            <ProtectedRoute allowedRoles={["workspace_admin", "workspace_operator", "workspace_viewer"]}>
+              <AuditPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/approvals"
           element={
             <ProtectedRoute allowedRoles={["workspace_admin", "workspace_operator", "workspace_viewer"]}>

@@ -302,7 +302,7 @@ describe("dashboard milestone 3", () => {
 
     renderApp(["/settings"]);
 
-    const displayNameInput = await screen.findByLabelText("Display name");
+    const displayNameInput = await screen.findByLabelText(/workspace display name/i);
     expect(displayNameInput).toHaveValue("Acme");
     await waitFor(() => {
       expect(displayNameInput).toBeEnabled();

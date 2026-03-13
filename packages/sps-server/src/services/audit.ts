@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { decodePageCursor, encodePageCursor } from "./pagination.js";
 
 export type AuditActorType = "user" | "agent" | "system";
 
@@ -60,6 +61,12 @@ export interface ListAuditRecordsInput {
   from?: Date;
   to?: Date;
   limit?: number;
+  cursor?: string;
+}
+
+export interface AuditRecordPage {
+  records: AuditRecord[];
+  nextCursor: string | null;
 }
 
 interface AuditRow {
@@ -199,7 +206,17 @@ export async function listAuditRecords(
   db: Pool,
   workspaceId: string,
   input: ListAuditRecordsInput = {}
-): Promise<AuditRecord[]> {
+): Promise<AuditRecordPage> {
+  let cursorCreatedAt: Date | null = null;
+  let cursorId: string | null = null;
+
+  if (input.cursor) {
+    const decoded = decodePageCursor(input.cursor);
+    cursorCreatedAt = decoded.createdAt;
+    cursorId = decoded.id;
+  }
+
+  const limit = normalizeLimit(input.limit);
   const values: Array<string | number | Date> = [workspaceId];
   const clauses = ["workspace_id = $1"];
 
@@ -228,7 +245,12 @@ export async function listAuditRecords(
     clauses.push(`created_at <= $${values.length}`);
   }
 
-  values.push(normalizeLimit(input.limit));
+  if (cursorCreatedAt && cursorId) {
+    values.push(cursorCreatedAt, cursorId);
+    clauses.push(`(created_at, id) < ($${values.length - 1}, $${values.length})`);
+  }
+
+  values.push(limit + 1);
 
   const result = await db.query<AuditRow>(
     `
@@ -250,7 +272,19 @@ export async function listAuditRecords(
     values
   );
 
-  return result.rows.map(toAuditRow);
+  const hasMore = result.rows.length > limit;
+  const rows = hasMore ? result.rows.slice(0, limit) : result.rows;
+  const lastRow = rows.at(-1);
+
+  return {
+    records: rows.map(toAuditRow),
+    nextCursor: hasMore && lastRow
+      ? encodePageCursor({
+          createdAt: lastRow.created_at,
+          id: lastRow.id
+        })
+      : null
+  };
 }
 
 export async function listExchangeAuditRecords(

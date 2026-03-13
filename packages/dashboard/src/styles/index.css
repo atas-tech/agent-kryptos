@@ -693,6 +693,19 @@
     background: rgba(255, 255, 255, 0.03);
   }
 
+  .data-table__row--interactive {
+    cursor: pointer;
+  }
+
+  .data-table__row--interactive:focus-visible {
+    outline: 2px solid rgba(0, 245, 212, 0.48);
+    outline-offset: -2px;
+  }
+
+  .data-table__expanded td {
+    background: rgba(12, 18, 34, 0.72);
+  }
+
   .table-card__footer {
     @apply flex flex-col gap-3 border-t px-5 py-4 sm:flex-row sm:items-center sm:justify-between;
     border-color: rgba(0, 245, 212, 0.12);
@@ -854,5 +867,102 @@
 
   .detail-list__item strong {
     @apply mt-2 block text-base font-semibold text-white;
+  }
+
+  .audit-filters {
+    @apply mt-5 grid gap-4 lg:grid-cols-[repeat(5,minmax(0,1fr))_auto];
+  }
+
+  .audit-filters__actions {
+    @apply flex flex-wrap items-end gap-3;
+  }
+
+  .audit-expanded {
+    @apply flex flex-col gap-4;
+  }
+
+  .audit-expanded__header,
+  .timeline-entry__header,
+  .approval-card__header,
+  .approval-card__footer,
+  .approvals-viewer-note {
+    @apply flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between;
+  }
+
+  .audit-metadata {
+    @apply overflow-x-auto rounded-2xl border p-4 text-xs leading-6;
+    border-color: rgba(0, 245, 212, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: rgba(240, 244, 255, 0.82);
+  }
+
+  .timeline-list,
+  .approval-grid {
+    @apply grid gap-4;
+  }
+
+  .timeline-entry,
+  .approval-card {
+    @apply rounded-[24px] border p-5;
+    border-color: rgba(0, 245, 212, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .timeline-entry {
+    @apply grid gap-4 md:grid-cols-[12px_minmax(0,1fr)];
+  }
+
+  .timeline-entry__rail {
+    @apply rounded-full;
+    min-height: 100%;
+  }
+
+  .timeline-entry__rail--success {
+    background: linear-gradient(180deg, rgba(46, 213, 115, 0.9), rgba(0, 245, 212, 0.55));
+  }
+
+  .timeline-entry__rail--warning {
+    background: linear-gradient(180deg, rgba(255, 159, 67, 0.9), rgba(255, 211, 105, 0.5));
+  }
+
+  .timeline-entry__rail--danger {
+    background: linear-gradient(180deg, rgba(255, 71, 87, 0.9), rgba(255, 159, 67, 0.5));
+  }
+
+  .timeline-entry__rail--neutral {
+    background: linear-gradient(180deg, rgba(0, 245, 212, 0.9), rgba(123, 97, 255, 0.6));
+  }
+
+  .timeline-entry__content {
+    @apply flex flex-col gap-4;
+  }
+
+  .approvals-viewer-note {
+    @apply px-5 py-4;
+  }
+
+  .approvals-viewer-note svg {
+    color: var(--warning);
+  }
+
+  .approvals-status {
+    @apply w-fit;
+  }
+
+  .approval-grid {
+    @apply lg:grid-cols-2;
+  }
+
+  .approval-card {
+    @apply flex flex-col gap-4;
+  }
+
+  .approval-card__title {
+    @apply mt-2 text-2xl font-black tracking-tight text-white;
+  }
+
+  .approval-card__purpose p {
+    @apply mt-2 text-sm leading-7;
+    color: rgba(240, 244, 255, 0.76);
   }
 }
