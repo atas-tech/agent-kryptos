@@ -60,104 +60,104 @@ Useful companion commands:
 
 ## Milestone 3: Agent & Member Management UI
 
-- [ ] **E2E: Agent management (Playwright)**
-  - [ ] **Scenario 301: Admin enrolls an agent and reveals the bootstrap key once**
-    - Log in as `workspace_admin`.
-    - Navigate to `/agents`.
-    - Open the enroll modal adapted from the Stitch agent-enroll screen.
-    - Submit `agent_id` and optional `display_name`.
-    - Assert the returned `ak_` key is rendered in `ApiKeyReveal`.
-    - Copy the key and confirm the "I've saved this key" acknowledgement.
-    - Close/reopen the modal and refresh the page.
-    - Verify the previously revealed key is no longer visible anywhere in the UI.
-  - [ ] **Scenario 302: Operator can enroll and revoke agents**
-    - Log in as `workspace_operator`.
-    - Navigate to `/agents`.
-    - Enroll an agent successfully.
-    - Revoke that agent from the row action menu.
-    - Verify the row status changes to `revoked` and the agent is excluded from active-only filters.
-  - [ ] **Scenario 303: Rotate key invalidates the previous credential**
-    - Enroll an agent and store the first bootstrap key in the test.
-    - Trigger Rotate Key from the agent row.
-    - Verify the replacement key is revealed once.
-    - Call `POST /api/v2/agents/token` with the old key and assert `401`.
-    - Call `POST /api/v2/agents/token` with the new key and assert success.
-  - [ ] **Scenario 304: Viewer is denied access to agent management**
-    - Log in as `workspace_viewer`.
-    - Attempt to visit `/agents`.
-    - Verify route guard redirects away from the page.
-    - Attempt direct agent create/rotate/revoke API calls and verify `403 Forbidden`.
+- [x] **E2E: Agent management (Playwright)**
+  - [x] **Scenario 301: Admin enrolls an agent and reveals the bootstrap key once**
+    - [x] Log in as `workspace_admin`.
+    - [x] Navigate to `/agents`.
+    - [x] Open the enroll modal adapted from the Stitch agent-enroll screen.
+    - [x] Submit `agent_id` and optional `display_name`.
+    - [x] Assert the returned `ak_` key is rendered in `ApiKeyReveal`.
+    - [x] Copy the key and confirm the "I've saved this key" acknowledgement.
+    - [x] Close/reopen the modal and refresh the page.
+    - [x] Verify the previously revealed key is no longer visible anywhere in the UI.
+  - [x] **Scenario 302: Operator can enroll and revoke agents**
+    - [x] Log in as `workspace_operator`.
+    - [x] Navigate to `/agents`.
+    - [x] Enroll an agent successfully.
+    - [x] Revoke that agent from the row action menu.
+    - [x] Verify the row status changes to `revoked` and the agent is excluded from active-only filters.
+  - [x] **Scenario 303: Rotate key invalidates the previous credential**
+    - [x] Enroll an agent and store the first bootstrap key in the test.
+    - [x] Trigger Rotate Key from the agent row.
+    - [x] Verify the replacement key is revealed once.
+    - [x] Call `POST /api/v2/agents/token` with the old key and assert `401`.
+    - [x] Call `POST /api/v2/agents/token` with the new key and assert success.
+  - [x] **Scenario 304: Viewer is denied access to agent management**
+    - [x] Log in as `workspace_viewer`.
+    - [x] Attempt to visit `/agents`.
+    - [x] Verify route guard redirects away from the page.
+    - [x] Attempt direct agent create/rotate/revoke API calls and verify `403 Forbidden`.
 
-- [ ] **E2E: Member management (Playwright)**
-  - [ ] **Scenario 305: Admin creates a member with a temporary password**
-    - Log in as `workspace_admin`.
-    - Navigate to `/members`.
-    - Open the add-member flow adapted from the Stitch members screen.
-    - Enter a valid email, role, and temporary password with at least 12 characters.
-    - Verify the new member row appears with `force_password_change = true`.
-    - Log in as that member and verify redirect to `/change-password`.
-  - [ ] **Scenario 306: Admin updates role and suspended status**
-    - Change a member from `workspace_viewer` to `workspace_operator`.
-    - Verify the role badge updates in the table without a full page reload.
-    - Suspend the same member.
-    - Verify the row status changes to `suspended` and the member can no longer authenticate.
-  - [ ] **Scenario 307: Last-admin lockout is enforced in UI and API**
-    - Create a workspace with exactly one active admin.
-    - Navigate to `/members`.
-    - Verify that demote/suspend controls for that admin are disabled in the UI.
-    - Attempt the same state transition via direct API call.
-    - Verify the server rejects it with the last-admin lockout error.
+- [x] **E2E: Member management (Playwright)**
+  - [x] **Scenario 305: Admin creates a member with a temporary password**
+    - [x] Log in as `workspace_admin`.
+    - [x] Navigate to `/members`.
+    - [x] Open the add-member flow adapted from the Stitch members screen.
+    - [x] Enter a valid email, role, and temporary password with at least 12 characters.
+    - [x] Verify the new member row appears with `force_password_change = true`.
+    - [x] Log in as that member and verify redirect to `/change-password`.
+  - [x] **Scenario 306: Admin updates role and suspended status**
+    - [x] Change a member from `workspace_viewer` to `workspace_operator`.
+    - [x] Verify the role badge updates in the table without a full page reload.
+    - [x] Suspend the same member.
+    - [x] Verify the row status changes to `suspended` and the member can no longer authenticate.
+  - [x] **Scenario 307: Last-admin lockout is enforced in UI and API**
+    - [x] Create a workspace with exactly one active admin.
+    - [x] Navigate to `/members`.
+    - [x] Verify that demote/suspend controls for that admin are disabled in the UI.
+    - [x] Attempt the same state transition via direct API call.
+    - [x] Verify the server rejects it with the last-admin lockout error.
 
-- [ ] **E2E: Workspace settings (Playwright)**
-  - [ ] **Scenario 308: Admin updates workspace display name and sees owner verification status**
-    - Log in as `workspace_admin`.
-    - Navigate to `/settings`.
-    - Verify slug and tier render as read-only fields.
-    - Verify owner email verification state is displayed clearly.
-    - Update the display name.
-    - Reload the page and verify the new display name persists in both header chrome and settings form.
+- [x] **E2E: Workspace settings (Playwright)**
+  - [x] **Scenario 308: Admin updates workspace display name and sees owner verification status**
+    - [x] Log in as `workspace_admin`.
+    - [x] Navigate to `/settings`.
+    - [x] Verify slug and tier render as read-only fields.
+    - [x] Verify owner email verification state is displayed clearly.
+    - [x] Update the display name.
+    - [x] Reload the page and verify the new display name persists in both header chrome and settings form.
 
-- [ ] **Server integration: `packages/sps-server`**
-  - [ ] **Scenario 309: `GET /api/v2/agents` paginates with stable ordering**
-    - Seed more agents than one page can hold.
-    - Fetch page 1 with `limit`.
-    - Fetch page 2 using `next_cursor`.
-    - Verify no duplicates, deterministic ordering, and correct `next_cursor` exhaustion.
-  - [ ] **Scenario 310: `GET /api/v2/members` paginates with stable ordering**
-    - Seed more members than one page can hold.
-    - Fetch consecutive pages via cursor.
-    - Verify no duplicates and deterministic ordering.
-  - [ ] **Scenario 311: Agent list/status filters are workspace-scoped**
-    - Seed agents across two workspaces with mixed statuses.
-    - Verify `status=active` and `status=revoked` only return records from the caller workspace.
-  - [ ] **Scenario 312: Member list/status filters are workspace-scoped**
-    - Seed members across two workspaces with mixed statuses.
-    - Verify `status=active` and `status=suspended` only return records from the caller workspace.
-  - [ ] **Scenario 313: Last-admin lockout rejects bypass attempts**
-    - Attempt to demote, suspend, and delete the final active admin using correctly formed requests.
-    - Verify each request is rejected with the lockout error code.
-  - [ ] **Scenario 314: Workspace read contract exposes owner verification status**
-    - Call `GET /api/v2/workspace`.
-    - Verify the response includes the owner verification field required by `/settings`.
+- [x] **Server integration: `packages/sps-server`**
+  - [x] **Scenario 309: `GET /api/v2/agents` paginates with stable ordering**
+    - [x] Seed more agents than one page can hold.
+    - [x] Fetch page 1 with `limit`.
+    - [x] Fetch page 2 using `next_cursor`.
+    - [x] Verify no duplicates, deterministic ordering, and correct `next_cursor` exhaustion.
+  - [x] **Scenario 310: `GET /api/v2/members` paginates with stable ordering**
+    - [x] Seed more members than one page can hold.
+    - [x] Fetch consecutive pages via cursor.
+    - [x] Verify no duplicates and deterministic ordering.
+  - [x] **Scenario 311: Agent list/status filters are workspace-scoped**
+    - [x] Seed agents across two workspaces with mixed statuses.
+    - [x] Verify `status=active` and `status=revoked` only return records from the caller workspace.
+  - [x] **Scenario 312: Member list/status filters are workspace-scoped**
+    - [x] Seed members across two workspaces with mixed statuses.
+    - [x] Verify `status=active` and `status=suspended` only return records from the caller workspace.
+  - [x] **Scenario 313: Last-admin lockout rejects bypass attempts**
+    - [x] Attempt to demote, suspend, and delete the final active admin using correctly formed requests.
+    - [x] Verify each request is rejected with the lockout error code.
+  - [x] **Scenario 314: Workspace read contract exposes owner verification status**
+    - [x] Call `GET /api/v2/workspace`.
+    - [x] Verify the response includes the owner verification field required by `/settings`.
 
-- [ ] **Dashboard component tests: `packages/dashboard`**
-  - [ ] **Scenario 315: `ApiKeyReveal` copies and dismisses without persistence**
-    - Render `ApiKeyReveal` with an `ak_` key.
-    - Verify copy-to-clipboard is called.
-    - Verify dismissal requires acknowledgement and unmount removes the key from view.
-  - [ ] **Scenario 316: Agent table appends paginated rows without duplication**
-    - Mock two cursor pages from `GET /api/v2/agents`.
-    - Trigger load-more/infinite append behavior.
-    - Verify rows merge once and preserve sort order.
-  - [ ] **Scenario 317: Member create form enforces temporary password rules**
-    - Verify fewer than 12 characters is blocked client-side.
-    - Verify visibly weak temporary passwords show an error state before submit.
-  - [ ] **Scenario 318: Last-admin controls disable correctly**
-    - Render the members table with exactly one active admin.
-    - Verify demote/suspend controls are disabled for that row.
-  - [ ] **Scenario 319: Settings page uses workspace contract and role rules correctly**
-    - Verify admins can submit display-name updates.
-    - Verify non-admin roles see the data but cannot edit it if the route is later opened to them.
+- [x] **Dashboard component tests: `packages/dashboard`**
+  - [x] **Scenario 315: `ApiKeyReveal` copies and dismisses without persistence**
+    - [x] Render `ApiKeyReveal` with an `ak_` key.
+    - [x] Verify copy-to-clipboard is called.
+    - [x] Verify dismissal requires acknowledgement and unmount removes the key from view.
+  - [x] **Scenario 316: Agent table appends paginated rows without duplication**
+    - [x] Mock two cursor pages from `GET /api/v2/agents`.
+    - [x] Trigger load-more/infinite append behavior.
+    - [x] Verify rows merge once and preserve sort order.
+  - [x] **Scenario 317: Member create form enforces temporary password rules**
+    - [x] Verify fewer than 12 characters is blocked client-side.
+    - [x] Verify visibly weak temporary passwords show an error state before submit.
+  - [x] **Scenario 318: Last-admin controls disable correctly**
+    - [x] Render the members table with exactly one active admin.
+    - [x] Verify demote/suspend controls are disabled for that row.
+  - [x] **Scenario 319: Settings page uses workspace contract and role rules correctly**
+    - [x] Verify admins can submit display-name updates.
+    - [x] Verify non-admin roles see the data but cannot edit it if the route is later opened to them.
 
 ## Milestone 4: Audit Log Viewer & Approvals Inbox
 
