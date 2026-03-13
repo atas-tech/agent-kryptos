@@ -8,7 +8,9 @@ Phase 3B transitions the focus from building the underlying backend SaaS primiti
 
 **Frontend stack**: The Operator Dashboard is a new `packages/dashboard` package using **Vite + React** (TypeScript). The existing `packages/browser-ui` (vanilla JS zero-knowledge sandbox) remains a separate, isolated package — it must never share runtime code or session state with the dashboard.
 
-**Design workflow**: Dashboard screens are designed first using **Stitch** (via MCP), then implemented by extracting HTML/CSS from the generated designs and adapting them into React components.
+**Design workflow**: Dashboard screens are designed first using **Stitch** (via MCP), then implemented by extracting HTML/CSS from the generated designs and adapting them into React components. **Crucially, while Stitch provides the layout and UX patterns, all implementations must override colors and gradients to stay 100% consistent with the Kryptos Design System (Deep Navy, Cyan/Purple gradients).**
+
+**Theming & Color Consistency**: To maintain visual identity, all dashboard components must exclusively use the CSS variables defined in `src/styles/index.css`. Ad-hoc color utilities or hardcoded hex values from Stitch exports must be replaced with theme variables (e.g., `--bg`, `--primary`, `--purple`) to ensure any future system-wide theme changes (like a Light Mode) can be applied automatically.
 
 > [!IMPORTANT]
 > This plan is divided into **8 incremental milestones**, each independently deployable. The order is: UI Design (Stitch) → Dashboard Shell & Auth → Agent & Member Management → Audit & Approvals → Billing & Quotas → Analytics & Abuse Controls → SDKs, Docs & Community → Hosted Deployment.
@@ -112,19 +114,23 @@ Design all dashboard screens using **Stitch via MCP** before writing any React c
 
 1. Create a Stitch project for the dashboard
 2. Design each screen with realistic sample data (not placeholder text)
-3. Use a consistent dark-mode-first aesthetic: deep navy backgrounds, accent blue/purple gradients, glassmorphism cards, Inter typography
-4. Review and iterate on designs before implementation
-5. Export finalized HTML/CSS from Stitch as the implementation reference
+3. Use a consistent dark-mode-first aesthetic (Kryptos Design System): deep navy backgrounds (`#060a14`), cyan/purple gradients (`#00f5d4` to `#7b61ff`), glassmorphism cards, Inter typography
+4. Review and iterate on designs before implementation, ensuring they match existing authenticated screens.
+5. Export finalized HTML/CSS from Stitch as the implementation reference, mapping all color hexes back to the `--primary`, `--bg`, and `--purple` CSS variables.
 
 #### Design Constraints
 
 - **Dark-mode-first** with optional light mode toggle later
 - **Typography**: Inter (Google Fonts), system-ui fallback
-- **Color palette**: HSL-based tokens — deep navy background (`hsl(222, 47%, 11%)`), accent blue/purple gradients, soft white text, semantic colors for status badges
+- **Color palette**: MUST use shared tokens from `index.css`:
+    - Background: `--bg` (#060a14)
+    - Primary: `--primary` (#00f5d4, Cyan)
+    - Accent: `--purple` (#7b61ff)
+    - Gradients: `linear-gradient(135deg, var(--primary) 0%, var(--primary-strong) 50%, var(--purple) 100%)`
 - **Components**: Glassmorphism cards with `backdrop-filter`, smooth `200ms` hover transitions, subtle micro-animations on state changes
 - **Spacing**: 4px base grid, consistent border-radius tokens (`4px`, `8px`, `12px`)
 - **Responsive**: Collapsible sidebar below 768px breakpoint
-- **Brand**: "agent-Kryptos" branding consistent with `kryptos.atas.tech` landing page
+- **Brand**: "agent-Kryptos" branding consistent with `kryptos.atas.tech` landing page. Layouts follow Stitch, but aesthetics follow the Kryptos Brand.
 
 **Acceptance**: All 14 screens designed in Stitch. Visual design reviewed and approved before Milestone 2 begins.
 
