@@ -127,15 +127,41 @@ export async function registerAgentRoutes(app: FastifyInstance, opts: AgentRoute
     }
   );
 
-  app.get("/", async (req, reply) => {
-    const user = await requireUserRole("workspace_operator")(req, reply);
-    if (!user) {
-      return;
-    }
+  app.get<{ Querystring: { limit?: number; cursor?: string; status?: "active" | "revoked" | "deleted" } }>(
+    "/",
+    {
+      schema: {
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            limit: { type: "integer", minimum: 1, maximum: 100 },
+            cursor: { type: "string", minLength: 1, maxLength: 512 },
+            status: {
+              type: "string",
+              enum: ["active", "revoked", "deleted"]
+            }
+          }
+        }
+      }
+    },
+    async (req, reply) => {
+      const user = await requireUserRole("workspace_operator")(req, reply);
+      if (!user) {
+        return;
+      }
 
-    const agents = await listAgents(opts.db, user.workspaceId);
-    return reply.send({ agents: agents.map(toAgentResponse) });
-  });
+      try {
+        const agents = await listAgents(opts.db, user.workspaceId, req.query);
+        return reply.send({
+          agents: agents.agents.map(toAgentResponse),
+          next_cursor: agents.nextCursor
+        });
+      } catch (error) {
+        return sendServiceError(reply, error);
+      }
+    }
+  );
 
   app.post("/token", async (req, reply) => {
     if (opts.rateLimitService) {

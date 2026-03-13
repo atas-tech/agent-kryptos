@@ -165,7 +165,7 @@ describe("dashboard milestone 2", () => {
     );
 
     renderApp(["/"]);
-    expect(await screen.findByText("Agent management")).toBeInTheDocument();
+    expect(await screen.findByText("Agent enrollment and rotation")).toBeInTheDocument();
     expect(screen.queryByText("Members")).not.toBeInTheDocument();
   });
 

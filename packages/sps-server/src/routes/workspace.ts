@@ -1,13 +1,16 @@
 import type { FastifyInstance, FastifyPluginOptions } from "fastify";
 import type { Pool } from "pg";
 import { requireUserAuth, requireUserRole } from "../middleware/auth.js";
+import { getWorkspaceOwnerVerificationState } from "../services/user.js";
 import { getWorkspace, type WorkspaceRecord, updateWorkspaceDisplayName } from "../services/workspace.js";
 
 export interface WorkspaceRoutesOptions extends FastifyPluginOptions {
   db: Pool;
 }
 
-function toWorkspaceResponse(workspace: WorkspaceRecord) {
+async function toWorkspaceResponse(db: Pool, workspace: WorkspaceRecord) {
+  const verification = await getWorkspaceOwnerVerificationState(db, workspace.id);
+
   return {
     id: workspace.id,
     slug: workspace.slug,
@@ -15,6 +18,7 @@ function toWorkspaceResponse(workspace: WorkspaceRecord) {
     tier: workspace.tier,
     status: workspace.status,
     owner_user_id: workspace.ownerUserId,
+    owner_email_verified: verification?.ownerEmailVerified ?? false,
     created_at: workspace.createdAt.toISOString(),
     updated_at: workspace.updatedAt.toISOString()
   };
@@ -32,7 +36,7 @@ export async function registerWorkspaceRoutes(app: FastifyInstance, opts: Worksp
       return reply.code(404).send({ error: "Workspace not found" });
     }
 
-    return reply.send({ workspace: toWorkspaceResponse(workspace) });
+    return reply.send({ workspace: await toWorkspaceResponse(opts.db, workspace) });
   });
 
   app.patch<{ Body: { display_name: string } }>(
@@ -60,7 +64,7 @@ export async function registerWorkspaceRoutes(app: FastifyInstance, opts: Worksp
         return reply.code(404).send({ error: "Workspace not found" });
       }
 
-      return reply.send({ workspace: toWorkspaceResponse(workspace) });
+      return reply.send({ workspace: await toWorkspaceResponse(opts.db, workspace) });
     }
   );
 }

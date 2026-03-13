@@ -182,6 +182,72 @@ Key dependencies: `react-router-dom` (routing) and Tailwind CSS for adapting Sti
 
 Build the CRUD interfaces for the two most common workspace admin tasks.
 
+#### Milestone 3 execution plan
+
+This milestone should be implemented as a thin vertical slice over the Phase 3A APIs that already exist, not as a dashboard-only mock layer. The backend already ships the write paths for agents, members, and workspace display name updates:
+
+- `POST /api/v2/agents`
+- `POST /api/v2/agents/:aid/rotate-key`
+- `DELETE /api/v2/agents/:aid`
+- `POST /api/v2/members`
+- `PATCH /api/v2/members/:uid`
+- `GET /api/v2/workspace`
+- `PATCH /api/v2/workspace`
+
+The main backend gaps for Milestone 3 are the paginated read contracts and one settings-read field for the owner verification indicator.
+
+#### Stitch adaptation map
+
+Milestone 3 must continue the same design workflow used in Milestone 2: extract layout structure from Stitch, then adapt it into React components while replacing exported color values with dashboard theme variables from `packages/dashboard/src/styles/index.css`.
+
+- Primary desktop references:
+  - `Desktop Agents Management`
+  - `Enroll Agent Modal Screen`
+  - `Desktop Members Management`
+  - `Desktop Workspace Settings Overview`
+- Mobile parity references:
+  - `agent-Kryptos Agents Management`
+  - `Enroll Agent Modal Screen`
+  - `agent-Kryptos Members Management`
+  - `Workspace Settings Overview`
+- Rule: keep Stitch spacing, panel hierarchy, modal composition, and responsive breakpoints; do not copy raw Stitch hex colors or one-off gradients into the React code.
+
+#### Recommended implementation order
+
+1. **Finalize read-model contracts in `sps-server`**
+   - Extend `GET /api/v2/agents` to accept `limit`, `cursor`, and optional `status`, returning `{ agents, next_cursor }`
+   - Extend `GET /api/v2/members` to accept `limit`, `cursor`, and optional `status`, returning `{ members, next_cursor }`
+   - Add owner verification status to the workspace read contract used by `/settings`
+   - Keep ordering stable and cursor-safe: use `created_at` plus a deterministic tie-breaker such as `id`
+
+2. **Add dashboard primitives before page wiring**
+   - Implement reusable `StatusBadge`, `DataTable`, `ConfirmDialog`, `EmptyState`, and `ApiKeyReveal`
+   - Add a small cursor-pagination hook instead of duplicating fetch/append state in each page
+   - Add a temporary-password strength indicator for the member create form
+
+3. **Implement `/agents` from the Stitch management + modal screens**
+   - Replace the placeholder page with a live list view, status badges, and row actions
+   - Wire enroll and rotate flows to the one-time `ApiKeyReveal` modal
+   - Keep the revealed `ak_` key only in transient component state; never persist it to storage, URL params, or logs
+   - Allow operators and admins to access this page; viewers remain blocked by route guards and backend RBAC
+
+4. **Implement `/members` from the Stitch member-management screen**
+   - Replace the placeholder with a paginated member table
+   - Wire add-member modal/form, inline role updates, and suspend actions
+   - Mirror backend last-admin protection in the UI by disabling demote/suspend controls when only one active admin remains
+   - Preserve the backend as the final authority: UI disablement is advisory, API rejection remains mandatory
+
+5. **Implement `/settings` from the Stitch settings screen**
+   - Replace the placeholder with a read-mostly workspace settings page
+   - Show slug and tier as read-only
+   - Allow admin-only inline edit of display name
+   - Surface owner email verification as an explicit status indicator so admin/operator confusion is avoided
+
+6. **Land tests with each slice**
+   - `packages/sps-server`: pagination, filtering, RBAC, and last-admin lockout regression coverage
+   - `packages/dashboard`: component tests for reveal modal, member controls, pagination append behavior, and settings edit state
+   - End-to-end: admin and operator happy paths plus viewer denial paths
+
 #### Agent Enrollment Page (`/agents`)
 
 - **Agent list table**: columns — Agent ID, Display Name, Status (active/revoked), Created At, Actions
@@ -211,6 +277,7 @@ Build the CRUD interfaces for the two most common workspace admin tasks.
 |----------|------|----------|
 | `GET /api/v2/agents` | User JWT (admin/operator) | Add `limit`, `cursor`, optional `status`; return paginated agent rows plus `next_cursor` |
 | `GET /api/v2/members` | User JWT (admin) | Add `limit`, `cursor`, optional `status`; return paginated member rows plus `next_cursor` |
+| `GET /api/v2/workspace` | User JWT (admin/operator/viewer) | Include owner verification status so `/settings` can render the verification badge without client-side guesswork |
 
 **Acceptance**: Workspace admin can enroll an agent and see the bootstrap key exactly once, rotate keys, revoke agents, and page through the agent list. Admin can create workspace members with temporary passwords, manage roles, and page through the member list. Last-admin lockout protection is visually enforced.
 

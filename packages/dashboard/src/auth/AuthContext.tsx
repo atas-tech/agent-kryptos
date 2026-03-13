@@ -28,6 +28,7 @@ export interface AuthContextValue {
   logout: () => Promise<void>;
   refresh: () => Promise<string | null>;
   changePassword: (currentPassword: string, nextPassword: string) => Promise<void>;
+  setWorkspaceSummary: (workspace: WorkspaceSummary) => void;
   clearAuth: () => void;
 }
 
@@ -235,6 +236,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       logout,
       refresh,
       changePassword,
+      setWorkspaceSummary: setWorkspace,
       clearAuth
     }),
     [accessToken, isLoading, user, workspace]

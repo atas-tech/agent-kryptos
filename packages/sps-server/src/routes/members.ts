@@ -8,7 +8,7 @@ import {
   countActiveWorkspaceUsers,
   createWorkspaceMember,
   ensureWorkspaceOwnerVerified,
-  listWorkspaceUsers,
+  listWorkspaceUsersPage,
   updateWorkspaceMember,
   UserServiceError,
   type UserRecord
@@ -42,15 +42,41 @@ function sendServiceError(reply: FastifyReply, error: unknown) {
 }
 
 export async function registerMemberRoutes(app: FastifyInstance, opts: MemberRoutesOptions): Promise<void> {
-  app.get("/", async (req, reply) => {
-    const user = await requireUserRole("workspace_admin")(req, reply);
-    if (!user) {
-      return;
-    }
+  app.get<{ Querystring: { limit?: number; cursor?: string; status?: "active" | "suspended" | "deleted" } }>(
+    "/",
+    {
+      schema: {
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            limit: { type: "integer", minimum: 1, maximum: 100 },
+            cursor: { type: "string", minLength: 1, maxLength: 512 },
+            status: {
+              type: "string",
+              enum: ["active", "suspended", "deleted"]
+            }
+          }
+        }
+      }
+    },
+    async (req, reply) => {
+      const user = await requireUserRole("workspace_admin")(req, reply);
+      if (!user) {
+        return;
+      }
 
-    const members = await listWorkspaceUsers(opts.db, user.workspaceId);
-    return reply.send({ members: members.map(toUserResponse) });
-  });
+      try {
+        const members = await listWorkspaceUsersPage(opts.db, user.workspaceId, req.query);
+        return reply.send({
+          members: members.members.map(toUserResponse),
+          next_cursor: members.nextCursor
+        });
+      } catch (error) {
+        return sendServiceError(reply, error);
+      }
+    }
+  );
 
   app.post<{ Body: { email: string; temporary_password: string; role: string } }>(
     "/",

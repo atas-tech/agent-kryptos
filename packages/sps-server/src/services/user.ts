@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import type { Pool, PoolClient } from "pg";
+import { decodePageCursor, encodePageCursor } from "./pagination.js";
 import { isUserRole, type UserRole } from "./rbac.js";
 import type { WorkspaceRecord } from "./workspace.js";
 import { createWorkspace, getWorkspace } from "./workspace.js";
@@ -58,6 +59,17 @@ export interface UserWithWorkspace {
 export interface WorkspaceOwnerVerificationState {
   ownerUserId: string | null;
   ownerEmailVerified: boolean;
+}
+
+export interface ListWorkspaceUsersInput {
+  limit?: number;
+  cursor?: string;
+  status?: UserStatus;
+}
+
+export interface WorkspaceUserListPage {
+  members: UserRecord[];
+  nextCursor: string | null;
 }
 
 export interface CreateWorkspaceMemberInput {
@@ -801,12 +813,96 @@ export async function listWorkspaceUsers(db: Pool, workspaceId: string): Promise
       SELECT id, email, password_hash, force_password_change, email_verified, verification_token, workspace_id, role, status, created_at, updated_at
       FROM users
       WHERE workspace_id = $1
-      ORDER BY created_at ASC
+      ORDER BY created_at DESC, id DESC
     `,
     [workspaceId]
   );
 
   return result.rows.map(toUserRecord);
+}
+
+function normalizeListLimit(limit?: number): number {
+  if (limit === undefined) {
+    return 20;
+  }
+
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new UserServiceError(400, "invalid_limit", "limit must be an integer between 1 and 100");
+  }
+
+  return limit;
+}
+
+function normalizeUserStatusFilter(status?: string): UserStatus | null {
+  if (status === undefined) {
+    return null;
+  }
+
+  if (status !== "active" && status !== "suspended" && status !== "deleted") {
+    throw new UserServiceError(400, "invalid_status", "Invalid user status");
+  }
+
+  return status;
+}
+
+export async function listWorkspaceUsersPage(
+  db: Pool,
+  workspaceId: string,
+  input: ListWorkspaceUsersInput = {}
+): Promise<WorkspaceUserListPage> {
+  const limit = normalizeListLimit(input.limit);
+  const status = normalizeUserStatusFilter(input.status);
+  let cursorCreatedAt: Date | null = null;
+  let cursorId: string | null = null;
+
+  if (input.cursor) {
+    try {
+      const decoded = decodePageCursor(input.cursor);
+      cursorCreatedAt = decoded.createdAt;
+      cursorId = decoded.id;
+    } catch {
+      throw new UserServiceError(400, "invalid_cursor", "cursor is invalid");
+    }
+  }
+
+  const values: Array<string | number | Date> = [workspaceId];
+  const conditions = ["workspace_id = $1"];
+
+  if (status) {
+    values.push(status);
+    conditions.push(`status = $${values.length}`);
+  }
+
+  if (cursorCreatedAt && cursorId) {
+    values.push(cursorCreatedAt, cursorId);
+    conditions.push(`(created_at, id) < ($${values.length - 1}, $${values.length})`);
+  }
+
+  values.push(limit + 1);
+  const result = await db.query<UserRow>(
+    `
+      SELECT id, email, password_hash, force_password_change, email_verified, verification_token, workspace_id, role, status, created_at, updated_at
+      FROM users
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY created_at DESC, id DESC
+      LIMIT $${values.length}
+    `,
+    values
+  );
+
+  const hasMore = result.rows.length > limit;
+  const rows = hasMore ? result.rows.slice(0, limit) : result.rows;
+  const lastRow = rows.at(-1);
+
+  return {
+    members: rows.map(toUserRecord),
+    nextCursor: hasMore && lastRow
+      ? encodePageCursor({
+          createdAt: lastRow.created_at,
+          id: lastRow.id
+        })
+      : null
+  };
 }
 
 export async function countActiveWorkspaceUsers(db: Pool, workspaceId: string): Promise<number> {

@@ -218,7 +218,8 @@ describePg("database foundation", () => {
         workspace: {
           id: workspace.id,
           slug: "hosted-acme",
-          display_name: "Hosted Acme"
+          display_name: "Hosted Acme",
+          owner_email_verified: false
         }
       });
 
@@ -237,7 +238,8 @@ describePg("database foundation", () => {
       expect(patchResponse.json()).toMatchObject({
         workspace: {
           id: workspace.id,
-          display_name: "Hosted Acme Updated"
+          display_name: "Hosted Acme Updated",
+          owner_email_verified: false
         }
       });
 

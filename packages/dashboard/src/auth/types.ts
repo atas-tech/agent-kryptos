@@ -19,6 +19,7 @@ export interface WorkspaceSummary {
   tier: string;
   status: string;
   owner_user_id: string;
+  owner_email_verified?: boolean;
   created_at: string;
   updated_at: string;
 }

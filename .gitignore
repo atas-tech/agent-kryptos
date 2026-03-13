@@ -4,3 +4,10 @@ coverage/
 .env
 .DS_Store
 .runtime
+
+# Test artifacts
+/test-results/
+/playwright-report/
+/blob-report/
+**/test-results/
+**/playwright-report/

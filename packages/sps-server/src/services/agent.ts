@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { SignJWT } from "jose";
 import type { Pool } from "pg";
+import { decodePageCursor, encodePageCursor } from "./pagination.js";
 import type { WorkspaceStatus } from "./workspace.js";
 
 const API_KEY_HASH_ROUNDS = 12;
@@ -36,6 +37,17 @@ export interface AgentTokenResult {
   accessToken: string;
   accessTokenExpiresAt: number;
   agent: EnrolledAgentRecord;
+}
+
+export interface ListAgentsInput {
+  limit?: number;
+  cursor?: string;
+  status?: EnrolledAgentStatus;
+}
+
+export interface AgentListPage {
+  agents: EnrolledAgentRecord[];
+  nextCursor: string | null;
 }
 
 export class AgentServiceError extends Error {
@@ -187,18 +199,88 @@ export async function enrollAgent(
   }
 }
 
-export async function listAgents(db: Pool, workspaceId: string): Promise<EnrolledAgentRecord[]> {
+function normalizeListLimit(limit?: number): number {
+  if (limit === undefined) {
+    return 20;
+  }
+
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new AgentServiceError(400, "invalid_limit", "limit must be an integer between 1 and 100");
+  }
+
+  return limit;
+}
+
+function normalizeAgentStatusFilter(status?: string): EnrolledAgentStatus | null {
+  if (status === undefined) {
+    return null;
+  }
+
+  if (status !== "active" && status !== "revoked" && status !== "deleted") {
+    throw new AgentServiceError(400, "invalid_status", "status must be active, revoked, or deleted");
+  }
+
+  return status;
+}
+
+export async function listAgents(
+  db: Pool,
+  workspaceId: string,
+  input: ListAgentsInput = {}
+): Promise<AgentListPage> {
+  const limit = normalizeListLimit(input.limit);
+  const status = normalizeAgentStatusFilter(input.status);
+  let cursorCreatedAt: Date | null = null;
+  let cursorId: string | null = null;
+
+  if (input.cursor) {
+    try {
+      const decoded = decodePageCursor(input.cursor);
+      cursorCreatedAt = decoded.createdAt;
+      cursorId = decoded.id;
+    } catch {
+      throw new AgentServiceError(400, "invalid_cursor", "cursor is invalid");
+    }
+  }
+
+  const values: Array<string | number | Date> = [workspaceId];
+  const conditions = ["workspace_id = $1"];
+
+  if (status) {
+    values.push(status);
+    conditions.push(`status = $${values.length}`);
+  }
+
+  if (cursorCreatedAt && cursorId) {
+    values.push(cursorCreatedAt, cursorId);
+    conditions.push(`(created_at, id) < ($${values.length - 1}, $${values.length})`);
+  }
+
+  values.push(limit + 1);
   const result = await db.query<EnrolledAgentRow>(
     `
       SELECT id, workspace_id, agent_id, display_name, status, api_key_hash, created_at, revoked_at
       FROM enrolled_agents
-      WHERE workspace_id = $1
-      ORDER BY created_at DESC
+      WHERE ${conditions.join(" AND ")}
+      ORDER BY created_at DESC, id DESC
+      LIMIT $${values.length}
     `,
-    [workspaceId]
+    values
   );
 
-  return result.rows.map(toAgentRecord);
+  const hasMore = result.rows.length > limit;
+  const rows = hasMore ? result.rows.slice(0, limit) : result.rows;
+  const lastRow = rows.at(-1);
+
+  return {
+    agents: rows.map(toAgentRecord),
+    nextCursor: hasMore && lastRow
+      ? encodePageCursor({
+          createdAt: lastRow.created_at,
+          id: lastRow.id
+        })
+      : null
+  };
 }
 
 export async function countActiveAgents(db: Pool, workspaceId: string): Promise<number> {
