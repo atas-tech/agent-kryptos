@@ -31,6 +31,9 @@ Useful companion commands:
 
 ## Milestone 2: Dashboard Shell & Authentication UI
 
+Implementation note:
+- `2026-03-13`: Component coverage for the Milestone 2 dashboard shell shipped in `packages/dashboard/src/test/dashboard.test.tsx`, covering auth storage, protected-route redirects, login/register flows, and the API client's 401-refresh retry path.
+
 - [ ] **Auth lifecycle**
   - [ ] Admin registers a new workspace from the dashboard
   - [ ] Admin is redirected into the authenticated shell
@@ -151,4 +154,3 @@ Useful companion commands:
 - [ ] Hosted register → enroll agent → deliver secret flow succeeds at production URLs
 - [ ] **Final Security Audit**: Re-evaluate and implement `Secure` + `httpOnly` cookie fallback for refresh tokens before final go-live
 - [ ] **Throttling Isolation**: Verify that a throttled workspace does NOT impact the performance or rate limits of other active workspaces on the same instance
-

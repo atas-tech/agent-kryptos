@@ -16,6 +16,7 @@ Phase 3B transitions the focus from building the underlying backend SaaS primiti
 ## Progress
 
 - `2026-03-12`: Milestone 1 complete — All 14 dashboard screens designed in Stitch (Project ID: `5937100388262572555`). Ready for implementation.
+- `2026-03-13`: Milestone 2 frontend implementation landed in `packages/dashboard` using Stitch HTML exports as the layout reference. Auth flows, refresh persistence, force-password-change routing, role-aware sidebar navigation, and responsive placeholder routes for the full shell are now in place. Later CRUD pages remain scaffolded until Milestones 3-6 wire their APIs.
 
 ---
 
