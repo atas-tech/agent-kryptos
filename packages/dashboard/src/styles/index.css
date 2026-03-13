@@ -4,23 +4,25 @@
 @layer base {
   :root {
     color-scheme: dark;
-    --bg: #131022;
-    --bg-elevated: rgba(20, 17, 36, 0.86);
-    --bg-panel: rgba(33, 27, 64, 0.72);
-    --bg-panel-strong: rgba(255, 255, 255, 0.08);
-    --text: #f7f5ff;
-    --muted: #9f9ab7;
-    --border: rgba(129, 114, 199, 0.24);
-    --primary: #5b2bee;
-    --primary-soft: rgba(91, 43, 238, 0.18);
-    --primary-strong: #8d68ff;
-    --success: #39d98a;
-    --warning: #fbbf24;
-    --danger: #f87171;
+    --bg: #060a14;
+    --bg-elevated: #0c1222;
+    --bg-panel: rgba(14, 22, 42, 0.6);
+    --bg-panel-strong: rgba(20, 30, 55, 0.8);
+    --text: #f0f4ff;
+    --muted: #8892a8;
+    --border: rgba(0, 245, 212, 0.15);
+    --primary: #00f5d4;
+    --primary-soft: rgba(0, 245, 212, 0.15);
+    --primary-strong: #00b4d8;
+    --purple: #7b61ff;
+    --purple-soft: rgba(123, 97, 255, 0.15);
+    --success: #2ed573;
+    --warning: #ff9f43;
+    --danger: #ff4757;
     font-family: "Inter", sans-serif;
     background:
-      radial-gradient(circle at top left, rgba(91, 43, 238, 0.18), transparent 38%),
-      radial-gradient(circle at bottom right, rgba(45, 212, 191, 0.08), transparent 28%),
+      radial-gradient(ellipse at top left, rgba(0, 245, 212, 0.06) 0%, transparent 60%),
+      radial-gradient(ellipse at bottom right, rgba(123, 97, 255, 0.05) 0%, transparent 60%),
       var(--bg);
   }
 
@@ -37,8 +39,8 @@
 
   body {
     background:
-      radial-gradient(circle at top left, rgba(91, 43, 238, 0.18), transparent 38%),
-      radial-gradient(circle at bottom right, rgba(45, 212, 191, 0.08), transparent 28%),
+      radial-gradient(ellipse at top left, rgba(0, 245, 212, 0.06) 0%, transparent 40%),
+      radial-gradient(ellipse at bottom right, rgba(123, 97, 255, 0.05) 0%, transparent 40%),
       var(--bg);
     color: var(--text);
   }
@@ -61,21 +63,21 @@
 
   .status-pill {
     @apply inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em];
-    border-color: rgba(129, 114, 199, 0.25);
-    background: rgba(91, 43, 238, 0.12);
-    color: #e9e3ff;
+    border-color: rgba(0, 245, 212, 0.25);
+    background: rgba(0, 245, 212, 0.12);
+    color: var(--primary);
   }
 
   .section-label {
     @apply text-[11px] font-bold uppercase tracking-[0.26em];
-    color: #b7a8ff;
+    color: var(--primary);
   }
 
   .brand-mark {
     @apply flex h-10 w-10 items-center justify-center rounded-xl;
-    background: linear-gradient(135deg, var(--primary), #8b4aff);
-    color: white;
-    box-shadow: 0 18px 44px rgba(91, 43, 238, 0.3);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-strong) 50%, var(--purple) 100%);
+    color: var(--bg);
+    box-shadow: 0 18px 44px rgba(0, 245, 212, 0.3);
   }
 
   .auth-shell {
@@ -84,16 +86,16 @@
 
   .auth-shell__hero {
     @apply relative hidden overflow-hidden border-r lg:flex;
-    border-color: rgba(129, 114, 199, 0.2);
-    background: linear-gradient(180deg, rgba(11, 9, 24, 0.82), rgba(11, 9, 24, 0.96));
+    border-color: rgba(0, 245, 212, 0.2);
+    background: linear-gradient(180deg, rgba(6, 10, 20, 0.82), rgba(6, 10, 20, 0.96));
   }
 
   .auth-shell__mesh {
     @apply absolute inset-0;
     background:
-      radial-gradient(circle at top left, rgba(91, 43, 238, 0.28), transparent 32%),
-      radial-gradient(circle at bottom right, rgba(56, 189, 248, 0.14), transparent 30%),
-      linear-gradient(135deg, rgba(11, 9, 24, 0.95), rgba(21, 15, 43, 0.9));
+      radial-gradient(circle at top left, rgba(0, 245, 212, 0.28), transparent 32%),
+      radial-gradient(circle at bottom right, rgba(123, 97, 255, 0.14), transparent 30%),
+      linear-gradient(135deg, rgba(6, 10, 20, 0.95), rgba(12, 18, 34, 0.9));
   }
 
   .auth-shell__hero-content {
@@ -118,12 +120,12 @@
   }
 
   .auth-shell__hero-copy h1 span {
-    color: #a991ff;
+    color: var(--primary);
   }
 
   .auth-shell__hero-copy p {
     @apply max-w-xl text-lg leading-8;
-    color: rgba(226, 221, 255, 0.72);
+    color: rgba(240, 244, 255, 0.72);
   }
 
   .auth-shell__metrics {
@@ -132,7 +134,7 @@
 
   .auth-shell__metric {
     @apply flex min-w-[140px] flex-col gap-1 rounded-2xl border px-5 py-4;
-    border-color: rgba(129, 114, 199, 0.22);
+    border-color: rgba(0, 245, 212, 0.22);
     background: rgba(255, 255, 255, 0.03);
   }
 
@@ -142,7 +144,7 @@
 
   .auth-shell__metric span {
     @apply text-[11px] font-semibold uppercase tracking-[0.18em];
-    color: rgba(183, 168, 255, 0.85);
+    color: rgba(136, 146, 168, 0.85);
   }
 
   .auth-shell__panel {
@@ -153,15 +155,15 @@
     @apply absolute inset-0;
     content: "";
     background:
-      radial-gradient(circle at top left, rgba(91, 43, 238, 0.16), transparent 32%),
-      radial-gradient(circle at bottom right, rgba(91, 43, 238, 0.12), transparent 26%);
+      radial-gradient(circle at top left, rgba(0, 245, 212, 0.16), transparent 32%),
+      radial-gradient(circle at bottom right, rgba(0, 245, 212, 0.12), transparent 26%);
     pointer-events: none;
   }
 
   .auth-shell__panel-inner {
     @apply relative z-10 w-full max-w-xl rounded-[28px] border p-6 shadow-2xl sm:p-8 lg:max-w-lg;
-    border-color: rgba(129, 114, 199, 0.2);
-    background: rgba(18, 14, 33, 0.82);
+    border-color: rgba(0, 245, 212, 0.2);
+    background: rgba(14, 22, 42, 0.82);
     backdrop-filter: blur(18px);
   }
 
@@ -172,12 +174,12 @@
   .auth-shell__panel-header p,
   .auth-shell__footer {
     @apply text-sm leading-7;
-    color: rgba(226, 221, 255, 0.72);
+    color: rgba(240, 244, 255, 0.72);
   }
 
   .auth-shell__footer a,
   .text-link {
-    color: #a991ff;
+    color: var(--primary);
   }
 
   .auth-form {
@@ -190,7 +192,7 @@
 
   .form-field__label {
     @apply pl-1 text-sm font-semibold;
-    color: #e9e3ff;
+    color: var(--text);
   }
 
   .form-field__hint {
@@ -200,19 +202,19 @@
 
   .form-field__control {
     @apply relative flex items-center rounded-2xl border;
-    border-color: rgba(129, 114, 199, 0.22);
+    border-color: rgba(0, 245, 212, 0.22);
     background: rgba(255, 255, 255, 0.04);
   }
 
   .form-field__control:focus-within {
     border-color: rgba(141, 104, 255, 0.8);
-    box-shadow: 0 0 0 4px rgba(91, 43, 238, 0.15);
+    box-shadow: 0 0 0 4px rgba(0, 245, 212, 0.15);
   }
 
   .form-field__icon,
   .form-field__trailing {
     @apply absolute top-1/2 -translate-y-1/2;
-    color: rgba(226, 221, 255, 0.54);
+    color: rgba(240, 244, 255, 0.54);
   }
 
   .form-field__icon {
@@ -228,7 +230,7 @@
   }
 
   .form-field input::placeholder {
-    color: rgba(226, 221, 255, 0.4);
+    color: rgba(240, 244, 255, 0.4);
   }
 
   .trailing-button {
@@ -239,12 +241,12 @@
   .slug-suffix {
     @apply rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em];
     background: rgba(255, 255, 255, 0.08);
-    color: rgba(226, 221, 255, 0.76);
+    color: rgba(240, 244, 255, 0.76);
   }
 
   .checkbox-row {
     @apply flex items-start gap-3 text-sm leading-6;
-    color: rgba(226, 221, 255, 0.72);
+    color: rgba(240, 244, 255, 0.72);
   }
 
   .checkbox-row input {
@@ -258,10 +260,10 @@
   }
 
   .primary-button {
-    border-color: rgba(129, 114, 199, 0.35);
-    background: linear-gradient(135deg, var(--primary), #8b4aff);
-    color: white;
-    box-shadow: 0 18px 40px rgba(91, 43, 238, 0.28);
+    border-color: rgba(0, 245, 212, 0.35);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-strong) 50%, var(--purple) 100%);
+    color: var(--bg);
+    box-shadow: 0 18px 40px rgba(0, 245, 212, 0.28);
   }
 
   .primary-button:hover {
@@ -278,16 +280,16 @@
   }
 
   .ghost-button {
-    border-color: rgba(129, 114, 199, 0.18);
+    border-color: rgba(0, 245, 212, 0.18);
     background: rgba(255, 255, 255, 0.04);
-    color: rgba(247, 245, 255, 0.88);
+    color: rgba(240, 244, 255, 0.88);
   }
 
   .turnstile-placeholder {
     @apply flex items-center gap-3 rounded-2xl border p-4 text-sm;
-    border-color: rgba(129, 114, 199, 0.18);
+    border-color: rgba(0, 245, 212, 0.18);
     background: rgba(255, 255, 255, 0.04);
-    color: rgba(226, 221, 255, 0.78);
+    color: rgba(240, 244, 255, 0.78);
   }
 
   .turnstile-placeholder strong {
@@ -305,7 +307,7 @@
 
   .checkbox-proxy {
     @apply h-5 w-5 rounded-md border;
-    border-color: rgba(226, 221, 255, 0.26);
+    border-color: rgba(240, 244, 255, 0.26);
   }
 
   .error-banner {
@@ -325,8 +327,8 @@
 
   .dashboard-mobile-bar {
     @apply sticky top-0 z-40 flex items-center justify-between gap-4 border-b px-4 py-3 lg:hidden;
-    border-color: rgba(129, 114, 199, 0.16);
-    background: rgba(19, 16, 34, 0.88);
+    border-color: rgba(0, 245, 212, 0.16);
+    background: rgba(12, 18, 34, 0.88);
     backdrop-filter: blur(18px);
   }
 
@@ -338,7 +340,7 @@
 
   .icon-button {
     @apply inline-flex h-10 w-10 items-center justify-center rounded-2xl border bg-transparent;
-    border-color: rgba(129, 114, 199, 0.22);
+    border-color: rgba(0, 245, 212, 0.22);
     color: white;
   }
 
@@ -348,10 +350,10 @@
 
   .dashboard-sidebar {
     @apply fixed inset-y-0 left-0 z-50 flex w-[290px] -translate-x-full flex-col border-r px-5 py-6 transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0;
-    border-color: rgba(129, 114, 199, 0.16);
+    border-color: rgba(0, 245, 212, 0.16);
     background:
-      radial-gradient(circle at top, rgba(91, 43, 238, 0.16), transparent 28%),
-      rgba(10, 8, 18, 0.92);
+      radial-gradient(circle at top, rgba(0, 245, 212, 0.16), transparent 28%),
+      rgba(6, 10, 20, 0.92);
     backdrop-filter: blur(20px);
   }
 
@@ -384,7 +386,7 @@
   .hero-card,
   .info-card {
     @apply rounded-[24px] border;
-    border-color: rgba(129, 114, 199, 0.18);
+    border-color: rgba(0, 245, 212, 0.18);
     background: rgba(255, 255, 255, 0.04);
   }
 
@@ -410,13 +412,13 @@
   .dashboard-nav__link {
     @apply flex items-center justify-between rounded-2xl border px-4 py-3 text-sm transition;
     border-color: transparent;
-    color: rgba(247, 245, 255, 0.82);
+    color: rgba(240, 244, 255, 0.82);
   }
 
   .dashboard-nav__link:hover,
   .dashboard-nav__link.is-active {
-    border-color: rgba(129, 114, 199, 0.18);
-    background: rgba(91, 43, 238, 0.16);
+    border-color: rgba(0, 245, 212, 0.18);
+    background: rgba(0, 245, 212, 0.16);
     color: white;
   }
 
@@ -429,8 +431,8 @@
   }
 
   .profile-card__avatar {
-    @apply flex h-11 w-11 items-center justify-center rounded-full text-sm font-black text-white;
-    background: linear-gradient(135deg, #4c2bf2, #8b4aff);
+    @apply flex h-11 w-11 items-center justify-center rounded-full text-sm font-black text-[var(--bg)];
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-strong) 50%, var(--purple) 100%);
   }
 
   .dashboard-main {
@@ -439,8 +441,8 @@
 
   .dashboard-header {
     @apply mb-6 flex flex-col gap-4 rounded-[28px] border px-5 py-5 sm:px-6 lg:flex-row lg:items-end lg:justify-between;
-    border-color: rgba(129, 114, 199, 0.16);
-    background: rgba(18, 14, 33, 0.72);
+    border-color: rgba(0, 245, 212, 0.16);
+    background: rgba(14, 22, 42, 0.72);
     backdrop-filter: blur(18px);
   }
 
@@ -454,7 +456,7 @@
 
   .search-field {
     @apply flex min-w-0 items-center gap-3 rounded-2xl border px-4 py-3 sm:min-w-[320px];
-    border-color: rgba(129, 114, 199, 0.18);
+    border-color: rgba(0, 245, 212, 0.18);
     background: rgba(255, 255, 255, 0.04);
     color: var(--muted);
   }
@@ -464,7 +466,7 @@
   }
 
   .search-field input::placeholder {
-    color: rgba(226, 221, 255, 0.4);
+    color: rgba(240, 244, 255, 0.4);
   }
 
   .dashboard-content,
@@ -478,7 +480,7 @@
 
   .hero-card--dashboard {
     background:
-      radial-gradient(circle at top right, rgba(91, 43, 238, 0.18), transparent 28%),
+      radial-gradient(circle at top right, rgba(0, 245, 212, 0.18), transparent 28%),
       rgba(255, 255, 255, 0.04);
   }
 
@@ -488,7 +490,7 @@
 
   .hero-card__body {
     @apply text-sm leading-7;
-    color: rgba(226, 221, 255, 0.72);
+    color: rgba(240, 244, 255, 0.72);
   }
 
   .hero-card__actions {
@@ -509,8 +511,8 @@
 
   .info-card__icon {
     @apply inline-flex h-11 w-11 items-center justify-center rounded-2xl;
-    background: rgba(91, 43, 238, 0.18);
-    color: #b7a8ff;
+    background: rgba(0, 245, 212, 0.18);
+    color: var(--primary);
   }
 
   .metric-value {
@@ -519,12 +521,12 @@
 
   .feature-list {
     @apply m-0 list-none space-y-3 p-0;
-    color: rgba(226, 221, 255, 0.78);
+    color: rgba(240, 244, 255, 0.78);
   }
 
   .feature-list li {
     @apply rounded-2xl border px-4 py-3 text-sm leading-6;
-    border-color: rgba(129, 114, 199, 0.16);
+    border-color: rgba(0, 245, 212, 0.16);
     background: rgba(255, 255, 255, 0.03);
   }
 
@@ -534,7 +536,7 @@
 
   .status-card {
     @apply rounded-2xl border px-4 py-4;
-    border-color: rgba(129, 114, 199, 0.16);
+    border-color: rgba(0, 245, 212, 0.16);
     background: rgba(255, 255, 255, 0.04);
   }
 
