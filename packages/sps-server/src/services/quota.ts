@@ -20,18 +20,18 @@ const DAILY_LIMITS: Record<QuotaAction, Record<WorkspaceTier, number>> = {
     standard: 1_000
   },
   exchange_request: {
-    free: 0,
+    free: process.env.SPS_EXCHANGE_LIMIT_FREE ? parseInt(process.env.SPS_EXCHANGE_LIMIT_FREE) : 0,
     standard: 1_000
   }
 };
 
 const ACTIVE_AGENT_LIMITS: Record<WorkspaceTier, number> = {
-  free: 5,
+  free: process.env.SPS_AGENT_LIMIT_FREE ? parseInt(process.env.SPS_AGENT_LIMIT_FREE) : 5,
   standard: 50
 };
 
 const ACTIVE_MEMBER_LIMITS: Record<WorkspaceTier, number> = {
-  free: 1,
+  free: process.env.SPS_MEMBER_LIMIT_FREE ? parseInt(process.env.SPS_MEMBER_LIMIT_FREE) : 1,
   standard: 10
 };
 

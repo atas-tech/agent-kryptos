@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import pg from "pg";
 
 test.describe("Approvals Inbox", () => {
+  test.use({ viewport: { width: 1920, height: 1080 } });
   const password = "LongPassword123!";
 
   async function setupWorkspace(page: any) {
@@ -62,7 +63,7 @@ test.describe("Approvals Inbox", () => {
       await client.end();
     }
 
-    await page.goto("/approvals");
+    await page.getByRole("link", { name: /Approvals/i }).click();
     await expect(page).toHaveURL("/approvals");
 
     // Verify approval card appears
@@ -90,6 +91,7 @@ test.describe("Approvals Inbox", () => {
     await page.getByLabel("Temporary password").fill("ViewerPassword123!");
     await page.locator("#member-role").selectOption("workspace_viewer");
     await page.getByRole("button", { name: /Create member/i }).first().click();
+    await expect(page.getByText(viewerEmail).first()).toBeVisible();
 
     // Verify in DB that viewer exists and reset fpc
     const client = new pg.Client({ connectionString: process.env.DATABASE_URL || "postgresql://kryptos:localdev@127.0.0.1:5433/agent_kryptos" });
@@ -101,15 +103,16 @@ test.describe("Approvals Inbox", () => {
     }
 
     // Logout and login as viewer
-    await page.evaluate(() => {
-      localStorage.clear();
-      window.location.href = '/login';
-    });
-    await expect(page).toHaveURL("/login");
+    await page.evaluate(() => localStorage.clear());
+    await page.context().clearCookies();
+    await page.goto("/login");
 
     await page.getByLabel("Email address").fill(viewerEmail);
     await page.getByLabel("Password").fill("ViewerPassword123!");
-    await page.getByRole("button", { name: /Login to portal/i }).click();
+    await page.getByRole("button", { name: /Login to portal/i }).first().click();
+    // Viewer is redirected to /audit by default
+    await expect(page).toHaveURL("/audit");
+    await expect(page.locator("button:has-text('Log out')").first()).toBeVisible();
 
     await page.goto("/approvals");
     await expect(page.getByText("Viewer access is read-only")).toBeVisible();

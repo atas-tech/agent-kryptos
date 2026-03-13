@@ -1,0 +1,37 @@
+
+Running 1 test using 1 worker
+
+  ✘  1 [chromium] › e2e/approvals.spec.ts:82:3 › Approvals Inbox › Scenario 404: Viewer read-only access (6.6s)
+
+
+  1) [chromium] › e2e/approvals.spec.ts:82:3 › Approvals Inbox › Scenario 404: Viewer read-only access 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByText('viewer-1773410355989@example.com').first()
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for getByText('viewer-1773410355989@example.com').first()[22m
+
+
+      91 |     await page.locator("#member-role").selectOption("workspace_viewer");
+      92 |     await page.getByRole("button", { name: /Create member/i }).first().click();
+    > 93 |     await expect(page.getByText(viewerEmail).first()).toBeVisible();
+         |                                                       ^
+      94 |
+      95 |     // Verify in DB that viewer exists and reset fpc
+      96 |     const client = new pg.Client({ connectionString: process.env.DATABASE_URL || "postgresql://kryptos:localdev@127.0.0.1:5433/agent_kryptos" });
+        at /home/hvo/Projects/agent-kryptos/packages/dashboard/e2e/approvals.spec.ts:93:55
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/approvals-Approvals-Inbox--ce311-404-Viewer-read-only-access-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/approvals-Approvals-Inbox--ce311-404-Viewer-read-only-access-chromium/error-context.md
+
+  1 failed
+    [chromium] › e2e/approvals.spec.ts:82:3 › Approvals Inbox › Scenario 404: Viewer read-only access 

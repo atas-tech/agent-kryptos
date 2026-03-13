@@ -1,0 +1,39 @@
+
+Running 2 tests using 1 worker
+
+  ✘  1 [chromium] › e2e/audit.spec.ts:43:3 › Audit Log & Timeline › Scenario 401: Audit viewer filters & pagination (24.7s)
+  ✓  2 [chromium] › e2e/audit.spec.ts:74:3 › Audit Log & Timeline › Scenario 402: Exchange lifecycle drill-down (1.4s)
+
+
+  1) [chromium] › e2e/audit.spec.ts:43:3 › Audit Log & Timeline › Scenario 401: Audit viewer filters & pagination 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByText('agent_enrolled').first()
+    Expected: visible
+    Timeout: 20000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 20000ms[22m
+    [2m  - waiting for getByText('agent_enrolled').first()[22m
+
+
+      59 |     await page.goto("/audit");
+      60 |     await page.reload(); // Explicit reload to ensure fresh data
+    > 61 |     await expect(page.getByText("agent_enrolled").first()).toBeVisible({ timeout: 20000 });
+         |                                                            ^
+      62 |
+      63 |     // Test filters
+      64 |     await page.getByLabel("Filter audit by event type").selectOption("agent_enrolled");
+        at /home/hvo/Projects/agent-kryptos/packages/dashboard/e2e/audit.spec.ts:61:60
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/audit-Audit-Log-Timeline-S-573aa-t-viewer-filters-pagination-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/audit-Audit-Log-Timeline-S-573aa-t-viewer-filters-pagination-chromium/error-context.md
+
+  1 failed
+    [chromium] › e2e/audit.spec.ts:43:3 › Audit Log & Timeline › Scenario 401: Audit viewer filters & pagination 
+  1 passed (30.2s)

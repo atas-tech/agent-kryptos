@@ -31,30 +31,29 @@ test.describe("Audit Log & Timeline", () => {
       await client.end();
     }
     
-    // 3. Reload to reflect verification status
-    await page.reload();
-    
     return { workspaceSlug, adminEmail };
   }
 
   test("Scenario 401: Audit viewer filters & pagination", async ({ page }) => {
     await setupWorkspace(page);
     
+    await expect(page).toHaveURL("/");
     await page.goto("/audit");
     await expect(page).toHaveURL("/audit");
 
     // Perform an action that triggers audit (e.g., enroll agent)
-    await page.goto("/agents");
-    await page.locator("button:has-text('Enroll')").first().click();
+    await page.getByRole("link", { name: /Agents/i }).click();
+    await page.locator(".hero-card--dashboard button:has-text('Enroll agent')").first().click();
     await page.getByLabel("Agent ID").fill("audit-bot");
     await page.getByRole("button", { name: /Create bootstrap key/i }).first().click();
     await page.locator('input[type="checkbox"]').check();
     await page.getByRole("button", { name: /I saved this key/i }).first().click();
 
-    // Go back to audit and check for the event
-    await page.goto("/audit");
-    await page.reload(); // Explicit reload to ensure fresh data
-    await expect(page.getByText("agent_enrolled").first()).toBeVisible({ timeout: 20000 });
+    // Verify audit entry appears
+    await page.waitForTimeout(5000);
+    await page.getByRole("link", { name: /Audit/i }).click();
+    await page.getByRole("button", { name: /Refresh/i }).first().click();
+    await expect(page.getByRole("cell", { name: /agent_enrolled/i }).first()).toBeVisible({ timeout: 20000 });
 
     // Test filters
     await page.getByLabel("Filter audit by event type").selectOption("agent_enrolled");

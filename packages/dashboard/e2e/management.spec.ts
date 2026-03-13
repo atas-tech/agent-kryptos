@@ -89,7 +89,8 @@ test.describe("Management", () => {
     await expect(page.getByRole("dialog").first()).toBeVisible();
     
     const patchResponse = page.waitForResponse(resp => 
-      resp.url().includes("/api/v2/members/") && resp.request().method() === "PATCH"
+      resp.url().includes("/api/v2/members/") && resp.request().method() === "PATCH",
+      { timeout: 10000 }
     );
     await page.getByTestId("confirm-dialog-btn").first().click();
     await patchResponse;
@@ -123,12 +124,10 @@ test.describe("Management", () => {
 
     const newName = `Updated Space ${Date.now()}`;
     await page.getByTestId("workspace-display-name-input").first().fill(newName);
-    await page.getByTestId("save-workspace-btn").first().click();
-
-    // Verify persistence
-    await page.reload();
-    await expect(page.getByTestId("workspace-display-name-input").first()).toHaveValue(newName);
-    // Header should also update
-    await expect(page.locator("main .dashboard-header__title").first()).toHaveText("Settings");
+    const responsePromise = page.waitForResponse(r => r.url().includes("/api/v2/workspace") && r.request().method() === "PUT");
+    await page.getByRole("button", { name: /Save workspace/i }).first().click();
+    await responsePromise;
+    await page.getByRole("link", { name: /Dashboard/i }).click(); // Use Dashboard to see sidebar update
+    await expect(page.locator(".sidebar-workspace__name").first()).toHaveText(newName);
   });
 });

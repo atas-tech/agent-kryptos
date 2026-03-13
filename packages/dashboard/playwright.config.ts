@@ -27,7 +27,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
     
     /* Viewport size */
-    viewport: { width: 1280, height: 1400 },
+    viewport: { width: 1920, height: 1080 },
   },
 
   /* Configure projects for major browsers */
@@ -44,7 +44,7 @@ export default defineConfig({
       command: "npm run dev",
       url: "http://localhost:5173",
       timeout: 120000,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       cwd: "./",
       env: {
         VITE_SPS_API_URL: "http://localhost:3100"
@@ -53,7 +53,7 @@ export default defineConfig({
     {
       command: "npm run dev",
       url: "http://localhost:3100/healthz",
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       cwd: "../sps-server",
       env: {
         DATABASE_URL: process.env.DATABASE_URL || "postgresql://kryptos:localdev@127.0.0.1:5433/agent_kryptos",
@@ -68,6 +68,9 @@ export default defineConfig({
         STRIPE_WEBHOOK_SECRET: "whsec_test",
         SPS_AUTH_REGISTRATION_LIMIT: "100",
         SPS_AUTH_LOGIN_LIMIT: "100",
+        SPS_MEMBER_LIMIT_FREE: "10",
+        SPS_AGENT_LIMIT_FREE: "10",
+        SPS_EXCHANGE_LIMIT_FREE: "100",
         PORT: "3100"
       }
     }
