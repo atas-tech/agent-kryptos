@@ -319,14 +319,14 @@ Surface the existing Phase 3A audit and approval endpoints in the dashboard.
 
 ### Milestone 5: Billing & Quota Dashboard
 
-Give workspace admins visibility into their subscription and usage. Milestone 5 also ships the **multi-provider billing abstraction** and the **billing portal endpoint**.
+Give workspace admins visibility into their subscription and usage. Milestone 5 also ships the **subscription billing abstraction** and the **billing portal endpoint**.
 
 #### Provider Architecture Split
 
-The billing backend is split into two distinct abstraction layers to handle both traditional fiat subscriptions and high-frequency per-request autonomous payments:
+The billing backend is split into two distinct abstraction layers to handle both traditional fiat subscriptions and autonomous agent payments:
 
 1. **`SubscriptionProvider` interface (e.g., Stripe, Lemonsqueezy):**
-   Handles human checkout, workspace tier upgrades via portal sessions, and asynchronous webhook events.
+   Handles human checkout, recurring workspace subscriptions, customer portal sessions, and asynchronous webhook events.
    ```typescript
    interface SubscriptionProvider {
      readonly name: string;
@@ -337,7 +337,7 @@ The billing backend is split into two distinct abstraction layers to handle both
    ```
 
 2. **`X402Provider` / Facilitator Client (e.g., Coinbase CDP):**
-   Handles the HTTP-native verification and immediate settlement of autonomous agent payments.
+   Handles HTTP-native quote/verification/settlement for autonomous agent payments. In v1, x402 is not a workspace subscription provider and does not back the human billing portal.
    ```typescript
    interface X402Provider {
      verifyPayment(payload: PaymentPayload, details: PaymentDetails): Promise<VerificationResult>;
@@ -349,9 +349,10 @@ The billing backend is split into two distinct abstraction layers to handle both
 
 - Renamed `stripe_customer_id` → `billing_provider_customer_id`
 - Renamed `stripe_subscription_id` → `billing_provider_subscription_id`
-- Added `billing_provider TEXT` column (discriminator: `'stripe'`, `'x402'`, etc.)
+- Added `billing_provider TEXT` column for the recurring subscription provider (for example `'stripe'`, later `'lemonsqueezy'`)
 - PostgreSQL `RENAME COLUMN` preserves existing unique indexes from `005_billing.sql`
 - Existing Stripe rows are backfilled with `billing_provider = 'stripe'`
+- x402 payment state is stored separately in its own ledger / allowance tables and does not set workspace `billing_provider`
 
 ##### API response shape change
 
@@ -370,8 +371,9 @@ All billing API responses now return provider-agnostic field names:
 
 - **Current plan card**: shows Free or Standard tier with feature comparison table
 - **Upgrade button** (Free tier only): calls `POST /api/v2/billing/checkout` → redirects to Payment Checkout
-- **Manage subscription link** (Standard tier): opens Billing Provider Portal using an auto-generated portal session URL
+- **Manage subscription link** (Subscription-backed Standard tier): opens Billing Provider Portal using an auto-generated portal session URL
 - **Subscription status badge**: active, past_due, canceled, etc.
+- If the workspace later gains a non-subscription paid product, show that separately from the recurring subscription card instead of forcing portal semantics onto x402
 - RBAC: only `workspace_admin` can access this page in the MVP
 
 #### Quota Usage Section (on Dashboard home page)
@@ -392,23 +394,25 @@ All billing API responses now return provider-agnostic field names:
 | `GET /api/v2/dashboard/summary` | User JWT (admin) | Return workspace display info, tier, billing status, quota usage, and top-level counts for the home page |
 | `POST /api/v2/billing/portal` | User JWT (admin) | Create Billing Provider Portal session → return URL. Returns `400` if workspace has no billing customer. |
 
-**Acceptance**: Free-tier admin sees the upgrade CTA and completes a test Payment Checkout flow. Standard-tier admin can access the Billing portal. The admin-only home dashboard renders from `GET /api/v2/dashboard/summary`, and quota meters display accurate counts. Billing API responses use provider-agnostic field names.
+**Acceptance**: Free-tier admin sees the upgrade CTA and completes a test Payment Checkout flow. Subscription-backed Standard-tier admin can access the Billing portal. The admin-only home dashboard renders from `GET /api/v2/dashboard/summary`, and quota meters display accurate counts. Billing API responses use provider-agnostic field names.
 
 ---
 
 ### Milestone 6: x402 (HTTP 402) Autonomous Agent Payments
 
-Implement zero-human-in-the-loop payment flows for agent requests using the [x402.org](https://www.x402.org/) open standard (v2). Agents pay per-request for premium resources or pay for workspace tier upgrades.
+Implement zero-human-in-the-loop payment flows for agent requests using the [x402.org](https://www.x402.org/) open standard (v2). Phase 3B starts with x402 as a per-request overage payment path for agent-authenticated routes after free quota exhaustion. Future phases may add one-time x402 products (for example request bundles or a fixed-duration Standard pass) and only later revisit true x402 recurring subscriptions.
 
 #### x402 Protocol Overview
 
-x402 is an HTTP-native payment standard. When a resource requires payment, the server responds with `402 Payment Required` and a `PAYMENT-REQUIRED` header. The client constructs a payment payload and retries with a `PAYMENT-SIGNATURE` header. Settlement is handled by an x402 **facilitator** (e.g., Coinbase CDP) — SPS never interacts with blockchain directly.
+x402 is an HTTP-native payment standard. When a resource requires payment, the server responds with `402 Payment Required` and a `PAYMENT-REQUIRED` header. The client constructs a payment payload and retries with a `PAYMENT-SIGNATURE` header. Settlement is handled by an x402 **facilitator** (e.g., Coinbase CDP) — SPS never interacts with blockchain directly. In the MVP, pricing is defined internally in **USD cents** and quoted to agents using **USDC on Base** so operator budgets stay predictable.
 
 #### x402 Protocol Flow
 
-The payment intercept happens when an agent requests an exchange (`POST /api/v2/secret/exchange/request`).
-- **Free-tier workspaces**: If the workspace is out of free quota, the server responds with `402 Payment Required`.
-- **Paid (Standard) workspaces**: The server skips the payment gate and allows the request to proceed.
+The payment intercept happens on selected **agent-authenticated** routes once free quota is exhausted, starting with `POST /api/v2/secret/exchange/request`.
+- **Free-tier workspaces, quota available**: request proceeds normally.
+- **Free-tier workspaces, quota exhausted**: server responds with `402 Payment Required`.
+- **Paid (Standard) workspaces**: server skips the x402 payment gate and allows the request to proceed.
+- **If the agent does not pay, payment verification fails, settlement fails, or the agent is out of allowance**: SPS denies the request and does not release the paid resource.
 
 ```mermaid
 sequenceDiagram
@@ -426,11 +430,12 @@ sequenceDiagram
     Agent->>SPS: POST /api/v2/secret/exchange/request + PAYMENT-SIGNATURE header
     SPS->>Facilitator: POST /verify {paymentPayload, paymentDetails}
     Facilitator-->>SPS: VerificationResponse (valid/invalid)
-    SPS->>SPS: Store pending exchange record
+    SPS->>SPS: Lock agent allowance row + reserve/debit quoted USD budget
     SPS->>Facilitator: POST /settle {paymentPayload, paymentDetails}
     Facilitator->>Chain: Submit transaction
     Facilitator-->>SPS: SettlementResponse {txHash, status}
-    SPS->>SPS: Record in x402_transactions, debit agent_allowances
+    SPS->>SPS: Record in x402_transactions
+    SPS->>SPS: Create exchange only after settlement succeeds
     SPS-->>Agent: 200 OK + {exchange_id, token} + PAYMENT-RESPONSE header
 ```
 
@@ -440,7 +445,7 @@ SPS acts as the x402 **resource server**. Payment-gated routes respond with `402
 - The request requires payment (e.g., free-tier quota exhausted).
 - No valid `PAYMENT-SIGNATURE` header is present.
 
-Cost determination is handled entirely by SPS providing a flat, hardcoded service fee for all resource types. This can be expanded later to support dynamic routing or fulfiller-defined prices if needed.
+Cost determination is handled entirely by SPS providing a flat, hardcoded service fee for all resource types. In v1, the platform quotes only USDC on Base while keeping the source-of-truth price in USD cents internally. This can be expanded later to support dynamic routing, additional assets, or fulfiller-defined prices if needed.
 
 The `PAYMENT-REQUIRED` header contains base64-encoded JSON:
 
@@ -471,13 +476,15 @@ SPS delegates payment verification and settlement to an external x402 facilitato
 
 The facilitator URL is configured via `SPS_X402_FACILITATOR_URL` env var. In test environments, a mock facilitator can be injected.
 
-#### Workspace Tier Upgrade on Settlement
+#### Expansion Path for Paid Products
 
-When an x402 payment settles for a tier-upgrade product (`resource_type: 'tier_upgrade'`), the system calls the `SubscriptionProvider` logic to manually update the workspace billing state to `standard` tier. This enables fully autonomous workspace tier upgrades via agent payment.
+- **v1 (Phase 3B MVP)**: x402 supports per-request overage payments only. Workspace recurring subscriptions remain owned by `SubscriptionProvider`.
+- **v1.5 (optional follow-on)**: add one-time x402 products such as request bundles or a fixed-duration `standard_pass_30d`. These are tracked as standalone entitlements, not recurring subscriptions, and should not imply Billing Portal access.
+- **v2+ (future)**: evaluate true x402 recurring subscriptions only if there is strong demand and a clean portal / lifecycle story.
 
 #### Agent Allowances (Budget Enforcement)
 
-Admins configure per-agent monthly spending budgets using **fiat equivalents** (e.g., USD Cents). SPS enforces these fiat-based allowances server-side as a safety net. The agent SDK checks its remaining fiat allowance before signing a payment payload, ensuring operators are not surprised by fluctuating crypto exchange rates during high-frequency execution.
+Admins configure per-agent monthly spending budgets using **fiat equivalents** (USD cents). SPS enforces these fiat-based allowances server-side as a safety net. The agent SDK checks its remaining fiat allowance before signing a payment payload, ensuring operators are not surprised by fluctuating crypto exchange rates during high-frequency execution. In v1, the allowance check and debit are atomic against the quoted USD amount.
 
 #### [NEW] Database Tables
 
@@ -500,14 +507,17 @@ CREATE TABLE IF NOT EXISTS x402_transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id UUID NOT NULL REFERENCES workspaces(id),
   agent_id TEXT NOT NULL,
-  amount_cents BIGINT NOT NULL,
-  currency TEXT NOT NULL DEFAULT 'USD',
+  quoted_amount_cents BIGINT NOT NULL,
+  quoted_currency TEXT NOT NULL DEFAULT 'USD',
+  quoted_asset_symbol TEXT NOT NULL DEFAULT 'USDC',
+  quoted_asset_amount TEXT NOT NULL,
   scheme TEXT NOT NULL,          -- e.g., 'exact', 'exact-evm'
   network_id TEXT NOT NULL,      -- e.g., 'base-sepolia', 'base'
   resource_type TEXT NOT NULL,   -- e.g., 'secret_exchange', 'tier_upgrade'
   resource_id TEXT,              -- exchange_id or null
   tx_hash TEXT,                  -- blockchain transaction hash from facilitator
   facilitator_url TEXT,          -- which facilitator verified/settled
+  quote_expires_at TIMESTAMPTZ,
   status TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'verified', 'settled', 'failed')),
   settled_at TIMESTAMPTZ,
@@ -522,15 +532,18 @@ Payment-gated routes use a Fastify `preHandler` hook:
 1. Check if route is payment-gated (via route metadata)
 2. If no `PAYMENT-SIGNATURE` header → return `402` with `PAYMENT-REQUIRED`
 3. If header present → decode and verify via facilitator `/verify`
-4. If valid → proceed to handler, then settle via facilitator `/settle`
-5. Record transaction in `x402_transactions`, debit `agent_allowances`
-6. Return response with `PAYMENT-RESPONSE` header
+4. If valid → lock the `(workspace_id, agent_id)` allowance row, check remaining budget, and reserve/debit the quoted USD amount atomically
+5. Settle via facilitator `/settle`
+6. If settlement succeeds → call the handler / create the paid resource, record transaction in `x402_transactions`, and return `PAYMENT-RESPONSE`
+7. If settlement fails → roll back the reserved budget, mark the transaction failed, and deny the request
+
+For v1 safety, SPS serializes x402 payment attempts per `(workspace_id, agent_id)`. If a second payment-gated request arrives while another x402 settlement is in progress for the same agent, SPS returns `409 payment_in_progress`.
 
 #### Dashboard Integration (`/billing`)
 
 - **Agent Allowances table**: admins set monthly spend limits per agent
 - **Spend vs Budget**: real-time spend tracking per agent
-- **x402 Transactions ledger**: paginated list of all autonomous payments with `txHash`, amount, status
+- **x402 Transactions ledger**: paginated list of all autonomous payments with `txHash`, quoted USD amount, quoted asset amount, status
 
 #### [NEW] Backend Endpoints
 
@@ -548,7 +561,7 @@ Payment-gated routes use a Fastify `preHandler` hook:
 | `SPS_X402_PAY_TO_ADDRESS` | sps-server | Wallet address for receiving x402 payments |
 | `SPS_X402_ENABLED` | sps-server | Enable x402 payment-gated routes (default: disabled) |
 
-**Acceptance**: An agent can autonomously negotiate and pay for a secret using the x402.org v2 protocol flow within its admin-defined budget. Admins can view and configure allowances, and see transaction history in the dashboard. Workspace tier upgrade triggers automatically on verified tier-upgrade settlement.
+**Acceptance**: An agent can autonomously negotiate and pay for a secret using the x402.org v2 protocol flow within its admin-defined budget after the free quota is exhausted. Admins can view and configure allowances, and see transaction history in the dashboard. SPS settles payment before releasing the paid resource, and concurrent x402 payments for the same agent are serialized safely.
 
 ---
 
@@ -779,7 +792,7 @@ npm test --workspace=packages/dashboard
 
 #### Milestone 5: `billing-portal.test.ts` (sps-server)
 - `GET /api/v2/dashboard/summary` returns admin-only workspace overview and quota state
-- `POST /api/v2/billing/portal` returns provider portal URL for standard-tier workspace
+- `POST /api/v2/billing/portal` returns provider portal URL for subscription-backed standard-tier workspace
 - `POST /api/v2/billing/portal` returns `400` for workspace without billing provider customer
 - Billing API responses use `billing_provider`, `provider_customer_id`, `provider_subscription_id`
 - Quota meter component renders correct percentages and color states
@@ -788,9 +801,10 @@ npm test --workspace=packages/dashboard
 - Payment-gated route returns `402` with `PAYMENT-REQUIRED` header when no payment provided
 - Agent retry with valid `PAYMENT-SIGNATURE` header succeeds after facilitator verify/settle
 - Agent exceeding configured budget is denied (allowance check fails)
+- A second concurrent x402 payment attempt for the same agent returns `409 payment_in_progress`
 - `GET /api/v2/billing/allowances` returns accurate spend per agent
 - `GET /api/v2/billing/x402/transactions` returns paginated ledger
-- Workspace tier upgrades automatically on `tier_upgrade` settlement
+- SPS records quoted USD + asset amounts and settles before releasing the paid resource
 
 #### Milestone 7: `analytics.test.ts` (sps-server)
 - `getRequestVolume` returns correct daily counts from audit_log
@@ -840,8 +854,8 @@ npm test --workspace=packages/dashboard
 - **SDK priority** → Node.js first (existing `agent-skill` code), then Python, then Go
 - **API documentation** → OpenAPI 3.0 spec; hand-written initially, auto-generation deferred
 - **Domain strategy** → `app.atas.tech` for dashboard, `secret.atas.tech` for sandbox, `sps.atas.tech` for API
-- **Billing architecture** → Split architecture: `SubscriptionProvider` handles traditional fiat subscriptions (Stripe) and webhooks. `X402Provider` handles high-frequency agent-to-facilitator HTTP verification and settlement. DB columns renamed from `stripe_*` to `billing_provider_*`.
-- **x402 protocol** → Follows [x402.org](https://www.x402.org/) v2 standard. Payment intercepts occur at the `exchange/request` step if the free tier quota is exhausted; paid workspaces bypass this. Flat service fee enforced by the platform securely. Budgets use fiat equivalents for operator simplicity.
+- **Billing architecture** → Split architecture: `SubscriptionProvider` handles recurring workspace subscriptions (Stripe today) and webhooks. `X402Provider` handles agent-payment verify/settle flows only. DB columns renamed from `stripe_*` to `billing_provider_*`, and x402 ledger data stays in separate x402-specific tables.
+- **x402 protocol** → Follows [x402.org](https://www.x402.org/) v2 standard. Phase 3B starts with per-request agent overage payments after free quota exhaustion on selected agent routes; paid workspaces bypass this. SPS prices in USD cents internally, quotes USDC on Base in v1, settles before releasing the resource, and serializes concurrent x402 payments per agent.
 - **Dashboard auth token storage** → refresh token in `localStorage`, access token in memory only; accept the XSS trade-off for MVP simplicity with CSP headers as mitigation. **Note: We must revisit this and evaluate migrating to `httpOnly` cookies before wide / GA go-live.**
 - **Force-password-change UX** → dashboard redirects to `/change-password` before allowing any other navigation when `fpc=true`
 - **Development order** → local-first; all dashboard features developed and tested locally before any production deployment (Milestone 9 is last)

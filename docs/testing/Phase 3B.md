@@ -197,15 +197,15 @@ Useful companion commands:
 ## Milestone 6: x402 Payments
 
 - [ ] **E2E: x402 Payment Flow (Playwright)**
-  - [ ] **Scenario 601: Free-tier agent hits 402 Payment Required**
+  - [ ] **Scenario 601: Free-tier agent hits 402 Payment Required for overage**
     - [ ] Seed a free-tier workspace that has exhausted its free quota.
     - [ ] Have an agent call `POST /api/v2/secret/exchange/request`.
     - [ ] Assert the response is `402 Payment Required` and contains the `PAYMENT-REQUIRED` header.
-    - [ ] Assert the base64-encoded header payload contains the correct flat service fee amount.
+    - [ ] Assert the base64-encoded header payload contains the quoted amount in USDC and the internal cost in USD cents.
   - [ ]  **Scenario 602: Paid-tier agent bypasses payment gate**
-    - [ ] Seed a standard-tier workspace.
+    - [ ] Seed a standard-tier workspace (subscription-backed via Stripe).
     - [ ] Have an agent call `POST /api/v2/secret/exchange/request`.
-    - [ ] Assert the response is `200 OK` (or the expected success response) and the exchange request is created without a payment prompt.
+    - [ ] Assert the response is `200 OK` (or the expected success response) and the exchange request is created without an x402 payment prompt.
   - [ ]  **Scenario 603: Agent rejects payment due to budget limits**
     - [ ] Configure an agent with a $1.00 USD monthly budget.
     - [ ] Mock the agent to consume $0.90 USD.
@@ -214,15 +214,16 @@ Useful companion commands:
   - [ ]  **Scenario 604: Successful payment verification and settlement**
     - [ ] Intercept the `verify` and `settle` calls to the mock Facilitator client.
     - [ ] Have the agent submit a valid `PAYMENT-SIGNATURE` header.
+    - [ ] Assert the server locks the agent allowance row and atomically reserves the quoted USD amount.
     - [ ] Assert the server calls `verifyPayment` and then `settlePayment` on the `X402Provider`.
-    - [ ] Assert the exchange request is successfully stored only after successful verification.
-    - [ ] Assert the `x402_transactions` table records the transaction and the agent's budget is debited correctly.
-
-- [ ] **Workspace Upgrades via x402**
-  - [ ] Seed a free-tier workspace.
-  - [ ] Simulate a successful x402 settlement for a `tier_upgrade` resource type.
-  - [ ] Assert the `SubscriptionProvider` logic is triggered to update the workspace to `standard` tier.
-  - [ ] Verify the workspace tier is updated in the database and dashboard.
+    - [ ] Assert the exchange resource is only successfully created after successful settlement.
+    - [ ] Assert the `x402_transactions` table records the transaction (including `quoted_amount_cents`, `quoted_currency`, and `quoted_asset_symbol`).
+  - [ ]  **Scenario 605: Concurrent execution is strictly serialized**
+    - [ ] Seed a free-tier workspace that has exhausted its free quota.
+    - [ ] Have an agent start a valid x402 payment flow.
+    - [ ] Before the first settlement completes, simulate a second simultaneous `POST /api/v2/secret/exchange/request` with a valid `PAYMENT-SIGNATURE` for the same agent.
+    - [ ] Assert the second request is rejected with `409 payment_in_progress`.
+    - [ ] Let the first settlement complete and verify the state is clean for subsequent requests.
 
 ## Milestone 7: Analytics & Advanced Abuse Controls
 
