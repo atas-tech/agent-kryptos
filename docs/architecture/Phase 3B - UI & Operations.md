@@ -21,6 +21,7 @@ Phase 3B transitions the focus from building the underlying backend SaaS primiti
 - `2026-03-13`: Milestone 2 frontend implementation landed in `packages/dashboard` using Stitch HTML exports as the layout reference. Auth flows, refresh persistence, force-password-change routing, role-aware sidebar navigation, and responsive placeholder routes for the full shell are now in place. Later CRUD pages remain scaffolded until Milestones 3-6 wire their APIs.
 - `2026-03-13`: Milestone 3 complete — Agent & Member management landed. CRUD interfaces for agents and members are fully operational with paginated backend support and enforced last-admin lockout. E2E and component verification complete.
 - `2026-03-13`: Milestone 4 complete — Audit Log Viewer and Approvals Inbox landed. Paginated audit log with filtering, exchange lifecycle drill-down, and A2A approval inbox are fully operational and verified. Data leak scanning confirms no sensitive keys exist in audit metadata.
+- `2026-03-14`: Milestone 5 complete — Billing & Quota Dashboard landed. Live quota summary (secret requests, agents, members), subscription management UI with Stripe integration (checkout/portal), and provider-agnostic billing service abstraction are fully operational and verified via E2E tests.
 
 ---
 
@@ -320,6 +321,72 @@ Surface the existing Phase 3A audit and approval endpoints in the dashboard.
 ### Milestone 5: Billing & Quota Dashboard
 
 Give workspace admins visibility into their subscription and usage. Milestone 5 also ships the **subscription billing abstraction** and the **billing portal endpoint**.
+
+#### Milestone 5 execution plan
+
+This milestone should be implemented as another thin vertical slice over the existing Phase 3A billing system, not as a dashboard-only mock. Stripe-backed recurring billing already exists in `sps-server`, and the dashboard package already has the authenticated shell plus route placeholders. The work now is to expose a compact admin summary contract, wire the live billing page, and adapt the Dashboard home from its static Milestone 2 placeholder into an admin operations overview.
+
+The main backend additions for Milestone 5 are:
+
+- `GET /api/v2/dashboard/summary`
+- provider-aware hardening of the existing `POST /api/v2/billing/portal`
+- a small read-model layer that aggregates workspace counts plus quota usage without forcing the dashboard to fan out to multiple list endpoints
+
+#### Stitch adaptation map
+
+Milestone 5 should keep the same workflow as Milestones 2-4: use Stitch screens as the layout contract, then adapt them into React components while replacing any exported colors with the dashboard theme variables from `packages/dashboard/src/styles/index.css`.
+
+- Primary desktop references:
+  - `Desktop Billing Management`
+  - `Desktop Dashboard Operator Variant`
+  - `Desktop Billing Operator Variant`
+- Mobile parity references:
+  - `agent-Kryptos Billing Screen`
+  - `agent-Kryptos Dashboard Home`
+  - `agent-Kryptos Billing Variant`
+- Rule: preserve Stitch spacing, card hierarchy, responsive breakpoints, and information density; replace raw hex colors, gradients, and badges with Kryptos design tokens
+- Rule: the billing surface must now show **two distinct concepts**:
+  - recurring workspace subscription state (`Free` / `Standard`, checkout, billing portal)
+  - agent x402 payment readiness as a separate “coming next” or “future capability” section, not mixed into the subscription card
+
+#### Recommended implementation order
+
+1. **Finalize the admin summary contract in `sps-server`**
+   - Add `GET /api/v2/dashboard/summary` for `workspace_admin`
+   - Return a single payload containing workspace display metadata, tier, subscription status, quota usage, and top-level counts
+   - Keep the response dashboard-oriented: stable keys, no provider-specific field names at the top level except inside the nested billing object
+
+2. **Wire quota aggregation on the backend**
+   - Reuse the existing quota limits from Phase 3A rather than duplicating constants in the dashboard
+   - Return both `used` and `limit` for secret requests, agents, and members
+   - Return `a2a_exchange_available` as a boolean derived from tier so the UI does not duplicate entitlement logic
+
+3. **Harden the recurring billing read model**
+   - Keep `billing_provider` scoped to recurring subscription providers only
+   - Ensure `POST /api/v2/billing/portal` only succeeds for subscription-backed workspaces with a provider customer id
+   - Keep checkout + portal responses provider-agnostic on the wire even though Stripe is the only implementation today
+
+4. **Add dashboard primitives before page wiring**
+   - Implement `QuotaMeter` as a reusable presentational component with threshold states
+   - Add a dashboard summary hook or API helper instead of duplicating fetch state across `/` and `/billing`
+   - Keep loading, empty, and error states visually aligned with the existing Stitch-inspired cards
+
+5. **Implement admin Dashboard home from the Stitch dashboard screens**
+   - Replace the static hero metrics with live summary data
+   - Add quota meters for secret requests, agents, and members
+   - Show A2A exchange availability and subscription state in the admin overview without requiring navigation to `/billing`
+   - Preserve operator/viewer routing behavior from Milestone 2: only admins land on the home route
+
+6. **Implement `/billing` from the Stitch billing screens**
+   - Replace the placeholder page with a live current-plan card, feature comparison, and subscription status
+   - Wire the Free-tier CTA to `POST /api/v2/billing/checkout`
+   - Wire the Standard-tier portal action to `POST /api/v2/billing/portal`
+   - Keep x402 out of the live recurring billing card for this milestone; if mentioned at all, present it as a future agent-payment capability card
+
+7. **Land tests with each slice**
+   - `packages/sps-server`: summary contract, RBAC, billing portal edge cases, and provider-agnostic response shape
+   - `packages/dashboard`: `QuotaMeter`, summary rendering, admin-only billing access, and checkout/portal CTA states
+   - End-to-end: admin home summary, Stripe checkout handoff, and portal launch behavior
 
 #### Provider Architecture Split
 

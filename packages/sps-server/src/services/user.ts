@@ -934,6 +934,7 @@ export async function getWorkspaceOwnerVerificationState(
 
 export async function ensureWorkspaceOwnerVerified(db: Pool, workspaceId: string): Promise<void> {
   const state = await getWorkspaceOwnerVerificationState(db, workspaceId);
+  console.log(`[DEBUG] ensureWorkspaceOwnerVerified for workspace ${workspaceId}:`, state);
   if (!state) {
     throw new UserServiceError(404, "workspace_not_found", "Workspace not found");
   }
@@ -943,6 +944,7 @@ export async function ensureWorkspaceOwnerVerified(db: Pool, workspaceId: string
   }
 
   if (!state.ownerEmailVerified) {
+    console.warn(`[DEBUG] Workspace ${workspaceId} owner ${state.ownerUserId} email NOT verified.`);
     throw new UserServiceError(
       403,
       "workspace_owner_unverified",

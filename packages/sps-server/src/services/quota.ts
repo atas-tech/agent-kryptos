@@ -12,6 +12,7 @@ export interface QuotaCheckResult {
 
 export interface QuotaService {
   consumeDailyQuota(workspaceId: string, action: QuotaAction, tier: WorkspaceTier): Promise<QuotaCheckResult>;
+  getDailyQuotaUsage(workspaceId: string, action: QuotaAction, tier: WorkspaceTier): Promise<QuotaCheckResult>;
 }
 
 const DAILY_LIMITS: Record<QuotaAction, Record<WorkspaceTier, number>> = {
@@ -61,6 +62,17 @@ function buildQuotaResult(limit: number, used: number, resetAtMs: number): Quota
 export class InMemoryQuotaService implements QuotaService {
   private readonly counters = new Map<string, { count: number; resetAtMs: number }>();
 
+  async getDailyQuotaUsage(workspaceId: string, action: QuotaAction, tier: WorkspaceTier): Promise<QuotaCheckResult> {
+    const limit = resolveLimit(action, tier);
+    const nowMs = Date.now();
+    const resetAtMs = nextUtcMidnightEpochMs(nowMs);
+    const key = quotaKey(workspaceId, action, nowMs);
+    const current = this.counters.get(key);
+    const used = !current || current.resetAtMs <= nowMs ? 0 : current.count;
+
+    return buildQuotaResult(limit, used, resetAtMs);
+  }
+
   async consumeDailyQuota(workspaceId: string, action: QuotaAction, tier: WorkspaceTier): Promise<QuotaCheckResult> {
     const limit = resolveLimit(action, tier);
     const nowMs = Date.now();
@@ -85,6 +97,17 @@ export class RedisQuotaService implements QuotaService {
 
   constructor(redis: Redis) {
     this.redis = redis;
+  }
+
+  async getDailyQuotaUsage(workspaceId: string, action: QuotaAction, tier: WorkspaceTier): Promise<QuotaCheckResult> {
+    const limit = resolveLimit(action, tier);
+    const nowMs = Date.now();
+    const resetAtMs = nextUtcMidnightEpochMs(nowMs);
+    const key = quotaKey(workspaceId, action, nowMs);
+    const usedRaw = await this.redis.get(key);
+    const used = Number.parseInt(usedRaw ?? "0", 10);
+
+    return buildQuotaResult(limit, Number.isNaN(used) ? 0 : used, resetAtMs);
   }
 
   async consumeDailyQuota(workspaceId: string, action: QuotaAction, tier: WorkspaceTier): Promise<QuotaCheckResult> {

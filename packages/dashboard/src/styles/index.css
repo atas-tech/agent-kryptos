@@ -305,6 +305,11 @@
     background: rgba(251, 191, 36, 0.08);
   }
 
+  .turnstile-placeholder--info {
+    border-color: rgba(0, 180, 216, 0.28);
+    background: rgba(0, 180, 216, 0.08);
+  }
+
   .checkbox-proxy {
     @apply h-5 w-5 rounded-md border;
     border-color: rgba(240, 244, 255, 0.26);
@@ -505,6 +510,14 @@
     @apply lg:grid-cols-2 xl:grid-cols-3;
   }
 
+  .quota-grid {
+    @apply grid gap-4 lg:grid-cols-3;
+  }
+
+  .quota-grid--single {
+    @apply lg:grid-cols-1;
+  }
+
   .info-card {
     @apply flex flex-col gap-4 px-5 py-5 sm:px-6;
   }
@@ -605,6 +618,42 @@
 
   .metric-panel {
     @apply flex flex-col gap-2;
+  }
+
+  .quota-meter {
+    @apply rounded-[24px] border px-5 py-5;
+    border-color: rgba(0, 245, 212, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .quota-meter__header {
+    @apply flex items-start justify-between gap-4;
+  }
+
+  .quota-meter__value {
+    @apply text-xl font-black text-white;
+  }
+
+  .quota-meter__track {
+    @apply mt-4 h-3 overflow-hidden rounded-full;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .quota-meter__fill {
+    @apply block h-full rounded-full;
+    background: linear-gradient(90deg, var(--primary), var(--primary-strong));
+  }
+
+  .quota-meter--warning .quota-meter__fill {
+    background: linear-gradient(90deg, #ffb347, var(--warning));
+  }
+
+  .quota-meter--danger .quota-meter__fill {
+    background: linear-gradient(90deg, #ff7a8a, var(--danger));
+  }
+
+  .billing-summary-grid {
+    @apply grid gap-4 py-1 sm:grid-cols-2 xl:grid-cols-3;
   }
 
   .metric-panel strong {

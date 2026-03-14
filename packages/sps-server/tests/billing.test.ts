@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createDbPool } from "../src/db/index.js";
 import { runMigrations } from "../src/db/migrate.js";
 import { buildApp } from "../src/index.js";
-import type { StripeClientLike } from "../src/services/billing.js";
+import { StripeBillingProvider, type BillingProvider, type StripeClientLike } from "../src/services/billing.js";
 
 const runPgIntegration = process.env.SPS_PG_INTEGRATION === "1";
 const describePg = runPgIntegration ? describe : describe.skip;
@@ -103,19 +103,43 @@ async function issueHostedAgentToken(workspaceId: string, agentId: string): Prom
     .sign(new TextEncoder().encode(process.env.SPS_AGENT_JWT_SECRET!));
 }
 
+async function login(app: App, email: string, password: string) {
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v2/auth/login",
+    payload: {
+      email,
+      password
+    }
+  });
+
+  expect(response.statusCode).toBe(200);
+  return response.json() as {
+    access_token: string;
+    user: { workspace_id: string; role: string };
+  };
+}
+
 function createStripeMock() {
   let nextEvent: Stripe.Event | null = null;
 
   const stripeClient: StripeClientLike = {
     customers: {
-      create: vi.fn(async () => ({ id: "cus_test_123" } as Stripe.Customer))
+      create: vi.fn(async () => ({ id: "cus_test_123" }) as unknown as Stripe.Response<Stripe.Customer>)
     },
     checkout: {
       sessions: {
         create: vi.fn(async () => ({
           id: "cs_test_123",
           url: "https://checkout.stripe.test/session/cs_test_123"
-        } as Stripe.Checkout.Session))
+        }) as unknown as Stripe.Response<Stripe.Checkout.Session>)
+      }
+    },
+    billingPortal: {
+      sessions: {
+        create: vi.fn(async () => ({
+          url: "https://billing.stripe.test/portal/bps_test_123"
+        }) as unknown as Stripe.Response<Stripe.BillingPortal.Session>)
       }
     },
     webhooks: {
@@ -136,6 +160,10 @@ function createStripeMock() {
   };
 }
 
+function createBillingProvider(stripeClient: StripeClientLike): BillingProvider {
+  return new StripeBillingProvider(stripeClient, "whsec_test");
+}
+
 function checkoutCompletedEvent(workspaceId: string, customerId = "cus_test_123", subscriptionId = "sub_test_123"): Stripe.Event {
   return {
     id: "evt_checkout_completed",
@@ -150,7 +178,7 @@ function checkoutCompletedEvent(workspaceId: string, customerId = "cus_test_123"
         metadata: {
           workspace_id: workspaceId
         }
-      } as Stripe.Checkout.Session
+      } as unknown as Stripe.Checkout.Session
     }
   } as Stripe.Event;
 }
@@ -170,10 +198,10 @@ function subscriptionDeletedEvent(customerId = "cus_test_123", subscriptionId = 
   } as Stripe.Event;
 }
 
-async function createBillingApp(pool: Pool, stripeClient: StripeClientLike): Promise<App> {
+async function createBillingApp(pool: Pool, provider: BillingProvider): Promise<App> {
   return buildApp({
     db: pool,
-    stripeClient,
+    billingProvider: provider,
     useInMemoryStore: true,
     trustProxy: true,
     hmacSecret: "test-hmac",
@@ -230,7 +258,8 @@ describePg("billing routes", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const stripeMock = createStripeMock();
-      const app = await createBillingApp(pool, stripeMock.stripeClient);
+      const provider = createBillingProvider(stripeMock.stripeClient);
+      const app = await createBillingApp(pool, provider);
       const owner = await registerOwner(app, "billing-owner");
       await verifyOwner(app, pool, "billing-owner@example.com");
 
@@ -247,7 +276,8 @@ describePg("billing routes", () => {
         checkout_url: "https://checkout.stripe.test/session/cs_test_123",
         billing: {
           tier: "free",
-          stripe_customer_id: "cus_test_123",
+          billing_provider: "stripe",
+          provider_customer_id: "cus_test_123",
           subscription_status: "none"
         }
       });
@@ -267,8 +297,9 @@ describePg("billing routes", () => {
       expect(completedWebhook.json()).toMatchObject({
         billing: {
           tier: "standard",
-          stripe_customer_id: "cus_test_123",
-          stripe_subscription_id: "sub_test_123",
+          billing_provider: "stripe",
+          provider_customer_id: "cus_test_123",
+          provider_subscription_id: "sub_test_123",
           subscription_status: "active"
         }
       });
@@ -333,13 +364,14 @@ describePg("billing routes", () => {
     }
   });
 
-  it("rejects duplicate Stripe customer and subscription ids across workspaces", async () => {
+  it("rejects duplicate billing provider references across workspaces", async () => {
     const { pool, schema } = await createIsolatedPool();
 
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const stripeMock = createStripeMock();
-      const app = await createBillingApp(pool, stripeMock.stripeClient);
+      const provider = createBillingProvider(stripeMock.stripeClient);
+      const app = await createBillingApp(pool, provider);
       const ownerA = await registerOwner(app, "billing-a");
       const ownerB = await registerOwner(app, "billing-b");
 
@@ -368,7 +400,7 @@ describePg("billing routes", () => {
 
       expect(duplicateWebhook.statusCode).toBe(409);
       expect(duplicateWebhook.json()).toEqual({
-        error: "Stripe billing reference already belongs to another workspace",
+        error: "Billing provider reference already belongs to another workspace",
         code: "billing_conflict"
       });
 
@@ -378,7 +410,7 @@ describePg("billing routes", () => {
     }
   });
 
-  it("rejects invalid Stripe webhook signatures", async () => {
+  it("rejects invalid webhook signatures", async () => {
     const { pool, schema } = await createIsolatedPool();
 
     try {
@@ -387,7 +419,8 @@ describePg("billing routes", () => {
       vi.mocked(stripeMock.stripeClient.webhooks.constructEvent).mockImplementation(() => {
         throw new Error("invalid signature");
       });
-      const app = await createBillingApp(pool, stripeMock.stripeClient);
+      const provider = createBillingProvider(stripeMock.stripeClient);
+      const app = await createBillingApp(pool, provider);
 
       const response = await app.inject({
         method: "POST",
@@ -417,7 +450,8 @@ describePg("billing routes", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const stripeMock = createStripeMock();
-      const app = await createBillingApp(pool, stripeMock.stripeClient);
+      const provider = createBillingProvider(stripeMock.stripeClient);
+      const app = await createBillingApp(pool, provider);
       const owner = await registerOwner(app, "quota-owner");
       const agentJwt = await issueHostedAgentToken(owner.user.workspace_id, "agent:quota-bot");
 
@@ -454,7 +488,8 @@ describePg("billing routes", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const stripeMock = createStripeMock();
-      const app = await createBillingApp(pool, stripeMock.stripeClient);
+      const provider = createBillingProvider(stripeMock.stripeClient);
+      const app = await createBillingApp(pool, provider);
       const owner = await registerOwner(app, "agent-cap-owner");
       await verifyOwner(app, pool, "agent-cap-owner@example.com");
 
@@ -489,6 +524,256 @@ describePg("billing routes", () => {
         code: "quota_exceeded",
         limit: 5,
         used: 5
+      });
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("creates billing portal session for standard-tier workspace", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const stripeMock = createStripeMock();
+      const provider = createBillingProvider(stripeMock.stripeClient);
+      const app = await createBillingApp(pool, provider);
+      const owner = await registerOwner(app, "portal-owner");
+      await verifyOwner(app, pool, "portal-owner@example.com");
+
+      // First upgrade the workspace via checkout + webhook
+      await app.inject({
+        method: "POST",
+        url: "/api/v2/billing/checkout",
+        headers: {
+          authorization: `Bearer ${owner.access_token}`
+        }
+      });
+
+      stripeMock.setEvent(checkoutCompletedEvent(owner.user.workspace_id));
+      await app.inject({
+        method: "POST",
+        url: "/api/v2/webhook/stripe",
+        headers: {
+          "content-type": "application/json",
+          "stripe-signature": "sig_test"
+        },
+        payload: JSON.stringify({ ok: true })
+      });
+
+      // Now request a portal session
+      const portalResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/billing/portal",
+        headers: {
+          authorization: `Bearer ${owner.access_token}`
+        }
+      });
+
+      expect(portalResponse.statusCode).toBe(200);
+      expect(portalResponse.json()).toEqual({
+        portal_url: "https://billing.stripe.test/portal/bps_test_123"
+      });
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("rejects billing portal for workspace without billing customer", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const stripeMock = createStripeMock();
+      const provider = createBillingProvider(stripeMock.stripeClient);
+      const app = await createBillingApp(pool, provider);
+      const owner = await registerOwner(app, "free-portal");
+
+      const portalResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/billing/portal",
+        headers: {
+          authorization: `Bearer ${owner.access_token}`
+        }
+      });
+
+      expect(portalResponse.statusCode).toBe(400);
+      expect(portalResponse.json()).toEqual({
+        error: "No billing subscription found. Please subscribe first.",
+        code: "no_billing_customer"
+      });
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("returns dashboard summary metrics for workspace admins", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const stripeMock = createStripeMock();
+      const provider = createBillingProvider(stripeMock.stripeClient);
+      const app = await createBillingApp(pool, provider);
+      const owner = await registerOwner(app, "summary-owner");
+      await verifyOwner(app, pool, "summary-owner@example.com");
+
+      const enrollResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/agents",
+        headers: {
+          authorization: `Bearer ${owner.access_token}`
+        },
+        payload: {
+          agent_id: "agent:summary-bot",
+          display_name: "Summary Bot"
+        }
+      });
+      expect(enrollResponse.statusCode).toBe(201);
+
+      const agentJwt = await issueHostedAgentToken(owner.user.workspace_id, "agent:summary-bot");
+      const secretRequestResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/secret/request",
+        headers: {
+          authorization: `Bearer ${agentJwt}`
+        },
+        payload: {
+          public_key: "cHVi",
+          description: "Summary quota sample"
+        }
+      });
+      expect(secretRequestResponse.statusCode).toBe(201);
+
+      const summaryResponse = await app.inject({
+        method: "GET",
+        url: "/api/v2/dashboard/summary",
+        headers: {
+          authorization: `Bearer ${owner.access_token}`
+        }
+      });
+
+      expect(summaryResponse.statusCode).toBe(200);
+      expect(summaryResponse.json()).toMatchObject({
+        workspace: {
+          id: owner.user.workspace_id,
+          slug: "summary-owner-space",
+          display_name: "summary-owner Space",
+          tier: "free",
+          status: "active"
+        },
+        billing: {
+          workspace_id: owner.user.workspace_id,
+          workspace_slug: "summary-owner-space",
+          tier: "free",
+          status: "active",
+          billing_provider: null,
+          provider_customer_id: null,
+          provider_subscription_id: null,
+          subscription_status: "none"
+        },
+        counts: {
+          active_agents: 1,
+          active_members: 1
+        },
+        quota: {
+          secret_requests: {
+            used: 1,
+            limit: 10
+          },
+          agents: {
+            used: 1,
+            limit: 5
+          },
+          members: {
+            used: 1,
+            limit: 1
+          },
+          a2a_exchange_available: false
+        }
+      });
+      expect(summaryResponse.json().quota.secret_requests.reset_at).toEqual(expect.any(Number));
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("blocks non-admin users from dashboard summary", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const stripeMock = createStripeMock();
+      const provider = createBillingProvider(stripeMock.stripeClient);
+      const app = await createBillingApp(pool, provider);
+      await registerOwner(app, "summary-operator");
+      await verifyOwner(app, pool, "summary-operator@example.com");
+      await pool.query(
+        "UPDATE users SET role = 'workspace_operator', updated_at = now() WHERE email = $1",
+        ["summary-operator@example.com"]
+      );
+      const operator = await login(app, "summary-operator@example.com", "Password123!");
+
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/v2/dashboard/summary",
+        headers: {
+          authorization: `Bearer ${operator.access_token}`
+        }
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({
+        error: "Insufficient role"
+      });
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("rejects billing portal when the stored provider does not match the active provider", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const stripeMock = createStripeMock();
+      const provider = createBillingProvider(stripeMock.stripeClient);
+      const app = await createBillingApp(pool, provider);
+      const owner = await registerOwner(app, "portal-mismatch");
+
+      await pool.query(
+        `
+          UPDATE workspaces
+          SET billing_provider = 'x402',
+              billing_provider_customer_id = 'cust_x402_demo',
+              updated_at = now()
+          WHERE id = $1
+        `,
+        [owner.user.workspace_id]
+      );
+
+      const portalResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/billing/portal",
+        headers: {
+          authorization: `Bearer ${owner.access_token}`
+        }
+      });
+
+      expect(portalResponse.statusCode).toBe(409);
+      expect(portalResponse.json()).toEqual({
+        error: "Workspace billing is managed by a different provider",
+        code: "billing_provider_mismatch"
       });
 
       await app.close();

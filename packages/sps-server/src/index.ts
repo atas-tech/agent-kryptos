@@ -14,7 +14,7 @@ import { registerSecretRoutes } from "./routes/secrets.js";
 import { registerWorkspaceRoutes } from "./routes/workspace.js";
 import { InMemoryRateLimitService, RedisRateLimitService, type RateLimitService } from "./middleware/rate-limit.js";
 import { cleanupExpiredAuditRecords } from "./services/audit.js";
-import type { StripeClientLike } from "./services/billing.js";
+import { StripeBillingProvider, MockBillingProvider, createStripeClient, type BillingProvider } from "./services/billing.js";
 import { ExchangePolicyEngine, type ExchangePolicyRule, type SecretRegistryEntry } from "./services/policy.js";
 import { InMemoryQuotaService, RedisQuotaService, type QuotaService } from "./services/quota.js";
 import { InMemoryRequestStore, RedisRequestStore, createRedisClient } from "./services/redis.js";
@@ -23,7 +23,7 @@ export interface BuildAppOptions {
   store?: RequestStore;
   quotaService?: QuotaService;
   rateLimitService?: RateLimitService;
-  stripeClient?: StripeClientLike;
+  billingProvider?: BillingProvider;
   db?: Pool | null;
   hmacSecret?: string;
   baseUrl?: string;
@@ -206,10 +206,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       await registerMemberRoutes(memberRoutesApp, { db: options.db! });
     }, { prefix: "/api/v2/members" });
 
+    const billingProvider = options.billingProvider 
+      ?? (process.env.SPS_BILLING_MOCK === "1" ? new MockBillingProvider() : new StripeBillingProvider(createStripeClient()));
     await app.register(async (billingRoutesApp) => {
       await registerBillingRoutes(billingRoutesApp, {
         db: options.db!,
-        stripeClient: options.stripeClient
+        provider: billingProvider,
+        quotaService
       });
     }, { prefix: "/api/v2" });
 

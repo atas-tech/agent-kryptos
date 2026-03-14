@@ -1,23 +1,69 @@
-import { AlertTriangle, Bot, KeyRound, ShieldCheck, Users } from "lucide-react";
+import { AlertTriangle, BadgeDollarSign, Bot, KeyRound, ShieldCheck, Users } from "lucide-react";
+import { useEffect } from "react";
 import { useAuth } from "../auth/useAuth.js";
+import { QuotaMeter } from "../components/QuotaMeter.js";
+import { StatusBadge } from "../components/StatusBadge.js";
+import { useDashboardSummary } from "../hooks/useDashboardSummary.js";
 
 export function DashboardPage() {
-  const { workspace, user } = useAuth();
+  const { workspace, user, setWorkspaceSummary } = useAuth();
+  const { summary, loading, error, refresh } = useDashboardSummary();
+
+  useEffect(() => {
+    if (summary?.workspace) {
+      // Only update if something actually changed to avoid infinite loop
+      const changed = 
+        summary.workspace.tier !== workspace?.tier ||
+        summary.workspace.display_name !== workspace?.display_name ||
+        summary.workspace.status !== workspace?.status;
+
+      if (changed) {
+        setWorkspaceSummary({
+          ...workspace,
+          ...summary.workspace,
+          owner_user_id: workspace?.owner_user_id ?? "",
+          created_at: workspace?.created_at ?? new Date(0).toISOString(),
+          updated_at: workspace?.updated_at ?? new Date().toISOString()
+        });
+      }
+    }
+  }, [setWorkspaceSummary, summary?.workspace, workspace?.id, workspace?.tier, workspace?.display_name, workspace?.status]);
+
+  const activeWorkspace = summary?.workspace ?? workspace;
+  const billing = summary?.billing;
+  const counts = summary?.counts;
+  const quota = summary?.quota;
+
+  if (loading && !summary) {
+    return (
+      <section className="page-stack">
+        <div className="panel-card">
+          <div className="panel-card__header">
+            <div>
+              <div className="section-label">Workspace overview</div>
+              <h2 className="panel-card__title">Loading dashboard summary</h2>
+              <p className="panel-card__body">Reading workspace quotas, billing status, and operator counts.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="page-stack">
       <div className="hero-card hero-card--dashboard">
         <div>
-          <div className="section-label">System live</div>
+          <div className="section-label">Workspace summary</div>
           <h2 className="hero-card__title">Workspace command overview</h2>
           <p className="hero-card__body">
-            Monitor access posture for <strong>{workspace?.display_name ?? "your workspace"}</strong> and use the
-            sidebar to move into the next Milestone 3 and 4 operational surfaces.
+            Monitor access posture for <strong>{activeWorkspace?.display_name ?? "your workspace"}</strong> with live
+            quota, billing, and operator counts sourced from the hosted control plane.
           </p>
         </div>
         <div className="status-grid">
           <div className="status-card">
-            <strong>{workspace?.tier ?? "free"}</strong>
+            <strong>{activeWorkspace?.tier ?? "free"}</strong>
             <span>workspace tier</span>
           </div>
           <div className="status-card">
@@ -25,23 +71,59 @@ export function DashboardPage() {
             <span>active role</span>
           </div>
           <div className="status-card">
-            <strong>{workspace?.status ?? "active"}</strong>
+            <strong>{activeWorkspace?.status ?? "active"}</strong>
             <span>workspace status</span>
           </div>
         </div>
       </div>
 
+      {error ? <div className="error-banner">{error}</div> : null}
+
       <div className="content-grid content-grid--quad">
         {[
-          { icon: ShieldCheck, title: "Security score", value: "98%", copy: "Encryption active across the control plane." },
-          { icon: Bot, title: "Agents", value: "Ready", copy: "Enrollment scaffolding is live for Milestone 3 wiring." },
-          { icon: Users, title: "Members", value: "Ready", copy: "Role-aware navigation is enforcing current access." },
-          { icon: KeyRound, title: "Rotation", value: "Manual", copy: "Emergency key actions will connect to agent APIs next." },
+          {
+            icon: ShieldCheck,
+            title: "Subscription",
+            value: billing?.subscription_status ?? "none",
+            copy: billing?.billing_provider
+              ? `Recurring billing managed by ${billing.billing_provider}.`
+              : "No recurring billing provider is attached yet."
+          },
+          {
+            icon: Bot,
+            title: "Agents",
+            value: counts ? String(counts.active_agents) : "0",
+            copy: quota ? `${quota.agents.used} of ${quota.agents.limit} agent slots currently used.` : "Loading agent quota."
+          },
+          {
+            icon: Users,
+            title: "Members",
+            value: counts ? String(counts.active_members) : "0",
+            copy: quota ? `${quota.members.used} of ${quota.members.limit} member slots currently used.` : "Loading member quota."
+          },
+          {
+            icon: KeyRound,
+            title: "Secret requests",
+            value: quota ? `${quota.secret_requests.used}/${quota.secret_requests.limit}` : "0/0",
+            copy: quota
+              ? `Daily quota resets at ${new Date(quota.secret_requests.reset_at * 1000).toLocaleString()}.`
+              : "Loading daily quota."
+          },
           {
             icon: AlertTriangle,
-            title: "Approvals",
-            value: "Inbox",
-            copy: "Viewer-safe placeholder route is available for future exchange actions."
+            title: "A2A exchange",
+            value: quota?.a2a_exchange_available ? "Enabled" : "Locked",
+            copy: quota?.a2a_exchange_available
+              ? "Exchange request creation is available on this workspace tier."
+              : "Upgrade billing before agent-to-agent exchange is unlocked."
+          },
+          {
+            icon: BadgeDollarSign,
+            title: "Provider",
+            value: billing?.billing_provider ?? "none",
+            copy: billing?.provider_customer_id
+              ? "Workspace billing identity is connected and ready for portal actions."
+              : "No customer portal is available until the first subscription is created."
           }
         ].map(({ icon: Icon, title, value, copy }) => (
           <article key={title} className="info-card">
@@ -54,6 +136,83 @@ export function DashboardPage() {
           </article>
         ))}
       </div>
+
+      {quota ? (
+        <div className="section-grid">
+          <div className="panel-card">
+            <div className="panel-card__header">
+              <div>
+                <div className="section-label">Quota usage</div>
+                <h3 className="panel-card__title">Daily and seat limits</h3>
+                <p className="panel-card__body">These counters drive the hosted free-tier guardrails and upgrade path.</p>
+              </div>
+              <div className="inline-actions">
+                <StatusBadge tone={activeWorkspace?.tier === "standard" ? "success" : "warning"}>
+                  {`${activeWorkspace?.tier ?? "free"} tier`}
+                </StatusBadge>
+                <StatusBadge tone={quota.a2a_exchange_available ? "success" : "neutral"}>
+                  {quota.a2a_exchange_available ? "exchange enabled" : "exchange locked"}
+                </StatusBadge>
+              </div>
+            </div>
+
+            <div className="quota-grid">
+              <QuotaMeter
+                helper="Hosted agent secret-request volume for the current UTC day."
+                label="Secret requests"
+                limit={quota.secret_requests.limit}
+                tone={quota.secret_requests.used >= quota.secret_requests.limit ? "danger" : "default"}
+                used={quota.secret_requests.used}
+              />
+              <QuotaMeter
+                helper="Active enrolled agents allowed for this workspace tier."
+                label="Agents"
+                limit={quota.agents.limit}
+                tone={quota.agents.used >= quota.agents.limit ? "warning" : "default"}
+                used={quota.agents.used}
+              />
+              <QuotaMeter
+                helper="Active human operators and viewers in the workspace."
+                label="Members"
+                limit={quota.members.limit}
+                tone={quota.members.used >= quota.members.limit ? "warning" : "default"}
+                used={quota.members.used}
+              />
+            </div>
+          </div>
+
+          <div className="panel-card">
+            <div className="panel-card__header">
+              <div>
+                <div className="section-label">Billing posture</div>
+                <h3 className="panel-card__title">Recurring subscription snapshot</h3>
+                <p className="panel-card__body">This surface tracks the workspace subscription provider only. x402 usage lands separately.</p>
+              </div>
+            </div>
+
+            <div className="detail-list">
+              <div className="detail-list__item">
+                <div className="meta-label">Provider</div>
+                <div className="meta-value">{billing?.billing_provider ?? "Not connected"}</div>
+              </div>
+              <div className="detail-list__item">
+                <div className="meta-label">Subscription status</div>
+                <div className="meta-value">{billing?.subscription_status ?? "none"}</div>
+              </div>
+              <div className="detail-list__item">
+                <div className="meta-label">Customer reference</div>
+                <div className="meta-value">{billing?.provider_customer_id ?? "Pending checkout"}</div>
+              </div>
+            </div>
+
+            <div className="inline-actions">
+              <button className="ghost-button" onClick={() => void refresh()} type="button">
+                Refresh summary
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

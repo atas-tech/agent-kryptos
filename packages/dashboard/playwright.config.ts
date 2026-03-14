@@ -44,7 +44,7 @@ export default defineConfig({
       command: "npm run dev",
       url: "http://localhost:5173",
       timeout: 120000,
-      reuseExistingServer: false,
+      reuseExistingServer: true,
       cwd: "./",
       env: {
         VITE_SPS_API_URL: "http://localhost:3100"
@@ -53,7 +53,7 @@ export default defineConfig({
     {
       command: "npm run dev",
       url: "http://localhost:3100/healthz",
-      reuseExistingServer: false,
+      reuseExistingServer: true,
       cwd: "../sps-server",
       env: {
         DATABASE_URL: process.env.DATABASE_URL || "postgresql://kryptos:localdev@127.0.0.1:5433/agent_kryptos",

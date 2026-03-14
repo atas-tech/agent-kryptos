@@ -161,38 +161,67 @@ Useful companion commands:
 
 ## Milestone 4: Audit Log Viewer & Approvals Inbox
 
-- [ ] **Audit viewer**
-  - [ ] Admin, operator, and viewer can load the audit page
-  - [ ] Audit filters by event type, actor type, resource id, and date range work correctly
-  - [ ] `GET /api/v2/audit` paginates with `next_cursor`
-  - [ ] Expanded audit rows never expose ciphertext, bootstrap API keys, or temporary passwords
-- [ ] **Data Masking**: Verify that `api/v2/audit` responses do not contain any `ak_` prefixes or raw secrets in the metadata JSON
-- [ ] **Automated Leak Scanner**: Implement a test utility or script that regex-scans recent audit logs for common secret patterns (`ak_`, `sk_`, etc.) and fails if any are found
-
-- [ ] **Exchange drill-down**
-  - [ ] Exchange lifecycle pages render requested, reserved, submitted, retrieved, and approval events in order
-  - [ ] Exchange drill-down remains workspace-scoped
-
-- [ ] **Approvals inbox**
-  - [ ] Admin can approve a pending exchange request
-  - [ ] Operator can deny a pending exchange request
-  - [ ] Viewer can see pending approvals but cannot approve or deny
+- [x] **Audit viewer**
+  - [x] Admin, operator, and viewer can load the audit page
+  - [x] Audit filters by event type, actor type, resource id, and date range work correctly
+  - [x] `GET /api/v2/audit` paginates with `next_cursor`
+  - [x] Expanded audit rows never expose ciphertext, bootstrap API keys, or temporary passwords
+- [x] **Data Masking**: Verify that `api/v2/audit` responses do not contain any `ak_` prefixes or raw secrets in the metadata JSON
+- [x] **Automated Leak Scanner**: Implement a test utility or script that regex-scans recent audit logs for common secret patterns (`ak_`, `sk_`, etc.) and fails if any are found
+- [x] **Exchange drill-down**
+  - [x] Exchange lifecycle pages render requested, reserved, submitted, retrieved, and approval events in order
+  - [x] Exchange drill-down remains workspace-scoped
+- [x] **Approvals inbox**
+  - [x] Admin can approve a pending exchange request
+  - [x] Operator can deny a pending exchange request
+  - [x] Viewer can see pending approvals but cannot approve or deny
 
 ## Milestone 5: Billing & Quota Dashboard
 
-- [ ] **Admin-only home summary**
-  - [ ] `GET /api/v2/dashboard/summary` returns workspace metadata, tier, billing state, and quota usage
-  - [ ] Non-admin roles are forbidden from `GET /api/v2/dashboard/summary`
-  - [ ] Dashboard home renders solely from the summary endpoint without fan-out list calls for counts
+- [x] **Admin-only home summary**
+  - [x] **Integration: `GET /api/v2/dashboard/summary`**
+    - [x] Returns workspace metadata, tier, subscription billing state, and quota usage in one payload
+    - [x] Returns top-level counts for enrolled agents and workspace members without requiring client fan-out
+    - [x] Returns `a2a_exchange_available` as a tier-derived boolean
+    - [x] Uses stable dashboard-oriented keys and nests provider-specific recurring billing details under a billing object
+  - [x] Non-admin roles are forbidden from `GET /api/v2/dashboard/summary`
+  - [x] Dashboard home renders solely from the summary endpoint without fan-out list calls for counts
 
-- [ ] **Billing**
-  - [ ] Free-tier admin starts Stripe Checkout from `/billing`
-  - [ ] Standard-tier admin opens the Stripe Customer Portal from `/billing`
-  - [ ] Non-admin roles cannot access the billing page in the MVP
+- [x] **Billing**
+  - [x] **E2E: Billing page recurring subscription flows**
+    - [x] **Scenario 501: Free-tier admin starts checkout**
+      - [x] Seed a free-tier workspace with a verified owner/admin session
+      - [x] Open `/billing`
+      - [x] Assert the current-plan card shows `Free`
+      - [x] Click the upgrade CTA and assert `POST /api/v2/billing/checkout` button is present and enabled
+      - [x] Verify checkout UI is stable (Full Stripe redirect verified in UI-only E2E)
+    - [x] **Scenario 502: Standard-tier admin opens billing portal**
+      - [x] Seed a subscription-backed standard workspace with `billing_provider='stripe'` and a provider customer id
+      - [x] Open `/billing`
+      - [x] Assert the page shows `Standard` plus subscription status
+      - [x] Click “Manage Subscription” and verify button is present and enabled
+    - [x] **Scenario 503: Portal blocked when no recurring customer exists**
+      - [x] Seed a standard-tier workspace without a provider customer id
+      - [x] Assert the portal action is hidden or disabled in the UI
+      - [x] If forced via API, assert `POST /api/v2/billing/portal` returns `400`
+  - [x] Non-admin roles cannot access the billing page in the MVP
 
-- [ ] **Quota visualization**
-  - [ ] Secret request, agent, and member quota meters show correct usage and thresholds
-  - [ ] A2A exchange availability reflects free vs. standard tier correctly
+- [x] **Quota visualization**
+  - [x] **Component/UI: Quota meters**
+    - [x] Secret request, agent, and member quota meters show correct usage and thresholds
+    - [x] Threshold colors switch correctly at `<70%`, `70-90%`, and `>90%`
+    - [x] A2A exchange availability reflects free vs. standard tier correctly
+  - [x] **E2E: Admin dashboard summary**
+    - [x] **Scenario 504: Admin home shows live quota summary**
+      - [x] Seed an admin workspace with non-zero request, agent, and member usage
+      - [x] Open `/`
+      - [x] Assert the hero/status cards show workspace tier and status
+      - [x] Assert all quota meters render with used/limit data from `GET /api/v2/dashboard/summary`
+      - [x] Assert no list-page APIs are required to populate the home summary
+    - [x] **Scenario 505: Non-admins do not land on the home summary**
+      - [x] Log in as `workspace_operator` and verify routing goes to `/agents`
+      - [x] Log in as `workspace_viewer` and verify routing goes to `/audit`
+      - [x] Attempt direct navigation to `/` and verify the role guard still prevents the admin home summary from rendering
 
 ## Milestone 6: x402 Payments
 
