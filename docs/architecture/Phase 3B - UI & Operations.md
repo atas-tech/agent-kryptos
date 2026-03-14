@@ -13,7 +13,7 @@ Phase 3B transitions the focus from building the underlying backend SaaS primiti
 **Theming & Color Consistency**: To maintain visual identity, all dashboard components must exclusively use the CSS variables defined in `src/styles/index.css`. Ad-hoc color utilities or hardcoded hex values from Stitch exports must be replaced with theme variables (e.g., `--bg`, `--primary`, `--purple`) to ensure any future system-wide theme changes (like a Light Mode) can be applied automatically.
 
 > [!IMPORTANT]
-> This plan is divided into **8 incremental milestones**, each independently deployable. The order is: UI Design (Stitch) → Dashboard Shell & Auth → Agent & Member Management → Audit & Approvals → Billing & Quotas → Analytics & Abuse Controls → SDKs, Docs & Community → Hosted Deployment.
+> This plan is divided into **9 incremental milestones**, each independently deployable. The order is: UI Design (Stitch) → Dashboard Shell & Auth → Agent & Member Management → Audit & Approvals → Billing & Quotas → x402 Payments → Analytics & Abuse Controls → SDKs, Docs & Community → Hosted Deployment.
 
 ## Progress
 
@@ -55,8 +55,8 @@ packages/dashboard/                       # [NEW] Operator Dashboard SPA
       Members.tsx                         # List users, create with temp password, change role
       Audit.tsx                           # Paginated audit log viewer with filters
       Approvals.tsx                       # Pending A2A approval inbox
-      Billing.tsx                         # Current tier, quota meters, Stripe portal link
-      Analytics.tsx                       # Workspace metrics (Milestone 6)
+      Billing.tsx                         # Current tier, quota meters, Billing provider portal link
+      Analytics.tsx                       # Workspace metrics (Milestone 7)
       Settings.tsx                        # Workspace display name, slug (read-only in MVP)
     components/
       Layout.tsx                          # App shell: role-aware sidebar nav, header, content area
@@ -107,7 +107,7 @@ Design all dashboard screens using **Stitch via MCP** before writing any React c
 | **Audit Log** | Event stream | Filter bar (event type, actor, date range), paginated data table, row expansion for metadata |
 | **Exchange Timeline** | Drill-down from audit | Vertical timeline of lifecycle events with approval history interleaved |
 | **Approvals Inbox** | Pending A2A approvals | Approval cards with agent details, purpose, Approve/Deny action buttons |
-| **Billing** | Subscription management | Current tier card, feature comparison, upgrade CTA / Stripe portal link |
+| **Billing** | Subscription management | Current tier card, feature comparison, upgrade CTA / Billing portal link |
 | **Analytics** | Workspace metrics | Request volume bar chart, exchange outcome chart, active agents counter, error rate trend |
 | **Settings** | Workspace configuration | Display name edit, slug (read-only), owner verification status |
 | **App Shell / Layout** | Sidebar + header | Navigation sidebar, workspace name, user dropdown, responsive collapse |
@@ -319,13 +319,58 @@ Surface the existing Phase 3A audit and approval endpoints in the dashboard.
 
 ### Milestone 5: Billing & Quota Dashboard
 
-Give workspace admins visibility into their subscription and usage.
+Give workspace admins visibility into their subscription and usage. Milestone 5 also ships the **multi-provider billing abstraction** and the **billing portal endpoint**.
+
+#### Provider Architecture Split
+
+The billing backend is split into two distinct abstraction layers to handle both traditional fiat subscriptions and high-frequency per-request autonomous payments:
+
+1. **`SubscriptionProvider` interface (e.g., Stripe, Lemonsqueezy):**
+   Handles human checkout, workspace tier upgrades via portal sessions, and asynchronous webhook events.
+   ```typescript
+   interface SubscriptionProvider {
+     readonly name: string;
+     createCheckoutSession(input: CreateCheckoutInput): Promise<CheckoutResult>;
+     createPortalSession(input: CreatePortalInput): Promise<PortalResult>;
+     handleWebhookEvent(payload: string | Buffer, signature: string): Promise<WebhookResult>;
+   }
+   ```
+
+2. **`X402Provider` / Facilitator Client (e.g., Coinbase CDP):**
+   Handles the HTTP-native verification and immediate settlement of autonomous agent payments.
+   ```typescript
+   interface X402Provider {
+     verifyPayment(payload: PaymentPayload, details: PaymentDetails): Promise<VerificationResult>;
+     settlePayment(payload: PaymentPayload, details: PaymentDetails): Promise<SettlementResult>;
+   }
+   ```
+
+##### DB schema changes (migration `007_billing_provider`)
+
+- Renamed `stripe_customer_id` → `billing_provider_customer_id`
+- Renamed `stripe_subscription_id` → `billing_provider_subscription_id`
+- Added `billing_provider TEXT` column (discriminator: `'stripe'`, `'x402'`, etc.)
+- PostgreSQL `RENAME COLUMN` preserves existing unique indexes from `005_billing.sql`
+- Existing Stripe rows are backfilled with `billing_provider = 'stripe'`
+
+##### API response shape change
+
+All billing API responses now return provider-agnostic field names:
+
+```json
+{
+  "billing_provider": "stripe",
+  "provider_customer_id": "cus_...",
+  "provider_subscription_id": "sub_...",
+  "subscription_status": "active"
+}
+```
 
 #### Billing Page (`/billing`)
 
 - **Current plan card**: shows Free or Standard tier with feature comparison table
-- **Upgrade button** (Free tier only): calls `POST /api/v2/billing/checkout` → redirects to Stripe Checkout
-- **Manage subscription link** (Standard tier): opens Stripe Customer Portal using an auto-generated portal session URL
+- **Upgrade button** (Free tier only): calls `POST /api/v2/billing/checkout` → redirects to Payment Checkout
+- **Manage subscription link** (Standard tier): opens Billing Provider Portal using an auto-generated portal session URL
 - **Subscription status badge**: active, past_due, canceled, etc.
 - RBAC: only `workspace_admin` can access this page in the MVP
 
@@ -340,20 +385,174 @@ Give workspace admins visibility into their subscription and usage.
 - Gauges use color coding: green (<70%), amber (70-90%), red (>90%)
 - Data source: prefer a dedicated admin-only summary endpoint so the home page does not fan out across multiple list endpoints for counts and quota state
 
-#### [NEW] Backend: dashboard summary + Stripe Customer Portal Session
+#### [NEW] Backend: dashboard summary + Billing Portal Session
 
 | Endpoint | Auth | Behavior |
 |----------|------|----------|
 | `GET /api/v2/dashboard/summary` | User JWT (admin) | Return workspace display info, tier, billing status, quota usage, and top-level counts for the home page |
-| `POST /api/v2/billing/portal` | User JWT (admin) | Create Stripe Customer Portal session → return URL |
+| `POST /api/v2/billing/portal` | User JWT (admin) | Create Billing Provider Portal session → return URL. Returns `400` if workspace has no billing customer. |
 
-This milestone adds one dashboard read-model endpoint and one billing endpoint. `POST /api/v2/billing/portal` wraps `stripe.billingPortal.sessions.create()` for the workspace's Stripe customer.
-
-**Acceptance**: Free-tier admin sees the upgrade CTA and completes a test Stripe Checkout flow. Standard-tier admin can access the Stripe portal. The admin-only home dashboard renders from `GET /api/v2/dashboard/summary`, and quota meters display accurate counts.
+**Acceptance**: Free-tier admin sees the upgrade CTA and completes a test Payment Checkout flow. Standard-tier admin can access the Billing portal. The admin-only home dashboard renders from `GET /api/v2/dashboard/summary`, and quota meters display accurate counts. Billing API responses use provider-agnostic field names.
 
 ---
 
-### Milestone 6: Analytics & Advanced Abuse Controls
+### Milestone 6: x402 (HTTP 402) Autonomous Agent Payments
+
+Implement zero-human-in-the-loop payment flows for agent requests using the [x402.org](https://www.x402.org/) open standard (v2). Agents pay per-request for premium resources or pay for workspace tier upgrades.
+
+#### x402 Protocol Overview
+
+x402 is an HTTP-native payment standard. When a resource requires payment, the server responds with `402 Payment Required` and a `PAYMENT-REQUIRED` header. The client constructs a payment payload and retries with a `PAYMENT-SIGNATURE` header. Settlement is handled by an x402 **facilitator** (e.g., Coinbase CDP) — SPS never interacts with blockchain directly.
+
+#### x402 Protocol Flow
+
+The payment intercept happens when an agent requests an exchange (`POST /api/v2/secret/exchange/request`).
+- **Free-tier workspaces**: If the workspace is out of free quota, the server responds with `402 Payment Required`.
+- **Paid (Standard) workspaces**: The server skips the payment gate and allows the request to proceed.
+
+```mermaid
+sequenceDiagram
+    participant Agent as 🤖 Agent B (Client)
+    participant SPS as 🔒 SPS (Resource Server)
+    participant Facilitator as 💳 x402 Facilitator
+    participant Chain as ⛓️ Blockchain
+
+    Agent->>SPS: POST /api/v2/secret/exchange/request
+    SPS->>SPS: Check workspace quota & tier
+    SPS->>SPS: Free tier out-of-quota → Determine cost (flat platform fee)
+    SPS-->>Agent: 402 Payment Required + PAYMENT-REQUIRED header
+    Agent->>Agent: Check agent allowance budget (fiat equivalent)
+    Agent->>Agent: Construct PaymentPayload (sign tx)
+    Agent->>SPS: POST /api/v2/secret/exchange/request + PAYMENT-SIGNATURE header
+    SPS->>Facilitator: POST /verify {paymentPayload, paymentDetails}
+    Facilitator-->>SPS: VerificationResponse (valid/invalid)
+    SPS->>SPS: Store pending exchange record
+    SPS->>Facilitator: POST /settle {paymentPayload, paymentDetails}
+    Facilitator->>Chain: Submit transaction
+    Facilitator-->>SPS: SettlementResponse {txHash, status}
+    SPS->>SPS: Record in x402_transactions, debit agent_allowances
+    SPS-->>Agent: 200 OK + {exchange_id, token} + PAYMENT-RESPONSE header
+```
+
+#### SPS as Resource Server
+
+SPS acts as the x402 **resource server**. Payment-gated routes respond with `402 Payment Required` when:
+- The request requires payment (e.g., free-tier quota exhausted).
+- No valid `PAYMENT-SIGNATURE` header is present.
+
+Cost determination is handled entirely by SPS providing a flat, hardcoded service fee for all resource types. This can be expanded later to support dynamic routing or fulfiller-defined prices if needed.
+
+The `PAYMENT-REQUIRED` header contains base64-encoded JSON:
+
+```json
+{
+  "accepts": [
+    {
+      "scheme": "exact",
+      "network": "base",
+      "maxAmountRequired": "100000",
+      "resource": "secret_exchange:abc123",
+      "description": "Secret exchange retrieval",
+      "payTo": "0x..."
+    }
+  ],
+  "x402Version": 2
+}
+```
+
+#### Facilitator Integration
+
+SPS delegates payment verification and settlement to an external x402 facilitator:
+
+| Step | SPS Action | Facilitator |
+|------|-----------|-------------|
+| **Verify** | `POST {facilitatorUrl}/verify` with `{paymentPayload, paymentDetails}` | Validates the payment payload against the requirements |
+| **Settle** | `POST {facilitatorUrl}/settle` with `{paymentPayload, paymentDetails}` | Submits to blockchain, returns `txHash` |
+
+The facilitator URL is configured via `SPS_X402_FACILITATOR_URL` env var. In test environments, a mock facilitator can be injected.
+
+#### Workspace Tier Upgrade on Settlement
+
+When an x402 payment settles for a tier-upgrade product (`resource_type: 'tier_upgrade'`), the system calls the `SubscriptionProvider` logic to manually update the workspace billing state to `standard` tier. This enables fully autonomous workspace tier upgrades via agent payment.
+
+#### Agent Allowances (Budget Enforcement)
+
+Admins configure per-agent monthly spending budgets using **fiat equivalents** (e.g., USD Cents). SPS enforces these fiat-based allowances server-side as a safety net. The agent SDK checks its remaining fiat allowance before signing a payment payload, ensuring operators are not surprised by fluctuating crypto exchange rates during high-frequency execution.
+
+#### [NEW] Database Tables
+
+```sql
+-- Agent spending budgets
+CREATE TABLE IF NOT EXISTS agent_allowances (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id),
+  agent_id TEXT NOT NULL,
+  monthly_budget_cents BIGINT NOT NULL DEFAULT 0,
+  current_spend_cents BIGINT NOT NULL DEFAULT 0,
+  budget_reset_at TIMESTAMPTZ NOT NULL DEFAULT date_trunc('month', now()) + INTERVAL '1 month',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (workspace_id, agent_id)
+);
+
+-- x402 transaction ledger
+CREATE TABLE IF NOT EXISTS x402_transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id),
+  agent_id TEXT NOT NULL,
+  amount_cents BIGINT NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  scheme TEXT NOT NULL,          -- e.g., 'exact', 'exact-evm'
+  network_id TEXT NOT NULL,      -- e.g., 'base-sepolia', 'base'
+  resource_type TEXT NOT NULL,   -- e.g., 'secret_exchange', 'tier_upgrade'
+  resource_id TEXT,              -- exchange_id or null
+  tx_hash TEXT,                  -- blockchain transaction hash from facilitator
+  facilitator_url TEXT,          -- which facilitator verified/settled
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'verified', 'settled', 'failed')),
+  settled_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+#### x402 Middleware (Fastify `preHandler`)
+
+Payment-gated routes use a Fastify `preHandler` hook:
+
+1. Check if route is payment-gated (via route metadata)
+2. If no `PAYMENT-SIGNATURE` header → return `402` with `PAYMENT-REQUIRED`
+3. If header present → decode and verify via facilitator `/verify`
+4. If valid → proceed to handler, then settle via facilitator `/settle`
+5. Record transaction in `x402_transactions`, debit `agent_allowances`
+6. Return response with `PAYMENT-RESPONSE` header
+
+#### Dashboard Integration (`/billing`)
+
+- **Agent Allowances table**: admins set monthly spend limits per agent
+- **Spend vs Budget**: real-time spend tracking per agent
+- **x402 Transactions ledger**: paginated list of all autonomous payments with `txHash`, amount, status
+
+#### [NEW] Backend Endpoints
+
+| Endpoint | Auth | Behavior |
+|----------|------|----------|
+| `POST /api/v2/billing/allowances` | User JWT (admin) | Set or update an agent's monthly x402 budget |
+| `GET /api/v2/billing/allowances` | User JWT (admin) | List budgets and current spend per agent |
+| `GET /api/v2/billing/x402/transactions` | User JWT (admin) | Paginated ledger of x402 payments |
+
+#### New Environment Variables
+
+| Variable | Used By | Purpose |
+|----------|---------|---------|
+| `SPS_X402_FACILITATOR_URL` | sps-server | x402 facilitator base URL for `/verify` and `/settle` |
+| `SPS_X402_PAY_TO_ADDRESS` | sps-server | Wallet address for receiving x402 payments |
+| `SPS_X402_ENABLED` | sps-server | Enable x402 payment-gated routes (default: disabled) |
+
+**Acceptance**: An agent can autonomously negotiate and pay for a secret using the x402.org v2 protocol flow within its admin-defined budget. Admins can view and configure allowances, and see transaction history in the dashboard. Workspace tier upgrade triggers automatically on verified tier-upgrade settlement.
+
+---
+
+### Milestone 7: Analytics & Advanced Abuse Controls
 
 Add workspace-level operational metrics and strengthen signup/auth abuse protections.
 
@@ -411,7 +610,7 @@ Strengthen protections beyond Phase 3A's per-IP rate limiting:
 
 ---
 
-### Milestone 7: SDKs, Documentation & Community
+### Milestone 8: SDKs, Documentation & Community
 
 Make the platform accessible to developers who aren't reading source code.
 
@@ -459,7 +658,7 @@ Update the Phase 3B items to reflect the 8-milestone breakdown and mark items as
 
 ---
 
-### Milestone 8: Hosted Deployment & Domain Cutover
+### Milestone 9: Hosted Deployment & Domain Cutover
 
 Stand up the production deployment with proper domains and TLS. All services become reachable at their public URLs. This is the final milestone — all dashboard features are complete and tested locally before going live.
 
@@ -530,8 +729,11 @@ Update the SPS egress URL filter allowlist to match the production domains:
 |----------|---------|---------|
 | `SPS_TURNSTILE_SECRET` | sps-server | Cloudflare Turnstile server-side validation key |
 | `VITE_TURNSTILE_SITE_KEY` | dashboard | Turnstile widget site key (public, baked into build) |
-| `STRIPE_PORTAL_RETURN_URL` | sps-server | URL to redirect after Stripe portal session (default: `https://app.atas.tech/billing`) |
+| `BILLING_PORTAL_RETURN_URL` | sps-server | URL to redirect after billing portal session (default: `https://app.atas.tech/billing`) |
 | `VITE_SPS_API_URL` | dashboard, browser-ui | SPS API base URL (baked at build time) |
+| `SPS_X402_FACILITATOR_URL` | sps-server | x402 facilitator base URL for `/verify` and `/settle` |
+| `SPS_X402_PAY_TO_ADDRESS` | sps-server | Wallet address for receiving x402 payments |
+| `SPS_X402_ENABLED` | sps-server | Enable x402 payment-gated routes (default: disabled) |
 
 ---
 
@@ -577,11 +779,20 @@ npm test --workspace=packages/dashboard
 
 #### Milestone 5: `billing-portal.test.ts` (sps-server)
 - `GET /api/v2/dashboard/summary` returns admin-only workspace overview and quota state
-- `POST /api/v2/billing/portal` returns Stripe portal URL for standard-tier workspace
-- `POST /api/v2/billing/portal` returns `400` for workspace without Stripe customer
+- `POST /api/v2/billing/portal` returns provider portal URL for standard-tier workspace
+- `POST /api/v2/billing/portal` returns `400` for workspace without billing provider customer
+- Billing API responses use `billing_provider`, `provider_customer_id`, `provider_subscription_id`
 - Quota meter component renders correct percentages and color states
 
-#### Milestone 6: `analytics.test.ts` (sps-server)
+#### Milestone 6: `x402.test.ts` (sps-server)
+- Payment-gated route returns `402` with `PAYMENT-REQUIRED` header when no payment provided
+- Agent retry with valid `PAYMENT-SIGNATURE` header succeeds after facilitator verify/settle
+- Agent exceeding configured budget is denied (allowance check fails)
+- `GET /api/v2/billing/allowances` returns accurate spend per agent
+- `GET /api/v2/billing/x402/transactions` returns paginated ledger
+- Workspace tier upgrades automatically on `tier_upgrade` settlement
+
+#### Milestone 7: `analytics.test.ts` (sps-server)
 - `getRequestVolume` returns correct daily counts from audit_log
 - `getExchangeMetrics` groups by terminal status correctly
 - `getActiveAgentCount` counts distinct actors within time window
@@ -589,13 +800,13 @@ npm test --workspace=packages/dashboard
 - Turnstile validation rejects invalid tokens (mocked API)
 - Burst anomaly detection triggers workspace throttle after 5× quota
 
-#### Milestone 7: SDK integration tests
+#### Milestone 8: SDK integration tests
 - Node.js SDK: bootstrap → request secret → retrieve flow against test SPS
 - Python SDK: same flow
 - Go SDK: same flow
 - OpenAPI spec validates against running server responses
 
-#### Milestone 8: `health.test.ts` (sps-server)
+#### Milestone 9: `health.test.ts` (sps-server)
 - `GET /healthz` returns `200`
 - `GET /readyz` returns `200` when both PostgreSQL and Redis are reachable
 - `GET /readyz` returns `503` when PostgreSQL is down (mocked)
@@ -608,10 +819,11 @@ npm test --workspace=packages/dashboard
 2. **Auth flow** (Milestone 2): Run dashboard locally → Register → redirected to dashboard → see sidebar nav → log out → log back in
 3. **Agent enrollment** (Milestone 3): Enroll an agent → see `ak_` key → dismiss → verify key is no longer visible → use key to mint JWT → hit SPS endpoint
 4. **Audit viewing** (Milestone 4): Perform several secret requests → open audit page → verify events appear with correct filters → drill into exchange lifecycle
-5. **Billing flow** (Milestone 5): Free-tier workspace → click upgrade → complete Stripe test checkout → verify tier badge changes → click "Manage Subscription" → verify Stripe portal opens
-6. **Analytics** (Milestone 6): Generate traffic over several days → verify charts render on analytics page → attempt rapid-fire signups → verify Turnstile challenge appears
-7. **SDK quickstart** (Milestone 7): Follow the quickstart guide from scratch on a clean machine → verify first secret delivery succeeds
-8. **Production** (Milestone 8): Deploy all containers to Unraid → verify all three subdomains serve via HTTPS → complete a full register → enroll agent → deliver secret flow at production URLs
+5. **Billing flow** (Milestone 5): Free-tier workspace → click upgrade → complete Payment test checkout → verify tier badge changes → click "Manage Subscription" → verify Billing portal opens
+6. **x402 Payments** (Milestone 6): Configure agent budget → trigger 402 flow → verify agent pays and receives secret → verify spend increments in dashboard
+7. **Analytics** (Milestone 7): Generate traffic over several days → verify charts render on analytics page → attempt rapid-fire signups → verify Turnstile challenge appears
+8. **SDK quickstart** (Milestone 8): Follow the quickstart guide from scratch on a clean machine → verify first secret delivery succeeds
+9. **Production** (Milestone 9): Deploy all containers to Unraid → verify all three subdomains serve via HTTPS → complete a full register → enroll agent → deliver secret flow at production URLs
 
 ---
 
@@ -628,10 +840,11 @@ npm test --workspace=packages/dashboard
 - **SDK priority** → Node.js first (existing `agent-skill` code), then Python, then Go
 - **API documentation** → OpenAPI 3.0 spec; hand-written initially, auto-generation deferred
 - **Domain strategy** → `app.atas.tech` for dashboard, `secret.atas.tech` for sandbox, `sps.atas.tech` for API
-- **Stripe portal** → single new backend route (`POST /api/v2/billing/portal`); no other billing backend changes needed
+- **Billing architecture** → Split architecture: `SubscriptionProvider` handles traditional fiat subscriptions (Stripe) and webhooks. `X402Provider` handles high-frequency agent-to-facilitator HTTP verification and settlement. DB columns renamed from `stripe_*` to `billing_provider_*`.
+- **x402 protocol** → Follows [x402.org](https://www.x402.org/) v2 standard. Payment intercepts occur at the `exchange/request` step if the free tier quota is exhausted; paid workspaces bypass this. Flat service fee enforced by the platform securely. Budgets use fiat equivalents for operator simplicity.
 - **Dashboard auth token storage** → refresh token in `localStorage`, access token in memory only; accept the XSS trade-off for MVP simplicity with CSP headers as mitigation. **Note: We must revisit this and evaluate migrating to `httpOnly` cookies before wide / GA go-live.**
 - **Force-password-change UX** → dashboard redirects to `/change-password` before allowing any other navigation when `fpc=true`
-- **Development order** → local-first; all dashboard features developed and tested locally before any production deployment (Milestone 8 is last)
+- **Development order** → local-first; all dashboard features developed and tested locally before any production deployment (Milestone 9 is last)
 
 ### Suggested Work Breakdown
 
@@ -640,6 +853,7 @@ npm test --workspace=packages/dashboard
 3. Agent enrollment + member management + settings UI
 4. Audit log viewer + exchange timeline + approvals inbox
 5. Billing page + quota meters + Stripe portal integration
-6. Analytics backend + dashboard charts + Turnstile + burst detection
-7. Node.js SDK publish + Python SDK + Go SDK + docs + community guide
-8. Hosted deployment + domain cutover + health checks
+6. x402 autonomous agent payments backend + budget UI
+7. Analytics backend + dashboard charts + Turnstile + burst detection
+8. Node.js SDK publish + Python SDK + Go SDK + docs + community guide
+9. Hosted deployment + domain cutover + health checks

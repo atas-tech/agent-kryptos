@@ -194,7 +194,37 @@ Useful companion commands:
   - [ ] Secret request, agent, and member quota meters show correct usage and thresholds
   - [ ] A2A exchange availability reflects free vs. standard tier correctly
 
-## Milestone 6: Analytics & Advanced Abuse Controls
+## Milestone 6: x402 Payments
+
+- [ ] **E2E: x402 Payment Flow (Playwright)**
+  - [ ] **Scenario 601: Free-tier agent hits 402 Payment Required**
+    - [ ] Seed a free-tier workspace that has exhausted its free quota.
+    - [ ] Have an agent call `POST /api/v2/secret/exchange/request`.
+    - [ ] Assert the response is `402 Payment Required` and contains the `PAYMENT-REQUIRED` header.
+    - [ ] Assert the base64-encoded header payload contains the correct flat service fee amount.
+  - [ ]  **Scenario 602: Paid-tier agent bypasses payment gate**
+    - [ ] Seed a standard-tier workspace.
+    - [ ] Have an agent call `POST /api/v2/secret/exchange/request`.
+    - [ ] Assert the response is `200 OK` (or the expected success response) and the exchange request is created without a payment prompt.
+  - [ ]  **Scenario 603: Agent rejects payment due to budget limits**
+    - [ ] Configure an agent with a $1.00 USD monthly budget.
+    - [ ] Mock the agent to consume $0.90 USD.
+    - [ ] Send a `402 Payment Required` requesting $0.15 USD.
+    - [ ] Assert the agent SDK rejects the payment locally before attempting to sign or broadcast.
+  - [ ]  **Scenario 604: Successful payment verification and settlement**
+    - [ ] Intercept the `verify` and `settle` calls to the mock Facilitator client.
+    - [ ] Have the agent submit a valid `PAYMENT-SIGNATURE` header.
+    - [ ] Assert the server calls `verifyPayment` and then `settlePayment` on the `X402Provider`.
+    - [ ] Assert the exchange request is successfully stored only after successful verification.
+    - [ ] Assert the `x402_transactions` table records the transaction and the agent's budget is debited correctly.
+
+- [ ] **Workspace Upgrades via x402**
+  - [ ] Seed a free-tier workspace.
+  - [ ] Simulate a successful x402 settlement for a `tier_upgrade` resource type.
+  - [ ] Assert the `SubscriptionProvider` logic is triggered to update the workspace to `standard` tier.
+  - [ ] Verify the workspace tier is updated in the database and dashboard.
+
+## Milestone 7: Analytics & Advanced Abuse Controls
 
 - [ ] **Business-event analytics**
   - [ ] Request volume chart reflects `request_created` audit events
@@ -213,7 +243,7 @@ Useful companion commands:
   - [ ] The throttle clears automatically after the window expires
 - [ ] **Burst Simulator**: Run script to trigger 5× quota burst; verify `abuse_alert` event and 1 req/min limit is enforced for exactly the affected workspace
 
-## Milestone 7: SDKs, Documentation & Community
+## Milestone 8: SDKs, Documentation & Community
 
 - [ ] **Node.js SDK**
   - [ ] Bootstrap API key to JWT minting works against a local hosted SPS
@@ -229,7 +259,7 @@ Useful companion commands:
   - [ ] OpenAPI references match real route contracts
   - [ ] **SDK Test Harness**: Provide a standard `docker-compose.test.yml` or mock container that SDK developers can use to run integration tests without a full production environment
 
-## Milestone 8: Hosted Deployment & Domain Cutover
+## Milestone 9: Hosted Deployment & Domain Cutover
 
 - [ ] `GET /healthz` returns `200`
 - [ ] `GET /readyz` returns `200` only when PostgreSQL and Redis are reachable
