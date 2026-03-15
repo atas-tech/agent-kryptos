@@ -74,6 +74,44 @@ async function ensureIdentity(identity, opts = {}) {
     return _gatewayIdentity;
 }
 
+let _cachedApiToken = null;
+let _cachedApiTokenExpiresAt = 0;
+
+/**
+ * Gets an SPS authentication token either by exchanging an API Key or signing a Gateway JWT.
+ */
+async function getAgentAuthToken(modules, agentId, spsBaseUrl, identityOptions) {
+    const apiKey = process.env.AGENT_KRYPTOS_API_KEY?.trim() || process.env.SPS_AGENT_API_KEY?.trim();
+    if (apiKey) {
+        const nowMs = Date.now();
+        if (_cachedApiToken && nowMs < _cachedApiTokenExpiresAt - (60 * 1000)) {
+            return _cachedApiToken;
+        }
+
+        const url = `${spsBaseUrl.replace(/\/+$/, '')}/api/v2/agents/token`;
+        const res = await fetch(url, {
+            method: "POST",
+            headers: { "x-agent-api-key": apiKey }
+        });
+
+        if (!res.ok) {
+            const err = await res.text().catch(() => "");
+            throw new Error(`Failed to exchange API key for token: ${res.status} ${err}`);
+        }
+
+        const data = await res.json();
+        _cachedApiToken = data.access_token;
+        _cachedApiTokenExpiresAt = typeof data.access_token_expires_at === "number" 
+            ? data.access_token_expires_at * 1000 
+            : nowMs + (55 * 60 * 1000);
+            
+        return _cachedApiToken;
+    }
+
+    const gwIdentity = await ensureIdentity(modules.identity, identityOptions);
+    return await modules.identity.issueJwt(gwIdentity, agentId);
+}
+
 /**
  * Full request_secret flow:
  *   1. Generate HPKE keypair
@@ -102,7 +140,6 @@ export async function requestSecretFlow(params) {
     } = params;
 
     const modules = await loadModules(moduleOverrides);
-    const gwIdentity = await ensureIdentity(modules.identity, identityOptions);
     const resolvedAgentId = resolveAgentId(agentId);
 
     // 1. Generate HPKE keypair
@@ -110,7 +147,7 @@ export async function requestSecretFlow(params) {
 
     try {
         // 2. Create secret request via Gateway SPS client
-        const gatewayToken = await modules.identity.issueJwt(gwIdentity, resolvedAgentId);
+        const gatewayToken = await getAgentAuthToken(modules, resolvedAgentId, spsBaseUrl, identityOptions);
         const gatewayClient = new modules.GatewaySpsClient({
             baseUrl: spsBaseUrl,
             gatewayBearerToken: gatewayToken,
@@ -125,7 +162,7 @@ export async function requestSecretFlow(params) {
         await onSecretLink(request.secretUrl, request.confirmationCode);
 
         // 4. Poll until submitted
-        const agentToken = await modules.identity.issueJwt(gwIdentity, resolvedAgentId);
+        const agentToken = await getAgentAuthToken(modules, resolvedAgentId, spsBaseUrl, identityOptions);
         const agentClient = new modules.SpsClient({
             baseUrl: spsBaseUrl,
             gatewayBearerToken: agentToken,
@@ -154,9 +191,8 @@ export async function fulfillExchangeFlow(params) {
     } = params;
 
     const modules = await loadModules(moduleOverrides);
-    const gwIdentity = await ensureIdentity(modules.identity, identityOptions);
     const resolvedAgentId = resolveAgentId(agentId);
-    const agentToken = await modules.identity.issueJwt(gwIdentity, resolvedAgentId);
+    const agentToken = await getAgentAuthToken(modules, resolvedAgentId, spsBaseUrl, identityOptions);
     const agentClient = new modules.SpsClient({
         baseUrl: spsBaseUrl,
         gatewayBearerToken: agentToken,
@@ -198,9 +234,8 @@ export async function requestExchangeFlow(params) {
     } = params;
 
     const modules = await loadModules(moduleOverrides);
-    const gwIdentity = await ensureIdentity(modules.identity, identityOptions);
     const resolvedAgentId = resolveAgentId(agentId);
-    const agentToken = await modules.identity.issueJwt(gwIdentity, resolvedAgentId);
+    const agentToken = await getAgentAuthToken(modules, resolvedAgentId, spsBaseUrl, identityOptions);
     const runtime = new modules.AgentSecretRuntime({
         spsBaseUrl,
         gatewayBearerToken: agentToken,

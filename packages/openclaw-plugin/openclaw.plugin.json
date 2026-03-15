@@ -20,6 +20,10 @@
                 "description": "Stable unique identity for this agent in the Kryptos system",
                 "default": "agent-kryptos-agent"
             },
+            "AGENT_KRYPTOS_API_KEY": {
+                "type": "string",
+                "description": "Agent API Key obtained from SPS Dashboard (Simplifies auth by removing JWKS requirement)"
+            },
             "OPENCLAW_AGENT_TARGETS_JSON": {
                 "type": "string",
                 "description": "Optional mapping of agent IDs to session targets for fulfillment delivery"
