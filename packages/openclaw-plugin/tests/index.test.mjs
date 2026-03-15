@@ -8,6 +8,7 @@ import register, {
     getStoredSecret,
     resolveOpenClawAgentTarget,
 } from "../index.mjs";
+import { cleanup as cleanupBridge, requestSecretFlow } from "../sps-bridge.mjs";
 
 function createMockApi() {
     const state = {
@@ -213,6 +214,105 @@ async function testShutdownDisposesSecrets() {
     }
 
     assert.equal(getStoredSecret("default"), null);
+}
+
+async function testRequestSecretFlowPublishesJwksForJwtAuth() {
+    const originalApiKey = process.env.AGENT_KRYPTOS_API_KEY;
+    const originalFallbackApiKey = process.env.SPS_AGENT_API_KEY;
+    delete process.env.AGENT_KRYPTOS_API_KEY;
+    delete process.env.SPS_AGENT_API_KEY;
+
+    const calls = {
+        loadOrCreateGatewayIdentity: [],
+        writeJwksFile: [],
+        issueJwt: [],
+        destroyKeyPair: 0,
+        onSecretLink: [],
+    };
+
+    try {
+        const plaintext = await requestSecretFlow({
+            description: "Bridge JWT fallback secret request",
+            agentId: "bridge-jwt-agent",
+            identityOptions: {
+                keyPath: "/tmp/bridge-jwt-test/gateway-key.json",
+            },
+            onSecretLink: async (secretUrl, confirmationCode) => {
+                calls.onSecretLink.push({ secretUrl, confirmationCode });
+            },
+            moduleOverrides: {
+                identity: {
+                    async loadOrCreateGatewayIdentity(opts) {
+                        calls.loadOrCreateGatewayIdentity.push(opts);
+                        return { kid: "kid-1" };
+                    },
+                    async writeJwksFile(identity, jwksPath) {
+                        calls.writeJwksFile.push({ identity, jwksPath });
+                    },
+                    async issueJwt(identity, agentId) {
+                        calls.issueJwt.push({ identity, agentId });
+                        return `jwt-for-${agentId}`;
+                    },
+                },
+                keyManager: {
+                    async generateKeyPair() {
+                        return { publicKey: "public-key", privateKey: "private-key" };
+                    },
+                    async decrypt() {
+                        return Buffer.from("bridge-secret", "utf8");
+                    },
+                    destroyKeyPair() {
+                        calls.destroyKeyPair += 1;
+                    },
+                },
+                AgentSkillRuntimeModule: {
+                    AgentSecretRuntime: class {},
+                },
+                GatewaySpsClientModule: {
+                    GatewaySpsClient: class {
+                        async createSecretRequest() {
+                            return {
+                                requestId: "req-1",
+                                secretUrl: "https://secrets.example/r/req-1",
+                                confirmationCode: "BLUE-FOX-42",
+                            };
+                        }
+                    },
+                },
+                SpsClientModule: {
+                    SpsClient: class {
+                        async pollStatus() {}
+                        async retrieveSecret() {
+                            return { enc: "enc", ciphertext: "ciphertext" };
+                        }
+                    },
+                },
+            },
+        });
+
+        assert.equal(plaintext.toString("utf8"), "bridge-secret");
+        assert.equal(calls.loadOrCreateGatewayIdentity.length, 1);
+        assert.equal(calls.writeJwksFile.length, 1);
+        assert.equal(calls.writeJwksFile[0].jwksPath, "/tmp/bridge-jwt-test/jwks.json");
+        assert.equal(calls.issueJwt.length, 2);
+        assert.deepEqual(calls.issueJwt.map((call) => call.agentId), ["bridge-jwt-agent", "bridge-jwt-agent"]);
+        assert.equal(calls.destroyKeyPair, 1);
+        assert.equal(calls.onSecretLink.length, 1);
+    } finally {
+        await cleanupBridge();
+
+        if (originalApiKey === undefined) {
+            delete process.env.AGENT_KRYPTOS_API_KEY;
+        } else {
+            process.env.AGENT_KRYPTOS_API_KEY = originalApiKey;
+        }
+
+        if (originalFallbackApiKey === undefined) {
+            delete process.env.SPS_AGENT_API_KEY;
+        } else {
+            process.env.SPS_AGENT_API_KEY = originalFallbackApiKey;
+        }
+    }
 }
 
 async function testReRequestFormat() {
@@ -535,6 +635,10 @@ const tests = [
     {
         name: "shutdown hook disposes in-memory secrets",
         run: testShutdownDisposesSecrets,
+    },
+    {
+        name: "requestSecretFlow publishes a JWKS when using JWT auth fallback",
+        run: testRequestSecretFlowPublishesJwksForJwtAuth,
     },
     {
         name: "fulfill_secret_exchange uses the stored runtime secret",

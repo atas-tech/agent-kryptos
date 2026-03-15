@@ -9,9 +9,6 @@ const describeIntegration = runIntegration ? describe : describe.skip;
 describeIntegration("redis integration", () => {
   let authFixture: GatewayAuthFixture | null = null;
   const originalNodeEnv = process.env.NODE_ENV;
-  const originalJwksFile = process.env.SPS_GATEWAY_JWKS_FILE;
-  const originalJwksUrl = process.env.SPS_GATEWAY_JWKS_URL;
-  const originalJwksTtl = process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS;
   const originalProviders = process.env.SPS_AGENT_AUTH_PROVIDERS_JSON;
 
   beforeAll(async () => {
@@ -21,18 +18,14 @@ describeIntegration("redis integration", () => {
 
     process.env.NODE_ENV = "integration";
     authFixture = await createGatewayAuthFixture();
-    process.env.SPS_GATEWAY_JWKS_FILE = authFixture.jwksPath;
-    process.env.SPS_GATEWAY_JWKS_URL = "";
-    process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = "";
-    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = "";
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = JSON.stringify([
+      { name: "legacy-gateway", jwks_file: authFixture.jwksPath, issuer: "gateway", audience: "sps" }
+    ]);
     __resetJwksCacheForTests();
   });
 
   afterAll(async () => {
     process.env.NODE_ENV = originalNodeEnv;
-    process.env.SPS_GATEWAY_JWKS_FILE = originalJwksFile;
-    process.env.SPS_GATEWAY_JWKS_URL = originalJwksUrl;
-    process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = originalJwksTtl;
     process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = originalProviders;
     __resetJwksCacheForTests();
     if (authFixture) {

@@ -33,25 +33,21 @@ function createInjectFetch(app: Awaited<ReturnType<typeof buildApp>>): typeof fe
 
 describe("AgentSecretRuntime exchange flow", () => {
   const originalNodeEnv = process.env.NODE_ENV;
-  const originalJwksFile = process.env.SPS_GATEWAY_JWKS_FILE;
-  const originalJwksUrl = process.env.SPS_GATEWAY_JWKS_URL;
-  const originalJwksTtl = process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS;
+  const originalProviders = process.env.SPS_AGENT_AUTH_PROVIDERS_JSON;
   let authFixture: GatewayAuthFixture;
 
   beforeEach(async () => {
     process.env.NODE_ENV = "test";
     authFixture = await createGatewayAuthFixture();
-    process.env.SPS_GATEWAY_JWKS_FILE = authFixture.jwksPath;
-    process.env.SPS_GATEWAY_JWKS_URL = "";
-    process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = "";
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = JSON.stringify([
+      { name: "legacy-gateway", jwks_file: authFixture.jwksPath, issuer: "gateway", audience: "sps" }
+    ]);
     __resetJwksCacheForTests();
   });
 
   afterEach(async () => {
     process.env.NODE_ENV = originalNodeEnv;
-    process.env.SPS_GATEWAY_JWKS_FILE = originalJwksFile;
-    process.env.SPS_GATEWAY_JWKS_URL = originalJwksUrl;
-    process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = originalJwksTtl;
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = originalProviders;
     __resetJwksCacheForTests();
     await authFixture.cleanup();
   });

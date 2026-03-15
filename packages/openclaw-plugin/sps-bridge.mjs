@@ -61,11 +61,10 @@ async function ensureIdentity(identity, opts = {}) {
 
     _gatewayIdentity = await identity.loadOrCreateGatewayIdentity(opts);
 
-    if (!process.env.SPS_GATEWAY_JWKS_FILE) {
+    if (typeof identity.writeJwksFile === "function") {
         try {
             _jwksPath = path.join(path.dirname(opts.keyPath), "jwks.json");
             await identity.writeJwksFile(_gatewayIdentity, _jwksPath);
-            process.env.SPS_GATEWAY_JWKS_FILE = _jwksPath;
         } catch (err) {
             console.warn(`[sps-bridge] Could not write JWKS file alongside key: ${err.message}`);
         }

@@ -32,12 +32,6 @@ function queryParam(urlText: string, key: string): string {
 
 describe("secret routes", () => {
   const originalNodeEnv = process.env.NODE_ENV;
-  const originalJwksFile = process.env.SPS_GATEWAY_JWKS_FILE;
-  const originalJwksUrl = process.env.SPS_GATEWAY_JWKS_URL;
-  const originalJwksTtl = process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS;
-  const originalRequireSpiffe = process.env.SPS_REQUIRE_SPIFFE;
-  const originalAgentIssuers = process.env.SPS_AGENT_JWT_ISSUERS;
-  const originalAgentAudiences = process.env.SPS_AGENT_JWT_AUDIENCES;
   const originalProviders = process.env.SPS_AGENT_AUTH_PROVIDERS_JSON;
   const originalHostedMode = process.env.SPS_HOSTED_MODE;
   const originalAgentJwtSecret = process.env.SPS_AGENT_JWT_SECRET;
@@ -46,13 +40,9 @@ describe("secret routes", () => {
   beforeEach(async () => {
     process.env.NODE_ENV = "test";
     authFixture = await createGatewayAuthFixture();
-    process.env.SPS_GATEWAY_JWKS_FILE = authFixture.jwksPath;
-    process.env.SPS_GATEWAY_JWKS_URL = "";
-    process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = "";
-    process.env.SPS_REQUIRE_SPIFFE = "";
-    process.env.SPS_AGENT_JWT_ISSUERS = "";
-    process.env.SPS_AGENT_JWT_AUDIENCES = "";
-    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = "";
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = JSON.stringify([
+      { name: "legacy-gateway", jwks_file: authFixture.jwksPath, issuer: "gateway", audience: "sps" }
+    ]);
     process.env.SPS_HOSTED_MODE = "";
     process.env.SPS_AGENT_JWT_SECRET = "";
     __resetJwksCacheForTests();
@@ -60,12 +50,6 @@ describe("secret routes", () => {
 
   afterEach(async () => {
     process.env.NODE_ENV = originalNodeEnv;
-    process.env.SPS_GATEWAY_JWKS_FILE = originalJwksFile;
-    process.env.SPS_GATEWAY_JWKS_URL = originalJwksUrl;
-    process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = originalJwksTtl;
-    process.env.SPS_REQUIRE_SPIFFE = originalRequireSpiffe;
-    process.env.SPS_AGENT_JWT_ISSUERS = originalAgentIssuers;
-    process.env.SPS_AGENT_JWT_AUDIENCES = originalAgentAudiences;
     process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = originalProviders;
     process.env.SPS_HOSTED_MODE = originalHostedMode;
     process.env.SPS_AGENT_JWT_SECRET = originalAgentJwtSecret;
@@ -268,7 +252,9 @@ describe("secret routes", () => {
   });
 
   it("accepts SPIFFE workload claims when SPIFFE mode is required", async () => {
-    process.env.SPS_REQUIRE_SPIFFE = "1";
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = JSON.stringify([
+      { name: "spiffe-provider", jwks_file: authFixture.jwksPath, issuer: "gateway", audience: "sps", require_spiffe: true }
+    ]);
     const app = await buildApp({ useInMemoryStore: true, hmacSecret: "test-hmac" });
     const jwt = await authFixture.issueToken({
       agentId: "agent:finance-bot",
@@ -296,7 +282,41 @@ describe("secret routes", () => {
   });
 
   it("rejects non-SPIFFE workload tokens when SPIFFE mode is required", async () => {
-    process.env.SPS_REQUIRE_SPIFFE = "true";
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = JSON.stringify([
+      { name: "spiffe-provider", jwks_file: authFixture.jwksPath, issuer: "gateway", audience: "sps", require_spiffe: true }
+    ]);
+    const app = await buildApp({ useInMemoryStore: true, hmacSecret: "test-hmac" });
+    const jwt = await authFixture.issueToken({ agentId: "agent:no-spiffe" });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v2/secret/request",
+      headers: {
+        authorization: `Bearer ${jwt}`
+      },
+      payload: {
+        public_key: "cHVi",
+        description: "API key"
+      }
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ error: "SPIFFE workload identity required" });
+    await app.close();
+  });
+
+  it("normalizes auth provider JSON string values before enforcing SPIFFE", async () => {
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = JSON.stringify([
+      {
+        name: "  spiffe-provider  ",
+        jwks_file: ` ${authFixture.jwksPath} `,
+        issuer: " gateway ",
+        audience: " sps ",
+        require_spiffe: " True "
+      }
+    ]);
+    __resetJwksCacheForTests();
+
     const app = await buildApp({ useInMemoryStore: true, hmacSecret: "test-hmac" });
     const jwt = await authFixture.issueToken({ agentId: "agent:no-spiffe" });
 
@@ -318,7 +338,9 @@ describe("secret routes", () => {
   });
 
   it("accepts configured non-default issuer values for workload JWTs", async () => {
-    process.env.SPS_AGENT_JWT_ISSUERS = "gateway,spire";
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = JSON.stringify([
+      { name: "gateway-config", jwks_file: authFixture.jwksPath, issuers: ["gateway", "spire"], audience: "sps" }
+    ]);
     const app = await buildApp({ useInMemoryStore: true, hmacSecret: "test-hmac" });
     const jwt = await authFixture.issueToken({
       agentId: "agent:spiffe-bot",
@@ -363,8 +385,6 @@ describe("secret routes", () => {
         require_spiffe: true
       }
     ]);
-    process.env.SPS_GATEWAY_JWKS_FILE = "";
-    process.env.SPS_AGENT_JWT_ISSUERS = "";
     __resetJwksCacheForTests();
 
     try {
@@ -409,7 +429,6 @@ describe("secret routes", () => {
         require_spiffe: true
       }
     ]);
-    process.env.SPS_GATEWAY_JWKS_FILE = "";
     __resetJwksCacheForTests();
 
     try {
@@ -440,9 +459,10 @@ describe("secret routes", () => {
     }
   });
 
-  it("supports gateway auth via SPS_GATEWAY_JWKS_URL with cache reuse", async () => {
-    process.env.SPS_GATEWAY_JWKS_FILE = "";
-    process.env.SPS_GATEWAY_JWKS_URL = "https://gateway.example/.well-known/jwks.json";
+  it("supports gateway auth via SPS_AGENT_AUTH_PROVIDERS_JSON URL with cache reuse", async () => {
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = JSON.stringify([
+      { name: "url-provider", jwks_url: "https://gateway.example/.well-known/jwks.json", issuer: "gateway", audience: "sps" }
+    ]);
     process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = "60000";
     __resetJwksCacheForTests();
 

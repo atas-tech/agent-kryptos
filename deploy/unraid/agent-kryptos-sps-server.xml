@@ -9,7 +9,7 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/tuthan/agent-kryptos</Support>
   <Project>https://github.com/tuthan/agent-kryptos</Project>
-  <Overview>Secret Provisioning Service API for Agent Kryptos. Requires Redis and either a JWKS URL or mounted JWKS file.</Overview>
+  <Overview>Secret Provisioning Service API for Agent Kryptos. Requires Redis and a configured workload identity provider (via SPS_AGENT_AUTH_PROVIDERS_JSON).</Overview>
   <Category>Network:Web</Category>
   <WebUI>http://[IP]:[PORT:3100]/healthz</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/tuthan/agent-kryptos/main/deploy/unraid/agent-kryptos-sps-server.xml</TemplateURL>
@@ -28,10 +28,8 @@
   <Config Name="REDIS_URL" Target="REDIS_URL" Default="redis://agent-kryptos-redis:6379" Mode="" Description="Redis URL reachable from the same custom Docker network" Type="Variable" Display="always" Required="true" Mask="false">redis://agent-kryptos-redis:6379</Config>
   <Config Name="SPS_HMAC_SECRET" Target="SPS_HMAC_SECRET" Default="" Mode="" Description="Required strong shared HMAC secret" Type="Variable" Display="always" Required="true" Mask="true"></Config>
   <Config Name="SPS_UI_BASE_URL" Target="SPS_UI_BASE_URL" Default="https://secrets.example.com" Mode="" Description="Public browser UI URL used in generated secret links" Type="Variable" Display="always" Required="true" Mask="false">https://secrets.example.com</Config>
-  <Config Name="SPS_AGENT_AUTH_PROVIDERS_JSON" Target="SPS_AGENT_AUTH_PROVIDERS_JSON" Default="" Mode="" Description="Preferred production auth config: JSON array of workload identity providers {name, issuer, audience, jwks_url/jwks_file, require_spiffe}" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
-  <Config Name="SPS_GATEWAY_JWKS_URL" Target="SPS_GATEWAY_JWKS_URL" Default="" Mode="" Description="Preferred: public JWKS URL for gateway token validation" Type="Variable" Display="always" Required="false" Mask="false"></Config>
-  <Config Name="SPS_GATEWAY_JWKS_FILE" Target="SPS_GATEWAY_JWKS_FILE" Default="/config/jwks.json" Mode="" Description="Optional local JWKS file path inside container. Leave empty if you use SPS_GATEWAY_JWKS_URL." Type="Variable" Display="advanced" Required="false" Mask="false">/config/jwks.json</Config>
-  <Config Name="Gateway JWKS File" Target="/config/jwks.json" Default="/mnt/user/appdata/agent-kryptos/jwks.json" Mode="rw" Description="Optional host path for the mounted JWKS file used by SPS_GATEWAY_JWKS_FILE" Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/agent-kryptos/jwks.json</Config>
+  <Config Name="SPS_AGENT_AUTH_PROVIDERS_JSON" Target="SPS_AGENT_AUTH_PROVIDERS_JSON" Default="" Mode="" Description="Required for production: JSON array of workload identity providers {name, issuer, audience, jwks_url or jwks_file, require_spiffe}" Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="Gateway JWKS File (Host Path)" Target="/config/jwks.json" Default="/mnt/user/appdata/agent-kryptos/jwks.json" Mode="rw" Description="Optional host path for a local JWKS file if used by an auth provider in SPS_AGENT_AUTH_PROVIDERS_JSON" Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/agent-kryptos/jwks.json</Config>
   <Config Name="SPS_EXCHANGE_POLICY_JSON" Target="SPS_EXCHANGE_POLICY_JSON" Default="" Mode="" Description="Optional JSON array defining Agent-to-Agent exchange policies" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="SPS_SECRET_REGISTRY_JSON" Target="SPS_SECRET_REGISTRY_JSON" Default="" Mode="" Description="Optional JSON array defining known secrets and their classifications" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
 </Container>

@@ -69,11 +69,14 @@ Recommended values:
 6. Fill in the SPS template values:
    - `SPS_HMAC_SECRET`: required, strong random value
    - `SPS_UI_BASE_URL`: your public browser UI URL
-   - `SPS_AGENT_AUTH_PROVIDERS_JSON`: use this if you want SPS to trust one or more JWT issuers by issuer, audience, and JWKS URL/file. Most deployments only need one gateway or runtime issuer. SPIFFE-style claim enforcement is optional.
-   - `SPS_GATEWAY_JWKS_URL`: compatibility-only single-provider shortcut. Fine for an older single gateway issuer setup.
-   - `SPS_GATEWAY_JWKS_FILE`: compatibility-only single-provider file mount. Use only if you plan to mount a local file.
+   - `SPS_AGENT_AUTH_PROVIDERS_JSON`: Optional for hosted/API-key-only deployments. Use this only when SPS must trust self-hosted or external workload JWT issuers via `{name, issuer, audience, jwks_url/jwks_file, require_spiffe}`. This replaces the legacy `SPS_GATEWAY_JWKS_URL` and `SPS_GATEWAY_JWKS_FILE` variables.
    - `SPS_EXCHANGE_POLICY_JSON`: **(Phase 2B)** optional JSON array defining Agent-to-Agent exchange policies.
    - `SPS_SECRET_REGISTRY_JSON`: **(Phase 2B)** optional JSON array defining known secrets and their classifications.
+
+   Preferred auth path:
+   - Hosted agents and local OpenClaw/plugin installs should use agent API keys and `POST /api/v2/agents/token`.
+   - Configure `AGENT_KRYPTOS_API_KEY` (or `SPS_AGENT_API_KEY`) on the agent/plugin side after enrollment.
+   - Add `SPS_AGENT_AUTH_PROVIDERS_JSON` only if you also want SPS to accept self-hosted workload JWTs or enforce stronger workload identity controls such as SPIFFE-backed providers.
 
    Example `SPS_AGENT_AUTH_PROVIDERS_JSON`:
 
@@ -88,12 +91,14 @@ Recommended values:
    ]
    ```
 
-   Add more providers only if you actually have multiple agent issuers to trust.
-   Prefer `SPS_AGENT_AUTH_PROVIDERS_JSON` for new deployments.
+    Add more providers only if you actually have multiple workload issuers to trust.
+    Skip this setting entirely if you are using hosted agent API keys only.
 
-7. If you use `SPS_GATEWAY_JWKS_FILE`, place the file on Unraid first.
+7. If you use `jwks_file` in your JSON config, place the file on Unraid first.
    Recommended host path:
    - `/mnt/user/appdata/agent-kryptos/jwks.json`
+
+   Note: a bridge or helper may still write a local `jwks.json` for convenience, but SPS only reads it when that file is referenced from `SPS_AGENT_AUTH_PROVIDERS_JSON`.
 
 8. Deploy the containers.
 
@@ -147,9 +152,7 @@ If the browser UI loads but cannot talk to the API:
 
 If the SPS container cannot validate gateway tokens:
 
-- if you use `SPS_AGENT_AUTH_PROVIDERS_JSON`, validate the JSON and confirm each `issuer`, `audience`, and `jwks_url` / `jwks_file`
-- check `SPS_GATEWAY_JWKS_URL`
-- or confirm the mounted `jwks.json` file exists and matches `SPS_GATEWAY_JWKS_FILE`
+- validate the `SPS_AGENT_AUTH_PROVIDERS_JSON` structure and confirm each `issuer`, `audience`, and reachability of `jwks_url` or path to `jwks_file`.
 
 If the SPS container cannot reach Redis:
 

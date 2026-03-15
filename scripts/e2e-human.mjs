@@ -77,7 +77,10 @@ async function run() {
     log("SETUP", "Generating gateway identity...");
     const identity = await loadOrCreateGatewayIdentity({ keyPath });
     await writeJwksFile(identity, jwksPath);
-    process.env.SPS_GATEWAY_JWKS_FILE = jwksPath;
+
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = JSON.stringify([
+        { name: "human-e2e", jwks_file: jwksPath, issuer: "gateway", audience: "sps" }
+    ]);
 
     // 1.5. Ensure Browser UI is running
     const uiBaseUrl = process.env.VITE_SPS_UI_URL ?? "http://localhost:5173";

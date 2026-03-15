@@ -71,7 +71,10 @@ async function runDemo() {
   const jwksPath = path.join(tempDir, "jwks.json");
   const identity = await loadOrCreateGatewayIdentity({ keyPath });
   await writeJwksFile(identity, jwksPath);
-  process.env.SPS_GATEWAY_JWKS_FILE = jwksPath;
+  
+  process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = JSON.stringify([
+    { name: "gateway-demo", jwks_file: jwksPath, issuer: "gateway", audience: "sps" }
+  ]);
 
   const baseUrl = "http://demo.local";
 
@@ -119,7 +122,7 @@ async function runDemo() {
 
   const gatewayClient = new GatewaySpsClient({
     baseUrl,
-    gatewayBearerToken: await issueJwt(identity, "gateway-demo"),
+    gatewayBearerToken: await issueJwt(identity, "demo-agent"),
     fetchImpl: fetchViaInject
   });
 
@@ -156,7 +159,7 @@ async function runDemo() {
 
     const agentClient = new SpsClient({
       baseUrl,
-      gatewayBearerToken: await issueJwt(identity, "agent-demo"),
+      gatewayBearerToken: await issueJwt(identity, "demo-agent"),
       fetchImpl: fetchViaInject
     });
 

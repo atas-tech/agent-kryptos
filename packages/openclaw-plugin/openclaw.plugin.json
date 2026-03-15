@@ -22,7 +22,7 @@
             },
             "AGENT_KRYPTOS_API_KEY": {
                 "type": "string",
-                "description": "Agent API Key obtained from SPS Dashboard (Simplifies auth by removing JWKS requirement)"
+                "description": "Preferred auth for hosted/local installs: exchange the enrolled agent API key for short-lived SPS bearer tokens"
             },
             "OPENCLAW_AGENT_TARGETS_JSON": {
                 "type": "string",

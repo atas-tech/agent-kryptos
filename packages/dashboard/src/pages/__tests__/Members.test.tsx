@@ -1,4 +1,5 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MembersPage } from "../Members.js";
 import { apiRequest } from "../../api/client.js";
@@ -69,25 +70,28 @@ describe("MembersPage", () => {
 
   it("enforces temporary password rules in create form", async () => {
     (apiRequest as any).mockResolvedValue({ members: [], next_cursor: null });
+    const user = userEvent.setup();
 
     render(<MembersPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Add member/i }));
+    await screen.findByText("0 rows loaded");
+    await user.click(screen.getByRole("button", { name: /Add member/i }));
 
     const passwordInput = screen.getByLabelText("Temporary password");
-    const submitButton = screen.getByRole("button", { name: /Create member/i });
 
     // Too short
-    fireEvent.change(passwordInput, { target: { value: "short" } });
-    expect(screen.getByText(/Temporary password strength: too short/i)).toBeInTheDocument();
+    await user.type(passwordInput, "short");
+    expect(await screen.findByText(/Temporary password strength: too short/i)).toBeInTheDocument();
     
     // Obvious weak password
-    fireEvent.change(passwordInput, { target: { value: "password123!" } });
-    expect(screen.getByText(/Temporary password strength: too weak/i)).toBeInTheDocument();
+    await user.clear(passwordInput);
+    await user.type(passwordInput, "password123!");
+    expect(await screen.findByText(/Temporary password strength: too weak/i)).toBeInTheDocument();
 
     // Valid strong password
-    fireEvent.change(passwordInput, { target: { value: "ComplexPassword123!" } });
-    expect(screen.getByText(/Temporary password strength: (strong|very strong)/i)).toBeInTheDocument();
+    await user.clear(passwordInput);
+    await user.type(passwordInput, "ComplexPassword123!");
+    expect(await screen.findByText(/Temporary password strength: (strong|very strong)/i)).toBeInTheDocument();
   });
 
   it("handles pagination 'Load more' click", async () => {
@@ -100,13 +104,14 @@ describe("MembersPage", () => {
       .mockResolvedValueOnce(page2) // Load more members
       .mockResolvedValueOnce(page2); // Load more admins (triggered by Promise.all in loadMembers)
 
+    const user = userEvent.setup();
     render(<MembersPage />);
 
     expect(await screen.findByText("admin@example.com")).toBeInTheDocument();
     expect(screen.queryByText("viewer@example.com")).not.toBeInTheDocument();
 
     const loadMoreButton = screen.getByRole("button", { name: /Load more/i });
-    fireEvent.click(loadMoreButton);
+    await user.click(loadMoreButton);
 
     expect(await screen.findByText("viewer@example.com")).toBeInTheDocument();
   });

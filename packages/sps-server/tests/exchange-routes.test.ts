@@ -6,9 +6,6 @@ import { createGatewayAuthFixture, type GatewayAuthFixture } from "./gateway-aut
 
 describe("exchange routes", () => {
   const originalNodeEnv = process.env.NODE_ENV;
-  const originalJwksFile = process.env.SPS_GATEWAY_JWKS_FILE;
-  const originalJwksUrl = process.env.SPS_GATEWAY_JWKS_URL;
-  const originalJwksTtl = process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS;
   const originalProviders = process.env.SPS_AGENT_AUTH_PROVIDERS_JSON;
   const originalHostedMode = process.env.SPS_HOSTED_MODE;
   const originalUserJwtSecret = process.env.SPS_USER_JWT_SECRET;
@@ -17,10 +14,9 @@ describe("exchange routes", () => {
   beforeEach(async () => {
     process.env.NODE_ENV = "test";
     authFixture = await createGatewayAuthFixture();
-    process.env.SPS_GATEWAY_JWKS_FILE = authFixture.jwksPath;
-    process.env.SPS_GATEWAY_JWKS_URL = "";
-    process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = "";
-    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = "";
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = JSON.stringify([
+      { name: "legacy-gateway", jwks_file: authFixture.jwksPath, issuer: "gateway", audience: "sps" }
+    ]);
     process.env.SPS_HOSTED_MODE = "";
     process.env.SPS_USER_JWT_SECRET = "test-user-jwt-secret";
     __resetJwksCacheForTests();
@@ -28,9 +24,6 @@ describe("exchange routes", () => {
 
   afterEach(async () => {
     process.env.NODE_ENV = originalNodeEnv;
-    process.env.SPS_GATEWAY_JWKS_FILE = originalJwksFile;
-    process.env.SPS_GATEWAY_JWKS_URL = originalJwksUrl;
-    process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS = originalJwksTtl;
     process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = originalProviders;
     process.env.SPS_HOSTED_MODE = originalHostedMode;
     process.env.SPS_USER_JWT_SECRET = originalUserJwtSecret;

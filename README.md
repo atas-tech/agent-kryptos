@@ -61,6 +61,12 @@ Detailed documentation and planning can be found in the `docs/` folder:
 - **No LLM Exposure:** The LLM orchestration layer never comes in contact with plaintext secrets.
 - **Single Coordinator Model:** One SPS server can coordinate secret exchange across multiple agents and hosts using stable agent IDs and SPS-trusted JWT/JWKS validation.
 
+## Auth Modes
+
+- **Hosted / local plugin default:** Prefer agent API keys. Enrolled agents exchange `AGENT_KRYPTOS_API_KEY` / `SPS_AGENT_API_KEY` for short-lived SPS bearer tokens, so plugin users do not need to manage JWKS files.
+- **Self-hosted / workload identity:** Use `SPS_AGENT_AUTH_PROVIDERS_JSON` to trust external workload JWT issuers via `jwks_url` or `jwks_file`.
+- **Legacy note:** `SPS_GATEWAY_JWKS_FILE` and `SPS_GATEWAY_JWKS_URL` are no longer direct SPS server config. If you keep a local `jwks.json`, reference it from `SPS_AGENT_AUTH_PROVIDERS_JSON`.
+
 ## Getting Started
 
 *(Instructions for local development and deployment to be added as implementation progresses)*

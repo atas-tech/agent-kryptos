@@ -139,7 +139,7 @@ Cover the production transport path and lifecycle records with targeted tests an
 - **Audit artifacts** → Phase 2B means structured SPS records and review endpoints, not a dashboard requirement
 - **Lifecycle endpoint access** → Phase 2B lifecycle inspection endpoints are admin-only
 - **Lineage model** → requester may send optional `prior_exchange_id`; SPS validates same requester + `secret_name` and stores one `supersedes_exchange_id` backlink
-- **Legacy auth env vars** → `SPS_GATEWAY_JWKS_URL` and `SPS_GATEWAY_JWKS_FILE` remain compatibility paths; new deployments should prefer `SPS_AGENT_AUTH_PROVIDERS_JSON`
+- **Legacy auth env vars** → `SPS_GATEWAY_JWKS_URL` and `SPS_GATEWAY_JWKS_FILE` have been removed; all deployments must use `SPS_AGENT_AUTH_PROVIDERS_JSON`
 
 ### Open Decisions Before Coding
 

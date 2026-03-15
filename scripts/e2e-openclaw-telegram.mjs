@@ -109,7 +109,10 @@ async function run() {
     log("SETUP", "Generating gateway identity...");
     const identity = await loadOrCreateGatewayIdentity({ keyPath });
     await writeJwksFile(identity, jwksPath);
-    process.env.SPS_GATEWAY_JWKS_FILE = jwksPath;
+
+    process.env.SPS_AGENT_AUTH_PROVIDERS_JSON = JSON.stringify([
+        { name: "telegram-e2e", jwks_file: jwksPath, issuer: "gateway", audience: "sps" }
+    ]);
 
     // 2. Determine the public base URL
     // The SPS_PUBLIC_BASE_URL must be set to the tunnel URL so that the Telegram

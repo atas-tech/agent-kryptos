@@ -46,8 +46,9 @@ export interface RequireUserAuthOptions {
 }
 
 const jwksCache = new Map<string, JwksCacheEntry>();
+
 function getJwksCacheTtlMs(): number {
-  const raw = process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS;
+  const raw = process.env.SPS_AGENT_JWKS_CACHE_TTL_MS || process.env.SPS_GATEWAY_JWKS_CACHE_TTL_MS;
   if (!raw) {
     return 60_000;
   }
@@ -60,27 +61,13 @@ function getJwksCacheTtlMs(): number {
   return Math.floor(parsed);
 }
 
-function getJwksSource(): { sourceKey: string; kind: "url" | "file"; value: string } | null {
-  const url = process.env.SPS_GATEWAY_JWKS_URL?.trim();
-  if (url) {
-    return { sourceKey: `url:${url}`, kind: "url", value: url };
-  }
-
-  const file = process.env.SPS_GATEWAY_JWKS_FILE?.trim();
-  if (file) {
-    return { sourceKey: `file:${file}`, kind: "file", value: file };
-  }
-
-  return null;
-}
-
 async function loadJwks(source: { kind: "url" | "file"; value: string }): Promise<JSONWebKeySet> {
   if (source.kind === "file") {
     return JSON.parse(await readFile(source.value, "utf8")) as JSONWebKeySet;
   }
 
   if (typeof globalThis.fetch !== "function") {
-    throw new Error("Global fetch is unavailable for SPS_GATEWAY_JWKS_URL");
+    throw new Error("Global fetch is unavailable for JWKS URL");
   }
 
   const response = await globalThis.fetch(source.value, {
@@ -101,10 +88,7 @@ export function __resetJwksCacheForTests(): void {
   jwksCache.clear();
 }
 
-function normalizeStringList(
-  value: unknown,
-  fallback: string[] = []
-): string[] {
+function normalizeStringList(value: unknown, fallback: string[] = []): string[] {
   if (Array.isArray(value)) {
     const normalized = value
       .map((item) => (typeof item === "string" ? item.trim() : ""))
@@ -126,35 +110,19 @@ function parseBoolean(value: unknown, fallback = false): boolean {
   if (typeof value === "boolean") {
     return value;
   }
+
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
     return normalized === "1" || normalized === "true" || normalized === "yes";
   }
+
   return fallback;
-}
-
-function providerFromLegacyEnv(): AuthProviderConfig | null {
-  const source = getJwksSource();
-  if (!source) {
-    return null;
-  }
-
-  return {
-    name: "legacy-gateway",
-    sourceKey: source.sourceKey,
-    kind: source.kind,
-    value: source.value,
-    issuers: allowedIssuers(),
-    audiences: allowedAudiences(),
-    requireSpiffe: requiresSpiffeIdentity()
-  };
 }
 
 function authProviders(): AuthProviderConfig[] {
   const raw = process.env.SPS_AGENT_AUTH_PROVIDERS_JSON?.trim();
   if (!raw) {
-    const legacy = providerFromLegacyEnv();
-    return legacy ? [legacy] : [];
+    return [];
   }
 
   const parsed = JSON.parse(raw);
@@ -183,16 +151,15 @@ function authProviders(): AuthProviderConfig[] {
     }
 
     return [{
-      name:
-        typeof entry.name === "string" && entry.name.trim()
-          ? entry.name.trim()
-          : `provider-${index + 1}`,
+      name: typeof entry.name === "string" && entry.name.trim()
+        ? entry.name.trim()
+        : `provider-${index + 1}`,
       sourceKey: jwksUrl ? `url:${jwksUrl}` : `file:${jwksFile}`,
       kind: jwksUrl ? "url" : "file",
       value: jwksUrl || jwksFile,
-      issuers: normalizeStringList((entry as Record<string, unknown>).issuers ?? (entry as Record<string, unknown>).issuer, ["gateway"]),
-      audiences: normalizeStringList((entry as Record<string, unknown>).audiences ?? (entry as Record<string, unknown>).audience, ["sps"]),
-      requireSpiffe: parseBoolean((entry as Record<string, unknown>).require_spiffe ?? (entry as Record<string, unknown>).requireSpiffe, false)
+      issuers: normalizeStringList(entry.issuers ?? entry.issuer, ["gateway"]),
+      audiences: normalizeStringList(entry.audiences ?? entry.audience, ["sps"]),
+      requireSpiffe: parseBoolean(entry.require_spiffe ?? entry.requireSpiffe, false)
     }];
   });
 }
@@ -231,30 +198,6 @@ function bearerToken(req: FastifyRequest): string | null {
   return token;
 }
 
-function parseCsvEnv(name: string, fallback: string[]): string[] {
-  const raw = process.env[name]?.trim();
-  if (!raw) {
-    return fallback;
-  }
-
-  return raw
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-}
-
-function allowedIssuers(): string[] {
-  return parseCsvEnv("SPS_AGENT_JWT_ISSUERS", ["gateway"]);
-}
-
-function allowedAudiences(): string[] {
-  return parseCsvEnv("SPS_AGENT_JWT_AUDIENCES", ["sps"]);
-}
-
-function requiresSpiffeIdentity(): boolean {
-  const raw = process.env.SPS_REQUIRE_SPIFFE?.trim().toLowerCase();
-  return raw === "1" || raw === "true" || raw === "yes";
-}
 
 function isHostedModeEnabled(): boolean {
   const raw = process.env.SPS_HOSTED_MODE?.trim().toLowerCase();
@@ -514,13 +457,12 @@ async function requireAuthenticatedWorkload(
   }
 
   const matchedProviderName = typeof payload.auth_provider === "string" ? payload.auth_provider : null;
-  const providerRequiresSpiffe = matchedProviderName
-    ? authProviders().find((provider) => provider.name === matchedProviderName)?.requireSpiffe === true
-    : false;
-
-  if ((requiresSpiffeIdentity() || providerRequiresSpiffe) && !spiffeId) {
-    reply.code(401).send({ error: "SPIFFE workload identity required" });
-    return null;
+  if (matchedProviderName) {
+    const provider = authProviders().find((p) => p.name === matchedProviderName);
+    if (provider?.requireSpiffe && !spiffeId) {
+      reply.code(401).send({ error: "SPIFFE workload identity required" });
+      return null;
+    }
   }
 
   const workspaceId = typeof payload.workspace_id === "string" && payload.workspace_id.trim()
