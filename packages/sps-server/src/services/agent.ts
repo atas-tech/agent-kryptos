@@ -150,6 +150,15 @@ async function requireActiveAgentRow(db: Pool, workspaceId: string, agentId: str
   return row;
 }
 
+export async function getActiveAgent(
+  db: Pool,
+  workspaceId: string,
+  agentId: string
+): Promise<EnrolledAgentRecord> {
+  const row = await requireActiveAgentRow(db, workspaceId, agentId);
+  return toAgentRecord(row);
+}
+
 export async function enrollAgent(
   db: Pool,
   workspaceId: string,

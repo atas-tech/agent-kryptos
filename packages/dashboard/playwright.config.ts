@@ -44,7 +44,7 @@ export default defineConfig({
       command: "npm run dev",
       url: "http://localhost:5173",
       timeout: 120000,
-      reuseExistingServer: true,
+      reuseExistingServer: false,
       cwd: "./",
       env: {
         VITE_SPS_API_URL: "http://localhost:3100"
@@ -53,8 +53,9 @@ export default defineConfig({
     {
       command: "npm run dev",
       url: "http://localhost:3100/healthz",
-      reuseExistingServer: true,
+      reuseExistingServer: false,
       cwd: "../sps-server",
+      timeout: 120000,
       env: {
         DATABASE_URL: process.env.DATABASE_URL || "postgresql://kryptos:localdev@127.0.0.1:5433/agent_kryptos",
         REDIS_URL: "redis://127.0.0.1:6380",
@@ -66,11 +67,19 @@ export default defineConfig({
         SPS_HOST: "0.0.0.0",
         STRIPE_SECRET_KEY: "sk_test_dummy",
         STRIPE_WEBHOOK_SECRET: "whsec_test",
-        SPS_AUTH_REGISTRATION_LIMIT: "100",
-        SPS_AUTH_LOGIN_LIMIT: "100",
-        SPS_MEMBER_LIMIT_FREE: "10",
-        SPS_AGENT_LIMIT_FREE: "10",
+        SPS_AUTH_REGISTRATION_LIMIT: "1000",
+        SPS_AUTH_LOGIN_LIMIT: "1000",
+        SPS_AGENT_TOKEN_RATE_LIMIT: "1000",
+        SPS_MEMBER_LIMIT_FREE: "100",
+        SPS_AGENT_LIMIT_FREE: "100",
         SPS_EXCHANGE_LIMIT_FREE: "100",
+        SPS_X402_ENABLED: "1",
+        SPS_X402_PRICE_USD_CENTS: "5",
+        SPS_X402_FREE_EXCHANGE_MONTHLY_CAP: "10",
+        SPS_X402_FACILITATOR_URL: "http://localhost:3101",
+        SPS_X402_PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000001",
+        SPS_SECRET_REGISTRY_JSON: '[{"secretName": "stripe.api_key.prod", "classification": "finance"}]',
+        SPS_EXCHANGE_POLICY_JSON: '[{"ruleId": "allow-test", "secretName": "stripe.api_key.prod", "mode": "allow"}]',
         PORT: "3100"
       }
     }

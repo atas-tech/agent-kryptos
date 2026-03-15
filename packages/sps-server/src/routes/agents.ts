@@ -165,7 +165,8 @@ export async function registerAgentRoutes(app: FastifyInstance, opts: AgentRoute
 
   app.post("/token", async (req, reply) => {
     if (opts.rateLimitService) {
-      const rateLimit = await opts.rateLimitService.consume(rateLimitKeyByIp(req, "agents:token"), 5, 60_000);
+      const limit = Number(process.env.SPS_AGENT_TOKEN_RATE_LIMIT) || 5;
+      const rateLimit = await opts.rateLimitService.consume(rateLimitKeyByIp(req, "agents:token"), limit, 60_000);
       if (!rateLimit.allowed) {
         return sendRateLimited(reply, rateLimit, "Too many token requests");
       }

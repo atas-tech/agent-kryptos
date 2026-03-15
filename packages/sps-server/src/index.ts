@@ -18,6 +18,7 @@ import { StripeBillingProvider, MockBillingProvider, createStripeClient, type Bi
 import { ExchangePolicyEngine, type ExchangePolicyRule, type SecretRegistryEntry } from "./services/policy.js";
 import { InMemoryQuotaService, RedisQuotaService, type QuotaService } from "./services/quota.js";
 import { InMemoryRequestStore, RedisRequestStore, createRedisClient } from "./services/redis.js";
+import { HttpX402Provider, type X402Provider, x402ConfigFromEnv } from "./services/x402.js";
 import type { RequestStore } from "./types.js";
 export interface BuildAppOptions {
   store?: RequestStore;
@@ -31,6 +32,7 @@ export interface BuildAppOptions {
   useInMemoryStore?: boolean;
   secretRegistry?: SecretRegistryEntry[];
   exchangePolicyRules?: ExchangePolicyRule[];
+  x402Provider?: X402Provider;
   runMigrations?: boolean;
   closeDbOnClose?: boolean;
   trustProxy?: boolean;
@@ -167,10 +169,16 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   }, { prefix: "/api/v2/secret" });
 
   await app.register(async (exchangeRoutesApp) => {
+    const x402Config = x402ConfigFromEnv();
     await registerExchangeRoutes(exchangeRoutesApp, {
       store,
       db: options.db,
       quotaService,
+      x402Provider: options.x402Provider ?? (
+        x402Config.enabled && x402Config.facilitatorUrl
+          ? new HttpX402Provider(x402Config.facilitatorUrl, x402Config.providerTimeoutMs)
+          : undefined
+      ),
       hmacSecret,
       policyEngine,
       requestTtlSeconds: 180,

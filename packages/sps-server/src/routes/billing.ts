@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyPluginOptions, FastifyReply } from "fastify";
 import type { Pool } from "pg";
 import { requireUserRole } from "../middleware/auth.js";
-import { countActiveAgents } from "../services/agent.js";
+import { countActiveAgents, getActiveAgent } from "../services/agent.js";
 import {
   BillingServiceError,
   createCheckoutFlow,
@@ -13,6 +13,14 @@ import {
 import { activeAgentLimit, activeMemberLimit, exchangeAllowed, type QuotaService } from "../services/quota.js";
 import { countActiveWorkspaceUsers, ensureWorkspaceOwnerVerified, UserServiceError } from "../services/user.js";
 import { getWorkspace } from "../services/workspace.js";
+import {
+  listAgentAllowances,
+  listX402Transactions,
+  setAgentAllowance,
+  type AgentAllowanceRecord,
+  type X402TransactionRecord,
+  X402ServiceError
+} from "../services/x402.js";
 
 export interface BillingRoutesOptions extends FastifyPluginOptions {
   db: Pool;
@@ -90,11 +98,46 @@ async function buildDashboardSummary(db: Pool, quotaService: QuotaService, works
 }
 
 function sendServiceError(reply: FastifyReply, error: unknown) {
-  if (error instanceof BillingServiceError || error instanceof UserServiceError) {
+  if (error instanceof BillingServiceError || error instanceof UserServiceError || error instanceof X402ServiceError) {
     return reply.code(error.statusCode).send({ error: error.message, code: error.code });
   }
 
   throw error;
+}
+
+function toAllowanceResponse(record: AgentAllowanceRecord) {
+  return {
+    agent_id: record.agentId,
+    display_name: record.displayName,
+    status: record.status,
+    monthly_budget_cents: record.monthlyBudgetCents,
+    current_spend_cents: record.currentSpendCents,
+    remaining_budget_cents: record.remainingBudgetCents,
+    budget_reset_at: record.budgetResetAt.toISOString(),
+    updated_at: record.updatedAt.toISOString()
+  };
+}
+
+function toTransactionResponse(record: X402TransactionRecord) {
+  return {
+    id: record.id,
+    workspace_id: record.workspaceId,
+    agent_id: record.agentId,
+    payment_id: record.paymentId,
+    quoted_amount_cents: record.quotedAmountCents,
+    quoted_currency: record.quotedCurrency,
+    quoted_asset_symbol: record.quotedAssetSymbol,
+    quoted_asset_amount: record.quotedAssetAmount,
+    scheme: record.scheme,
+    network_id: record.networkId,
+    resource_type: record.resourceType,
+    resource_id: record.resourceId,
+    tx_hash: record.txHash,
+    status: record.status,
+    quote_expires_at: record.quoteExpiresAt?.toISOString() ?? null,
+    settled_at: record.settledAt?.toISOString() ?? null,
+    created_at: record.createdAt.toISOString()
+  };
 }
 
 function resolveSuccessUrl(opts: BillingRoutesOptions): string {
@@ -224,6 +267,77 @@ export async function registerBillingRoutes(app: FastifyInstance, opts: BillingR
     try {
       const summary = await buildDashboardSummary(opts.db, opts.quotaService, user.workspaceId);
       return reply.send(summary);
+    } catch (error) {
+      return sendServiceError(reply, error);
+    }
+  });
+
+  app.post<{
+    Body: { agent_id: string; monthly_budget_cents: number };
+  }>("/billing/allowances", {
+    schema: {
+      body: {
+        type: "object",
+        additionalProperties: false,
+        required: ["agent_id", "monthly_budget_cents"],
+        properties: {
+          agent_id: { type: "string", minLength: 1, maxLength: 160 },
+          monthly_budget_cents: { type: "integer", minimum: 0 }
+        }
+      }
+    }
+  }, async (req, reply) => {
+    const user = await requireUserRole("workspace_admin")(req, reply);
+    if (!user) {
+      return;
+    }
+
+    try {
+      const agentId = req.body.agent_id.trim();
+      if (!agentId) {
+        return reply.code(400).send({ error: "agent_id must not be blank", code: "invalid_agent_id" });
+      }
+
+      await getActiveAgent(opts.db, user.workspaceId, agentId);
+      const allowance = await setAgentAllowance(opts.db, user.workspaceId, agentId, req.body.monthly_budget_cents);
+      return reply.code(201).send({ allowance: toAllowanceResponse(allowance) });
+    } catch (error) {
+      return sendServiceError(reply, error);
+    }
+  });
+
+  app.get("/billing/allowances", async (req, reply) => {
+    const user = await requireUserRole("workspace_admin")(req, reply);
+    if (!user) {
+      return;
+    }
+
+    try {
+      const allowances = await listAgentAllowances(opts.db, user.workspaceId);
+      return reply.send({ allowances: allowances.map(toAllowanceResponse) });
+    } catch (error) {
+      return sendServiceError(reply, error);
+    }
+  });
+
+  app.get<{
+    Querystring: { cursor?: string; limit?: number; agent_id?: string };
+  }>("/billing/x402/transactions", async (req, reply) => {
+    const user = await requireUserRole("workspace_admin")(req, reply);
+    if (!user) {
+      return;
+    }
+
+    try {
+      const page = await listX402Transactions(opts.db, user.workspaceId, {
+        cursor: typeof req.query.cursor === "string" ? req.query.cursor : undefined,
+        limit: typeof req.query.limit === "number" ? req.query.limit : undefined,
+        agentId: typeof req.query.agent_id === "string" && req.query.agent_id.trim() ? req.query.agent_id.trim() : undefined
+      });
+      return reply.send({
+        transactions: page.transactions.map(toTransactionResponse),
+        next_cursor: page.nextCursor
+      });
     } catch (error) {
       return sendServiceError(reply, error);
     }

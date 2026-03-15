@@ -631,11 +631,11 @@ This keeps the wire contract stable while tightening the trust model later.
 ### Phase 3B: UI Dashboard, Operations, SDKs & Community
 - [ ] Hosted deployment: UI Dashboard at `https://app.atas.tech/` (or console), secret input UI at `https://secret.atas.tech/`, API at `https://sps.atas.tech/`, and gateway/browser allowlists updated to those domains
 - [x] Operator Dashboard UI (`app.atas.tech`): React/Vite SPA for workspace human users. Includes auth (signup/login), member management, agent enrollment (generating `ak_` keys), audit log views, and billing portal links. (Milestones 2-5)
-- [ ] Self-service human signup lifecycle: challenge checks, risk review, separate `trial` vs `free` tier distinction if needed.
-- [ ] Owner/team bindings: policy abstractions beyond explicit allowlists.
-- [ ] Agent onboarding paths: validated self-service creation of a tightly limited trial workspace, or enrollment into an existing workspace; includes well-known endpoint discovery, MCP server integration.
+- [ ] Self-service human signup lifecycle: Milestone 2 registration flow with refined account/workspace creation and Milestone 7 Turnstile challenge.
+- [ ] Owner/team bindings: Member management (Milestone 3) and workspace-scoped role assignments (viewer/operator/admin).
+- [ ] Agent onboarding paths: Validated self-service agent enrollment (Milestone 3) and SDK-based bootstrap flows (Milestone 8) including well-known endpoint discovery.
 - [x] Hosted analytics and dashboards: aggregate request counts, exchange metrics, workspace activity, error rates, abuse signals. (Milestone 5 Dashboard Home)
-- [ ] Advanced abuse controls: stronger signup abuse controls, challenge gates, operator tooling, strict trial quotas, runtime/manifest metadata validation, risk scoring.
+- [ ] Advanced abuse controls: Milestone 7 burst anomaly detection, Turnstile challenge gates, and strict free-tier quotas.
 - [ ] x402 (HTTP 402) autonomous agent payments following the [x402.org](https://www.x402.org/) open standard (v2 headers: `PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, `PAYMENT-RESPONSE`; facilitator-based verify/settle). Phase 3B starts simple: Stripe (or another `SubscriptionProvider`) remains the recurring subscription system for workspace billing, while x402 lives in its own ledger/tables and is used first for agent per-request overage payments after free quota exhaustion. Later expansions may add one-time x402 products (for example request bundles or a fixed-duration standard pass) and only then revisit true x402 recurring subscriptions. Budget enforcement is per-agent, priced internally in USD cents, and payment settlement must complete before SPS releases the paid resource.
 - [ ] Language SDKs: Python, Go, and published Node.js package(s) from the current `agent-skill` implementation
 - [ ] Docker Compose community guide (builds goodwill while SaaS matures; full self-hosted polish deferred to Phase 4)

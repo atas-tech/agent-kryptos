@@ -463,7 +463,7 @@ async function verifyHostedAgentToken(token: string): Promise<JWTPayload | null>
     }
 
     return payload;
-  } catch {
+  } catch (err) {
     return null;
   }
 }

@@ -14,6 +14,27 @@ import {
 } from "../services/approval.js";
 import { logAudit } from "../services/audit.js";
 import { ExchangePolicyEngine, hashPolicyDecision } from "../services/policy.js";
+import {
+  acquireInflightLease,
+  buildExchangeQuote,
+  buildPaymentRequiredPayload,
+  consumeFreeExchangeSlot,
+  encodePaymentRequiredHeader,
+  encodePaymentResponseHeader,
+  findTransactionByPaymentId,
+  hashX402Request,
+  insertPendingTransaction,
+  markTransactionFailed,
+  markTransactionSettled,
+  markTransactionVerified,
+  parsePaymentSignatureHeader,
+  releaseInflightLease,
+  reserveAllowanceSpend,
+  rollbackAllowanceSpend,
+  type X402Provider,
+  X402ServiceError,
+  x402ConfigFromEnv
+} from "../services/x402.js";
 import type { ExchangeLifecycleRecord, PolicyDecision, RequestStore, StoredApprovalRequest, StoredExchange } from "../types.js";
 
 const EXCHANGE_ID_PATTERN = "^[a-f0-9]{64}$";
@@ -189,10 +210,19 @@ export interface ExchangeRoutesOptions extends FastifyPluginOptions {
   policyEngine: ExchangePolicyEngine;
   db?: Pool | null;
   quotaService?: QuotaService;
+  x402Provider?: X402Provider;
   requestTtlSeconds?: number;
   submittedTtlSeconds?: number;
   revokedTtlSeconds?: number;
   approvalTtlSeconds?: number;
+}
+
+interface CreatedExchangeResponse {
+  exchange_id: string;
+  status: "pending";
+  expires_at: number;
+  fulfillment_token: string;
+  policy: ReturnType<typeof toPolicyResponse>;
 }
 
 export async function registerExchangeRoutes(app: FastifyInstance, opts: ExchangeRoutesOptions): Promise<void> {
@@ -200,6 +230,103 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
   const submittedTtl = opts.submittedTtlSeconds ?? 60;
   const revokedTtl = opts.revokedTtlSeconds ?? 300;
   const approvalTtl = opts.approvalTtlSeconds ?? 600;
+  const x402Config = x402ConfigFromEnv();
+
+  async function createExchangeRequestRecord(params: {
+    publicKey: string;
+    secretName: string;
+    purpose: string;
+    fulfillerHint: string;
+    priorExchangeId: string;
+    requesterId: string;
+    workspaceId?: string;
+    decision: PolicyDecision;
+    allowedFulfillerId: string;
+    ip?: string;
+  }): Promise<CreatedExchangeResponse> {
+    const createdAt = nowSeconds();
+    const expiresAt = createdAt + requestTtl;
+    const exchangeId = generateRequestId();
+    const policyHash = hashPolicyDecision(params.decision, params.allowedFulfillerId, params.workspaceId);
+    const fulfillmentToken = await signFulfillmentToken(
+      {
+        exchange_id: exchangeId,
+        requester_id: params.requesterId,
+        workspace_id: params.workspaceId,
+        secret_name: params.secretName,
+        purpose: params.purpose,
+        policy_hash: policyHash,
+        approval_reference: params.decision.approvalReference ?? null
+      },
+      opts.hmacSecret,
+      expiresAt
+    );
+
+    await opts.store.setExchange(
+      {
+        exchangeId,
+        requesterId: params.requesterId,
+        workspaceId: params.workspaceId,
+        requesterPublicKey: params.publicKey,
+        secretName: params.secretName,
+        purpose: params.purpose,
+        fulfillerHint: params.fulfillerHint,
+        allowedFulfillerId: params.allowedFulfillerId,
+        priorExchangeId: params.priorExchangeId || null,
+        supersedesExchangeId: params.priorExchangeId || null,
+        policyDecision: params.decision,
+        policyHash,
+        status: "pending",
+        createdAt,
+        expiresAt
+      },
+      requestTtl
+    );
+
+    await appendLifecycleRecord(opts.store, {
+      eventType: "exchange_requested",
+      exchangeId,
+      approvalReference: params.decision.approvalReference ?? null,
+      requesterId: params.requesterId,
+      workspaceId: params.workspaceId,
+      secretName: params.secretName,
+      purpose: params.purpose,
+      fulfillerHint: params.fulfillerHint,
+      actorId: params.requesterId,
+      status: "pending",
+      priorStatus: null,
+      reason: null,
+      policyRuleId: params.decision.ruleId,
+      metadata: {
+        prior_exchange_id: params.priorExchangeId || null,
+        requester_ring: params.decision.requesterRing ?? null,
+        fulfiller_ring: params.decision.fulfillerRing ?? null
+      },
+      createdAt
+    });
+
+    await logAudit(opts.db, {
+      event: "exchange_requested",
+      actorId: params.requesterId,
+      actorType: "agent",
+      exchangeId,
+      requesterId: params.requesterId,
+      workspaceId: params.workspaceId ?? null,
+      secretName: params.secretName,
+      policyRuleId: params.decision.ruleId,
+      approvalReference: params.decision.approvalReference ?? null,
+      action: "exchange_request",
+      ip: params.ip
+    });
+
+    return {
+      exchange_id: exchangeId,
+      status: "pending",
+      expires_at: expiresAt,
+      fulfillment_token: fulfillmentToken,
+      policy: toPolicyResponse(params.decision)
+    };
+  }
 
   async function decideApproval(params: {
     approvalReference: string;
@@ -473,23 +600,6 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         if (!workspace) {
           return reply.code(404).send({ error: "Workspace not found", code: "workspace_not_found" });
         }
-
-        if (!exchangeAllowed(workspace.tier)) {
-          return reply.code(403).send({ error: "Exchange is not available on the free tier", code: "feature_not_available" });
-        }
-
-        if (opts.quotaService) {
-          const quota = await opts.quotaService.consumeDailyQuota(agent.workspaceId, "exchange_request", workspace.tier);
-          if (!quota.allowed) {
-            return reply.code(429).send({
-              error: "Exchange request quota exceeded",
-              code: "quota_exceeded",
-              limit: quota.limit,
-              used: quota.used,
-              reset_at: quota.resetAt
-            });
-          }
-        }
       }
 
       const resolvedPolicy = await resolveDecision(
@@ -546,88 +656,281 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         return reply.code(500).send({ error: "Exchange policy did not resolve an allowed fulfiller" });
       }
 
-      const createdAt = nowSeconds();
-      const expiresAt = createdAt + requestTtl;
-      const exchangeId = generateRequestId();
-      const policyHash = hashPolicyDecision(decision, allowedFulfillerId, agent.workspaceId ?? undefined);
-      const fulfillmentToken = await signFulfillmentToken(
-        {
-          exchange_id: exchangeId,
-          requester_id: agent.sub,
-          workspace_id: agent.workspaceId ?? undefined,
-          secret_name: secretName,
-          purpose,
-          policy_hash: policyHash,
-          approval_reference: decision.approvalReference ?? null
-        },
-        opts.hmacSecret,
-        expiresAt
-      );
+      const workspace = opts.db && agent.workspaceId
+        ? await getWorkspace(opts.db, agent.workspaceId, { activeOnly: true })
+        : null;
 
-      await opts.store.setExchange(
-        {
-          exchangeId,
-          requesterId: agent.sub,
-          workspaceId: agent.workspaceId ?? undefined,
-          requesterPublicKey: req.body.public_key,
-          secretName,
-          purpose,
-          fulfillerHint,
-          allowedFulfillerId,
-          priorExchangeId: priorExchangeId || null,
-          supersedesExchangeId: priorExchangeId || null,
-          policyDecision: decision,
-          policyHash,
-          status: "pending",
-          createdAt,
-          expiresAt
-        },
-        requestTtl
-      );
+      const requestHash = hashX402Request({
+        requester_id: agent.sub,
+        workspace_id: agent.workspaceId ?? null,
+        public_key: req.body.public_key,
+        secret_name: secretName,
+        purpose,
+        fulfiller_hint: fulfillerHint,
+        prior_exchange_id: priorExchangeId || null,
+        policy_rule_id: decision.ruleId
+      });
 
-      await appendLifecycleRecord(opts.store, {
-        eventType: "exchange_requested",
-        exchangeId,
-        approvalReference: decision.approvalReference ?? null,
-        requesterId: agent.sub,
-        workspaceId: agent.workspaceId ?? undefined,
+      if (opts.db && workspace?.tier === "free" && agent.workspaceId) {
+        if (!exchangeAllowed(workspace.tier)) {
+          return reply.code(403).send({ error: "Exchange is not available on this workspace tier", code: "feature_not_available" });
+        }
+
+        const freeUsage = await consumeFreeExchangeSlot(opts.db, agent.workspaceId, x402Config.freeExchangeMonthlyCap);
+        if (!freeUsage.granted) {
+          if (!x402Config.enabled) {
+            return reply.code(403).send({ error: "x402 overages are disabled", code: "x402_disabled" });
+          }
+
+          if (!opts.x402Provider || !x402Config.facilitatorUrl || !x402Config.payToAddress) {
+            return reply.code(500).send({ error: "x402 is not configured", code: "x402_not_configured" });
+          }
+
+          const quote = buildExchangeQuote(x402Config, {
+            workspaceId: agent.workspaceId,
+            agentId: agent.sub,
+            secretName
+          });
+          const paymentRequired = buildPaymentRequiredPayload(quote);
+          const paymentSignature = typeof req.headers["payment-signature"] === "string" ? req.headers["payment-signature"].trim() : "";
+          const paymentId = typeof req.headers["payment-identifier"] === "string" ? req.headers["payment-identifier"].trim() : "";
+
+          if (!paymentSignature) {
+            await logAudit(opts.db, {
+              event: "x402_payment_required",
+              actorId: agent.sub,
+              actorType: "agent",
+              requesterId: agent.sub,
+              workspaceId: agent.workspaceId,
+              secretName,
+              action: "x402_payment_required",
+              ip: req.ip,
+              metadata: {
+                quoted_amount_cents: quote.amountUsdCents,
+                quoted_asset_amount: quote.amountAssetDisplay,
+                network_id: quote.networkId
+              }
+            });
+            reply.header("PAYMENT-REQUIRED", encodePaymentRequiredHeader(paymentRequired));
+            return reply.code(402).send({ error: "Payment required", code: "payment_required" });
+          }
+
+          if (!paymentId) {
+            reply.header("PAYMENT-REQUIRED", encodePaymentRequiredHeader(paymentRequired));
+            return reply.code(400).send({ error: "payment-identifier header is required", code: "missing_payment_identifier" });
+          }
+
+          const existing = await findTransactionByPaymentId(opts.db, agent.workspaceId, paymentId);
+          if (existing) {
+            if (existing.requestHash !== requestHash) {
+              return reply.code(409).send({ error: "payment-identifier reuse does not match the original request", code: "payment_identifier_conflict" });
+            }
+            if (existing.status === "settled" && existing.responseCache) {
+              reply.header("PAYMENT-RESPONSE", encodePaymentResponseHeader({
+                payment_id: paymentId,
+                tx_hash: existing.txHash,
+                cached: true,
+                status: existing.status
+              }));
+              return reply.code(201).send(existing.responseCache);
+            }
+
+            return reply.code(409).send({ error: "Payment is already being processed for this request", code: "payment_in_progress" });
+          }
+
+          const leaseAcquired = await acquireInflightLease(
+            opts.db,
+            agent.workspaceId,
+            agent.sub,
+            paymentId,
+            x402Config.leaseDurationSeconds
+          );
+          if (!leaseAcquired) {
+            return reply.code(409).send({ error: "Payment is already in progress for this agent", code: "payment_in_progress" });
+          }
+
+          let allowanceReserved = false;
+          try {
+            await insertPendingTransaction(opts.db, {
+              workspaceId: agent.workspaceId,
+              agentId: agent.sub,
+              paymentId,
+              requestHash,
+              quote,
+              facilitatorUrl: x402Config.facilitatorUrl
+            });
+
+            let paymentPayload: ReturnType<typeof parsePaymentSignatureHeader>;
+            try {
+              paymentPayload = parsePaymentSignatureHeader(paymentSignature);
+            } catch {
+              throw new X402ServiceError(400, "invalid_payment_signature", "Invalid PAYMENT-SIGNATURE header");
+            }
+            if (paymentPayload.paymentId !== paymentId) {
+              throw new X402ServiceError(400, "payment_identifier_mismatch", "payment-identifier does not match PAYMENT-SIGNATURE");
+            }
+
+            const verifyResult = await opts.x402Provider.verifyPayment({
+              paymentPayload,
+              paymentDetails: paymentRequired,
+              paymentId
+            });
+
+            if (!verifyResult.valid) {
+              await markTransactionFailed(opts.db, agent.workspaceId, paymentId);
+              await logAudit(opts.db, {
+                event: "x402_payment_failed",
+                actorId: agent.sub,
+                actorType: "agent",
+                requesterId: agent.sub,
+                workspaceId: agent.workspaceId,
+                secretName,
+                action: "x402_payment_verify_failed",
+                ip: req.ip,
+                metadata: {
+                  payment_id: paymentId,
+                  reason: verifyResult.failureReason ?? "verification_failed"
+                }
+              });
+              return reply.code(402).send({ error: "Payment verification failed", code: "payment_verification_failed" });
+            }
+
+            await markTransactionVerified(opts.db, agent.workspaceId, paymentId);
+            await logAudit(opts.db, {
+              event: "x402_payment_verified",
+              actorId: agent.sub,
+              actorType: "agent",
+              requesterId: agent.sub,
+              workspaceId: agent.workspaceId,
+              secretName,
+              action: "x402_payment_verified",
+              ip: req.ip,
+              metadata: {
+                payment_id: paymentId
+              }
+            });
+
+            try {
+              await reserveAllowanceSpend(opts.db, agent.workspaceId, agent.sub, quote.amountUsdCents);
+              allowanceReserved = true;
+            } catch (error) {
+              await markTransactionFailed(opts.db, agent.workspaceId, paymentId);
+              if (error instanceof X402ServiceError) {
+                await logAudit(opts.db, {
+                  event: "x402_budget_denied",
+                  actorId: agent.sub,
+                  actorType: "agent",
+                  requesterId: agent.sub,
+                  workspaceId: agent.workspaceId,
+                  secretName,
+                  action: "x402_budget_denied",
+                  ip: req.ip,
+                  metadata: {
+                    payment_id: paymentId,
+                    quoted_amount_cents: quote.amountUsdCents
+                  }
+                });
+              }
+              throw error;
+            }
+
+            const settlement = await opts.x402Provider.settlePayment({
+              paymentPayload,
+              paymentDetails: paymentRequired,
+              paymentId
+            });
+            const created = await createExchangeRequestRecord({
+              publicKey: req.body.public_key,
+              secretName,
+              purpose,
+              fulfillerHint,
+              priorExchangeId,
+              requesterId: agent.sub,
+              workspaceId: agent.workspaceId ?? undefined,
+              decision,
+              allowedFulfillerId,
+              ip: req.ip
+            });
+
+            await markTransactionSettled(opts.db, {
+              workspaceId: agent.workspaceId,
+              paymentId,
+              resourceId: created.exchange_id,
+              txHash: settlement.txHash,
+              responseCache: created as unknown as Record<string, unknown>
+            });
+
+            await logAudit(opts.db, {
+              event: "x402_payment_settled",
+              actorId: agent.sub,
+              actorType: "agent",
+              requesterId: agent.sub,
+              exchangeId: created.exchange_id,
+              workspaceId: agent.workspaceId,
+              secretName,
+              action: "x402_payment_settled",
+              ip: req.ip,
+              metadata: {
+                payment_id: paymentId,
+                tx_hash: settlement.txHash,
+                quoted_amount_cents: quote.amountUsdCents,
+                quoted_asset_amount: quote.amountAssetDisplay,
+                network_id: quote.networkId
+              }
+            });
+
+            reply.header("PAYMENT-RESPONSE", encodePaymentResponseHeader({
+              payment_id: paymentId,
+              tx_hash: settlement.txHash,
+              status: settlement.status
+            }));
+            return reply.code(201).send(created);
+          } catch (error) {
+            if (allowanceReserved) {
+              await rollbackAllowanceSpend(opts.db, agent.workspaceId, agent.sub, quote.amountUsdCents).catch(() => undefined);
+            }
+
+            await markTransactionFailed(opts.db, agent.workspaceId, paymentId).catch(() => undefined);
+            await logAudit(opts.db, {
+              event: "x402_payment_failed",
+              actorId: agent.sub,
+              actorType: "agent",
+              requesterId: agent.sub,
+              workspaceId: agent.workspaceId,
+              secretName,
+              action: "x402_payment_failed",
+              ip: req.ip,
+              metadata: {
+                payment_id: paymentId,
+                message: error instanceof Error ? error.message : "x402_payment_failed"
+              }
+            }).catch(() => undefined);
+
+            if (error instanceof X402ServiceError) {
+              return reply.code(error.statusCode).send({ error: error.message, code: error.code });
+            }
+
+            return reply.code(502).send({ error: "x402 payment processing failed", code: "x402_payment_failed" });
+          } finally {
+            await releaseInflightLease(opts.db, agent.workspaceId, agent.sub, paymentId).catch(() => undefined);
+          }
+        }
+      }
+
+      const created = await createExchangeRequestRecord({
+        publicKey: req.body.public_key,
         secretName,
         purpose,
         fulfillerHint,
-        actorId: agent.sub,
-        status: "pending",
-        priorStatus: null,
-        reason: null,
-        policyRuleId: decision.ruleId,
-        metadata: {
-          prior_exchange_id: priorExchangeId || null,
-          requester_ring: decision.requesterRing ?? null,
-          fulfiller_ring: decision.fulfillerRing ?? null
-        },
-        createdAt
-      });
-
-      await logAudit(opts.db, {
-        event: "exchange_requested",
-        actorId: agent.sub,
-        actorType: "agent",
-        exchangeId,
+        priorExchangeId,
         requesterId: agent.sub,
-        workspaceId: agent.workspaceId ?? null,
-        secretName,
-        policyRuleId: decision.ruleId,
-        approvalReference: decision.approvalReference ?? null,
-        action: "exchange_request",
+        workspaceId: agent.workspaceId ?? undefined,
+        decision,
+        allowedFulfillerId,
         ip: req.ip
       });
 
-      return reply.code(201).send({
-        exchange_id: exchangeId,
-        status: "pending",
-        expires_at: expiresAt,
-        fulfillment_token: fulfillmentToken,
-        policy: toPolicyResponse(decision)
-      });
+      return reply.code(201).send(created);
     }
   );
 

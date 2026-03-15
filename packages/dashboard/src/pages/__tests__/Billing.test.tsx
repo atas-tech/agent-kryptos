@@ -3,15 +3,32 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createBillingCheckoutSession,
-  createBillingPortalSession
+  createBillingPortalSession,
+  listBillingAllowances,
+  listX402Transactions
 } from "../../api/dashboard.js";
+import { apiRequest } from "../../api/client.js";
 import { useAuth } from "../../auth/useAuth.js";
 import { useDashboardSummary } from "../../hooks/useDashboardSummary.js";
 import { BillingPage } from "../Billing.js";
 
 vi.mock("../../api/dashboard.js", () => ({
   createBillingCheckoutSession: vi.fn(),
-  createBillingPortalSession: vi.fn()
+  createBillingPortalSession: vi.fn(),
+  listBillingAllowances: vi.fn(async () => ({ allowances: [] })),
+  listX402Transactions: vi.fn(async () => ({ transactions: [], next_cursor: null }))
+}));
+
+vi.mock("../../api/client.js", () => ({
+  apiRequest: vi.fn(async () => ({
+    agents: [{
+      id: "agent-row-1",
+      agent_id: "agent:crm-bot",
+      display_name: "CRM Bot",
+      status: "active"
+    }],
+    next_cursor: null
+  }))
 }));
 
 vi.mock("../../auth/useAuth.js", () => ({
@@ -96,6 +113,17 @@ describe("BillingPage", () => {
     (createBillingCheckoutSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       checkout_url: "https://checkout.example.test/session"
     });
+    (listBillingAllowances as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ allowances: [] });
+    (listX402Transactions as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ transactions: [], next_cursor: null });
+    (apiRequest as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      agents: [{
+        id: "agent-row-1",
+        agent_id: "agent:crm-bot",
+        display_name: "CRM Bot",
+        status: "active"
+      }],
+      next_cursor: null
+    });
 
     render(<BillingPage />);
 
@@ -103,13 +131,24 @@ describe("BillingPage", () => {
 
     expect(createBillingCheckoutSession).toHaveBeenCalledTimes(1);
     expect(window.location.assign).toHaveBeenCalledWith("https://checkout.example.test/session");
-    expect(screen.getByText("Agent payments next")).toBeInTheDocument();
+    expect(screen.getByText("Agent payments live")).toBeInTheDocument();
   });
 
   it("opens the billing portal for standard-tier workspaces", async () => {
     (useDashboardSummary as unknown as ReturnType<typeof vi.fn>).mockReturnValue(mockSummary("standard"));
     (createBillingPortalSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       portal_url: "https://billing.example.test/portal"
+    });
+    (listBillingAllowances as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ allowances: [] });
+    (listX402Transactions as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ transactions: [], next_cursor: null });
+    (apiRequest as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      agents: [{
+        id: "agent-row-1",
+        agent_id: "agent:crm-bot",
+        display_name: "CRM Bot",
+        status: "active"
+      }],
+      next_cursor: null
     });
 
     render(<BillingPage />);

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 export interface RequestSecretParams {
   description: string;
   publicKey: string;
@@ -20,6 +22,40 @@ export interface CreateExchangeRequestParams {
   purpose: string;
   fulfillerHint: string;
   priorExchangeId?: string;
+}
+
+export interface X402PaymentOption {
+  scheme: "exact";
+  network: string;
+  maxAmountRequired: string;
+  resource: string;
+  description: string;
+  payTo: string;
+}
+
+export interface X402PaymentRequired {
+  accepts: [X402PaymentOption];
+  x402Version: 2;
+  metadata: {
+    quoted_amount_cents: number;
+    quoted_currency: "USD";
+    quoted_asset_symbol: "USDC";
+    quoted_asset_amount: string;
+    quote_expires_at: number;
+  };
+}
+
+export interface X402PaymentProvider {
+  createPayment(input: {
+    paymentIdentifier: string;
+    paymentRequired: X402PaymentRequired;
+  }): Promise<string> | string;
+}
+
+export interface X402BudgetProvider {
+  getRemainingBudgetCents(input: {
+    paymentRequired: X402PaymentRequired;
+  }): Promise<number> | number;
 }
 
 export interface CreateExchangeRequestResult {
@@ -50,6 +86,8 @@ interface SpsClientOptions {
   baseUrl: string;
   gatewayBearerToken: string;
   fetchImpl?: typeof fetch;
+  x402PaymentProvider?: X402PaymentProvider;
+  x402BudgetProvider?: X402BudgetProvider;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -63,10 +101,41 @@ export class SpsClient {
 
   private readonly fetchImpl: typeof fetch;
 
+  private readonly x402PaymentProvider?: X402PaymentProvider;
+
+  private readonly x402BudgetProvider?: X402BudgetProvider;
+
   constructor(options: SpsClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
     this.token = options.gatewayBearerToken;
     this.fetchImpl = options.fetchImpl ?? fetch;
+    this.x402PaymentProvider = options.x402PaymentProvider;
+    this.x402BudgetProvider = options.x402BudgetProvider;
+  }
+
+  private async exchangeRequest(
+    params: CreateExchangeRequestParams,
+    extraHeaders: Record<string, string> = {}
+  ): Promise<Response> {
+    return this.fetchImpl(`${this.baseUrl}/api/v2/secret/exchange/request`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${this.token}`,
+        "content-type": "application/json",
+        ...extraHeaders
+      },
+      body: JSON.stringify({
+        public_key: params.publicKey,
+        secret_name: params.secretName,
+        purpose: params.purpose,
+        fulfiller_hint: params.fulfillerHint,
+        prior_exchange_id: params.priorExchangeId
+      })
+    });
+  }
+
+  private parsePaymentRequiredHeader(headerValue: string): X402PaymentRequired {
+    return JSON.parse(Buffer.from(headerValue, "base64").toString("utf8")) as X402PaymentRequired;
   }
 
   async requestSecret(params: RequestSecretParams): Promise<RequestSecretResult> {
@@ -162,20 +231,42 @@ export class SpsClient {
   }
 
   async createExchangeRequest(params: CreateExchangeRequestParams): Promise<CreateExchangeRequestResult> {
-    const response = await this.fetchImpl(`${this.baseUrl}/api/v2/secret/exchange/request`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${this.token}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        public_key: params.publicKey,
-        secret_name: params.secretName,
-        purpose: params.purpose,
-        fulfiller_hint: params.fulfillerHint,
-        prior_exchange_id: params.priorExchangeId
-      })
-    });
+    let response = await this.exchangeRequest(params);
+
+    if (response.status === 402) {
+      const paymentRequiredHeader = response.headers.get("payment-required");
+      if (!paymentRequiredHeader) {
+        throw new Error("SPS requires payment but did not include PAYMENT-REQUIRED details.");
+      }
+
+      const paymentRequired = this.parsePaymentRequiredHeader(paymentRequiredHeader);
+      const quotedAmountCents = paymentRequired.metadata?.quoted_amount_cents;
+      if (!Number.isFinite(quotedAmountCents)) {
+        throw new Error("SPS returned an invalid x402 quote.");
+      }
+
+      if (this.x402BudgetProvider) {
+        const remainingBudgetCents = await this.x402BudgetProvider.getRemainingBudgetCents({ paymentRequired });
+        if (!Number.isFinite(remainingBudgetCents) || remainingBudgetCents < quotedAmountCents) {
+          throw new Error(`x402 payment exceeds the configured local budget (${quotedAmountCents} cents required).`);
+        }
+      }
+
+      if (!this.x402PaymentProvider) {
+        throw new Error("SPS exchange request requires payment but no x402 payment provider is configured.");
+      }
+
+      const paymentIdentifier = randomUUID();
+      const paymentSignature = await this.x402PaymentProvider.createPayment({
+        paymentIdentifier,
+        paymentRequired
+      });
+
+      response = await this.exchangeRequest(params, {
+        "payment-identifier": paymentIdentifier,
+        "payment-signature": paymentSignature
+      });
+    }
 
     if (!response.ok) {
       throw new Error(`SPS exchange request failed with status ${response.status}`);

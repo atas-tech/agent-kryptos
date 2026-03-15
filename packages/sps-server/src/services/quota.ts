@@ -134,5 +134,5 @@ export function activeMemberLimit(tier: WorkspaceTier): number {
 }
 
 export function exchangeAllowed(tier: WorkspaceTier): boolean {
-  return DAILY_LIMITS.exchange_request[tier] > 0;
+  return tier === "free" || tier === "standard";
 }

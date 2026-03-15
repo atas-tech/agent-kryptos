@@ -638,7 +638,7 @@ npm test --workspace=packages/sps-server
 - **Bootstrap API key format** → `ak_<random>` prefix for operator clarity and leak detection
 - **Agent re-enrollment semantics** → revoked/deleted agents are retained for history but may be re-enrolled later under the same `agent_id`
 - **Billing tiers** → Free + Standard ($9/mo) with quotas as defined above; `free` is the entry-tier label, not `trial`
-- **Workspace lifecycle model** → current implementation uses `active/suspended/deleted` status plus `free/standard` billing tier; separate `trial` / `verified` / `paid` workspace lifecycle states are deferred
+- **Workspace lifecycle model** → current implementation uses `active/suspended/deleted` status plus `free/standard` billing tier; separate `free-tier` / `verified` / `paid` workspace lifecycle states are deferred
 - **Post-payment activation** → Stripe webhooks upgrade the billing tier automatically, but there is no separate post-payment workspace activation state yet
 - **Customer audit visibility** → caller-workspace audit endpoints ship in Phase 3A
 - **Email verification gating** → unverified accounts may log in, but verified-only actions stay blocked until manual verification or future SMTP flow completes
@@ -649,7 +649,7 @@ npm test --workspace=packages/sps-server
 - **Status enforcement** → suspended/deleted users and workspaces are hard-blocked across auth and runtime access paths
 - **Last-admin safety** → the final active workspace admin cannot be removed without assigning another active admin first
 - **Hosted policy model** → current Phase 3A ships explicit requester/fulfiller and ring-based policy rules; owner/team abstractions are deferred
-- **Hosted onboarding scope** → current Phase 3A covers workspace signup and admin-enrolled agents; guided trial onboarding, discovery, and deeper MCP/OpenClaw packaging are deferred
+- **Hosted onboarding scope** → current Phase 3A covers workspace signup and admin-enrolled agents; guided `free-tier` onboarding, discovery, and deeper MCP/OpenClaw packaging are deferred
 - **Proxy-aware IP handling** → hosted deployments must configure Fastify `trustProxy` correctly for rate limiting and audit IP accuracy
 - **Stripe webhook verification** → `/api/v2/webhook/stripe` uses raw-body verification before JSON parsing
 - **Audit retention** → Phase 3A includes a simple application-level scheduled cleanup policy (for example 30 days for all workspaces); tier-specific retention is deferred

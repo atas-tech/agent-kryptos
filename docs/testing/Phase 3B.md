@@ -226,33 +226,44 @@ Useful companion commands:
 ## Milestone 6: x402 Payments
 
 - [ ] **E2E: x402 Payment Flow (Playwright)**
-  - [ ] **Scenario 601: Free-tier agent hits 402 Payment Required for overage**
-    - [ ] Seed a free-tier workspace that has exhausted its free quota.
+  - [ ] **Scenario 601: Free-tier workspace hits 402 after monthly free cap**
+    - [ ] Seed a free-tier workspace that has already consumed its 10 free exchange requests for the current UTC month.
     - [ ] Have an agent call `POST /api/v2/secret/exchange/request`.
     - [ ] Assert the response is `402 Payment Required` and contains the `PAYMENT-REQUIRED` header.
-    - [ ] Assert the base64-encoded header payload contains the quoted amount in USDC and the internal cost in USD cents.
+    - [ ] Assert the header payload uses network `eip155:84532`, quotes `$0.05` / `0.05 USDC`, and includes the internal USD-cent quote metadata.
   - [ ]  **Scenario 602: Paid-tier agent bypasses payment gate**
     - [ ] Seed a standard-tier workspace (subscription-backed via Stripe).
     - [ ] Have an agent call `POST /api/v2/secret/exchange/request`.
     - [ ] Assert the response is `200 OK` (or the expected success response) and the exchange request is created without an x402 payment prompt.
   - [ ]  **Scenario 603: Agent rejects payment due to budget limits**
-    - [ ] Configure an agent with a $1.00 USD monthly budget.
-    - [ ] Mock the agent to consume $0.90 USD.
-    - [ ] Send a `402 Payment Required` requesting $0.15 USD.
+    - [ ] Configure an enrolled agent with a $0.04 USD monthly budget.
+    - [ ] Send a `402 Payment Required` requesting `$0.05` / `0.05 USDC`.
     - [ ] Assert the agent SDK rejects the payment locally before attempting to sign or broadcast.
-  - [ ]  **Scenario 604: Successful payment verification and settlement**
+  - [ ]  **Scenario 604: Paid request is denied by default without an allowance**
+    - [ ] Seed a free-tier workspace beyond the monthly free cap.
+    - [ ] Do not create an `agent_allowances` row for the requester agent.
+    - [ ] Have the agent retry with a valid x402 payment.
+    - [ ] Assert SPS denies the request and records an `x402_budget_denied` audit event.
+  - [ ]  **Scenario 605: Successful payment verification and settlement**
     - [ ] Intercept the `verify` and `settle` calls to the mock Facilitator client.
-    - [ ] Have the agent submit a valid `PAYMENT-SIGNATURE` header.
-    - [ ] Assert the server locks the agent allowance row and atomically reserves the quoted USD amount.
+    - [ ] Have the agent submit a valid `PAYMENT-SIGNATURE` header with a `payment-identifier`.
+    - [ ] Assert the server locks the agent allowance row, lazily resets it if the month rolled over, and atomically reserves the quoted USD amount.
     - [ ] Assert the server calls `verifyPayment` and then `settlePayment` on the `X402Provider`.
     - [ ] Assert the exchange resource is only successfully created after successful settlement.
-    - [ ] Assert the `x402_transactions` table records the transaction (including `quoted_amount_cents`, `quoted_currency`, and `quoted_asset_symbol`).
-  - [ ]  **Scenario 605: Concurrent execution is strictly serialized**
-    - [ ] Seed a free-tier workspace that has exhausted its free quota.
+    - [ ] Assert the `x402_transactions` table records the transaction (including `payment_id`, `quoted_amount_cents`, `quoted_currency`, `quoted_asset_symbol`, and `network_id`).
+  - [ ]  **Scenario 606: Concurrent execution is strictly serialized**
+    - [ ] Seed a free-tier workspace that has exhausted its monthly free cap.
     - [ ] Have an agent start a valid x402 payment flow.
     - [ ] Before the first settlement completes, simulate a second simultaneous `POST /api/v2/secret/exchange/request` with a valid `PAYMENT-SIGNATURE` for the same agent.
     - [ ] Assert the second request is rejected with `409 payment_in_progress`.
     - [ ] Let the first settlement complete and verify the state is clean for subsequent requests.
+  - [ ]  **Scenario 607: Idempotent retry reuses the prior successful result**
+    - [ ] Seed a free-tier workspace beyond the monthly free cap and configure a valid allowance.
+    - [ ] Submit a paid request with a unique `payment-identifier` and let it settle successfully.
+    - [ ] Retry the same logical request with the same `payment-identifier`.
+    - [ ] Assert SPS returns the cached success response without charging twice.
+    - [ ] Retry with the same `payment-identifier` but a different request body.
+    - [ ] Assert SPS rejects the request with `409`.
 
 ## Milestone 7: Analytics & Advanced Abuse Controls
 
