@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "../api/client.js";
 import { useAuth } from "../auth/useAuth.js";
 import { EmptyState } from "../components/EmptyState.js";
+import { ResourceLabel } from "../components/ResourceLabel.js";
 import { StatusBadge } from "../components/StatusBadge.js";
 
 interface AuditRecord {
@@ -230,11 +231,11 @@ export function ApprovalsPage() {
                 <div className="detail-list">
                   <div className="detail-list__item">
                     <span className="meta-label">Requester agent</span>
-                    <strong>{approval.requesterId}</strong>
+                    <ResourceLabel value={approval.requesterId} />
                   </div>
                   <div className="detail-list__item">
                     <span className="meta-label">Fulfiller agent</span>
-                    <strong>{approval.fulfillerHint}</strong>
+                    <ResourceLabel value={approval.fulfillerHint} />
                   </div>
                   <div className="detail-list__item">
                     <span className="meta-label">Requested at</span>
@@ -252,7 +253,7 @@ export function ApprovalsPage() {
                 </div>
 
                 <div className="approval-card__footer">
-                  <div className="record-meta">{approval.approvalReference}</div>
+                  <ResourceLabel showCopy={false} value={approval.approvalReference} />
                   <div className="inline-actions">
                     <button
                       className="ghost-button"

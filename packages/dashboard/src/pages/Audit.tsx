@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { apiRequest } from "../api/client.js";
 import { DataTable } from "../components/DataTable.js";
 import { EmptyState } from "../components/EmptyState.js";
+import { ResourceLabel } from "../components/ResourceLabel.js";
 import { StatusBadge } from "../components/StatusBadge.js";
 
 interface AuditRecord {
@@ -258,7 +259,7 @@ export function AuditPage() {
           <div className="stats-row">
             <article className="metric-panel">
               <span>Exchange</span>
-              <strong>{exchangeId.slice(0, 12)}...</strong>
+              <ResourceLabel className="mt-1" truncateAt={8} value={exchangeId} />
             </article>
             <article className="metric-panel">
               <span>Timeline events</span>
@@ -317,11 +318,11 @@ export function AuditPage() {
                     <div className="detail-list">
                       <div className="detail-list__item">
                         <span className="meta-label">Actor</span>
-                        <strong>{record.actor_id ?? "system"}</strong>
+                        <ResourceLabel value={record.actor_id ?? "system"} />
                       </div>
                       <div className="detail-list__item">
                         <span className="meta-label">Resource</span>
-                        <strong>{record.resource_id ?? "n/a"}</strong>
+                        <ResourceLabel value={record.resource_id ?? "n/a"} />
                       </div>
                     </div>
 
@@ -513,7 +514,7 @@ export function AuditPage() {
               header: "Resource",
               render: (record) => (
                 <div>
-                  <div className="record-title">{record.resource_id ?? "n/a"}</div>
+                  <ResourceLabel value={record.resource_id ?? "n/a"} />
                   <div className="record-meta">
                     {getExchangeId(record) ? "Exchange drill-down available" : "Metadata details only"}
                   </div>

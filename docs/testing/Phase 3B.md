@@ -230,7 +230,7 @@ Useful companion commands:
     - [ ] Seed a free-tier workspace that has already consumed its 10 free exchange requests for the current UTC month.
     - [ ] Have an agent call `POST /api/v2/secret/exchange/request`.
     - [ ] Assert the response is `402 Payment Required` and contains the `PAYMENT-REQUIRED` header.
-    - [ ] Assert the header payload uses network `eip155:84532`, quotes `$0.05` / `0.05 USDC`, and includes the internal USD-cent quote metadata.
+    - [ ] Assert the header payload uses network `eip155:84532`, quotes `$0.05` / `0.05 USDC`, and includes the internal USDC quote metadata.
   - [ ]  **Scenario 602: Paid-tier agent bypasses payment gate**
     - [ ] Seed a standard-tier workspace (subscription-backed via Stripe).
     - [ ] Have an agent call `POST /api/v2/secret/exchange/request`.

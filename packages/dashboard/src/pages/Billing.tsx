@@ -291,7 +291,7 @@ export function BillingPage() {
               <Coins size={18} />
               <div>
                 <strong>Agent payments live</strong>
-                <span>x402 overages settle before release and use their own USD-cent ledger instead of mutating the recurring billing record.</span>
+                <span>x402 overages settle before release and use their own USDC ledger instead of mutating the recurring billing record.</span>
               </div>
             </div>
           </div>

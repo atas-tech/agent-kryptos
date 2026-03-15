@@ -1025,4 +1025,39 @@
     @apply mt-2 text-sm leading-7;
     color: rgba(240, 244, 255, 0.76);
   }
+
+  .resource-label {
+    @apply inline-flex items-center gap-2 max-w-full;
+  }
+
+  .resource-label__code {
+    @apply truncate rounded-md border px-2 py-0.5 text-xs font-medium transition-colors;
+    border-color: rgba(0, 245, 212, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--primary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  }
+
+  .resource-label--has-copy:hover .resource-label__code {
+    border-color: rgba(0, 245, 212, 0.3);
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .resource-label__copy {
+    @apply inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border transition-all;
+    border-color: rgba(0, 245, 212, 0.18);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .resource-label__copy:hover {
+    border-color: rgba(0, 245, 212, 0.35);
+    background: rgba(0, 245, 212, 0.1);
+    color: var(--primary);
+  }
+
+  .resource-label__copy svg {
+    @apply transition-transform active:scale-90;
+  }
 }
