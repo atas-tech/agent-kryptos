@@ -96,13 +96,24 @@ export class AgentSecretRuntime {
     const keyPair = await generateKeyPair();
 
     try {
-      const created = await this.client.createExchangeRequest({
+      let created = await this.client.createExchangeRequest({
         publicKey: keyPair.publicKey,
         secretName: params.secretName,
         purpose: params.purpose,
         fulfillerHint: params.fulfillerHint,
         priorExchangeId: params.priorExchangeId
       });
+
+      while (created.status === "pending_approval") {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        created = await this.client.createExchangeRequest({
+          publicKey: keyPair.publicKey,
+          secretName: params.secretName,
+          purpose: params.purpose,
+          fulfillerHint: params.fulfillerHint,
+          priorExchangeId: params.priorExchangeId
+        });
+      }
 
       const envelope = createFulfillmentTransportEnvelope({
         exchangeId: created.exchangeId,

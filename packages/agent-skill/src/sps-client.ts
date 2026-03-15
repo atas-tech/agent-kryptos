@@ -60,7 +60,7 @@ export interface X402BudgetProvider {
 
 export interface CreateExchangeRequestResult {
   exchangeId: string;
-  status: "pending";
+  status: "pending" | "pending_approval";
   expiresAt: number;
   fulfillmentToken: string;
 }
@@ -269,6 +269,18 @@ export class SpsClient {
     }
 
     if (!response.ok) {
+      if (response.status === 403) {
+        const payload = await response.json().catch(() => ({}));
+        if (payload.error === "Exchange requires human approval" || payload.policy?.approval_required) {
+          return {
+            exchangeId: "",
+            status: "pending_approval",
+            expiresAt: 0,
+            fulfillmentToken: ""
+          };
+        }
+        console.warn(`[SpsClient] 403 Forbidden: ${JSON.stringify(payload)}`);
+      }
       throw new Error(`SPS exchange request failed with status ${response.status}`);
     }
 

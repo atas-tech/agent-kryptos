@@ -179,6 +179,21 @@ export async function registerAgentRoutes(app: FastifyInstance, opts: AgentRoute
 
     try {
       const agent = await authenticateAgentApiKey(opts.db, apiKey);
+
+      const workspace = await getWorkspace(opts.db, agent.workspaceId, { activeOnly: true });
+      if (workspace) {
+        const activeAgents = await countActiveAgents(opts.db, agent.workspaceId);
+        const limit = activeAgentLimit(workspace.tier);
+        if (activeAgents > limit) {
+          return reply.code(403).send({
+            error: "Workspace is over its agent quota. Please upgrade or remove agents.",
+            code: "quota_exceeded",
+            limit,
+            used: activeAgents
+          });
+        }
+      }
+
       const token = await mintAgentAccessToken(agent);
       return reply.send({
         access_token: token.accessToken,

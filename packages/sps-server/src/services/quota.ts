@@ -17,23 +17,23 @@ export interface QuotaService {
 
 const DAILY_LIMITS: Record<QuotaAction, Record<WorkspaceTier, number>> = {
   secret_request: {
-    free: 10,
-    standard: 1_000
+    free: Number.parseInt(process.env.SPS_SECRET_LIMIT_FREE ?? "10", 10),
+    standard: Number.parseInt(process.env.SPS_SECRET_LIMIT_STANDARD ?? "1000", 10)
   },
   exchange_request: {
-    free: process.env.SPS_EXCHANGE_LIMIT_FREE ? parseInt(process.env.SPS_EXCHANGE_LIMIT_FREE) : 0,
-    standard: 1_000
+    free: Number.parseInt(process.env.SPS_EXCHANGE_LIMIT_FREE ?? "0", 10),
+    standard: Number.parseInt(process.env.SPS_EXCHANGE_LIMIT_STANDARD ?? "1000", 10)
   }
 };
 
 const ACTIVE_AGENT_LIMITS: Record<WorkspaceTier, number> = {
-  free: process.env.SPS_AGENT_LIMIT_FREE ? parseInt(process.env.SPS_AGENT_LIMIT_FREE) : 5,
-  standard: 50
+  free: Number.parseInt(process.env.SPS_AGENT_LIMIT_FREE ?? "5", 10),
+  standard: Number.parseInt(process.env.SPS_AGENT_LIMIT_STANDARD ?? "50", 10)
 };
 
 const ACTIVE_MEMBER_LIMITS: Record<WorkspaceTier, number> = {
-  free: process.env.SPS_MEMBER_LIMIT_FREE ? parseInt(process.env.SPS_MEMBER_LIMIT_FREE) : 1,
-  standard: 10
+  free: Number.parseInt(process.env.SPS_MEMBER_LIMIT_FREE ?? "1", 10),
+  standard: Number.parseInt(process.env.SPS_MEMBER_LIMIT_STANDARD ?? "10", 10)
 };
 
 function nextUtcMidnightEpochMs(nowMs = Date.now()): number {
