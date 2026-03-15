@@ -2,6 +2,7 @@ import {
   createContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type PropsWithChildren
 } from "react";
@@ -64,8 +65,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const accessTokenRef = useRef<string | null>(null);
 
   function applyAuth(payload: AuthApiResponse): void {
+    accessTokenRef.current = payload.access_token;
+    syncApiClient();
     updateTokens(setAccessToken, payload.access_token, payload.refresh_token);
     setUser(payload.user);
     if (payload.workspace) {
@@ -74,10 +78,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }
 
   function clearAuth(): void {
+    accessTokenRef.current = null;
+    syncApiClient();
     setAccessToken(null);
     setUser(null);
     setWorkspace(null);
     setStoredRefreshToken(null);
+  }
+
+  function syncApiClient(): void {
+    configureApiClient({
+      getAccessToken: () => accessTokenRef.current,
+      refreshAuth: () => refresh(),
+      handleAuthFailure: clearAuth
+    });
   }
 
   let refreshPromise: Promise<string | null> | null = null;
@@ -122,12 +136,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }
 
   useEffect(() => {
-    configureApiClient({
-      getAccessToken: () => accessToken,
-      refreshAuth: () => refresh(),
-      handleAuthFailure: clearAuth
-    });
-  }, [accessToken]);
+    syncApiClient();
+  }, []);
 
   useEffect(() => {
     void (async () => {

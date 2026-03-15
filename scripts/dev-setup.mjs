@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createConnection } from "node:net";
 import { promisify } from "node:util";
-import { access, constants } from "node:fs/promises";
+import { access, constants, readFile } from "node:fs/promises";
 import path from "node:path";
 
 const SERVICES = [
@@ -40,8 +40,18 @@ async function startService(service) {
 async function checkEnv() {
   const envPath = path.join(process.cwd(), "packages/sps-server/.env.test");
   try {
-    await access(envPath, constants.F_OK);
+    const content = await readFile(envPath, "utf8");
     console.log("✅ packages/sps-server/.env.test exists");
+    
+    const missing = [];
+    if (!content.includes("SPS_X402_ENABLED")) missing.push("SPS_X402_ENABLED");
+    if (!content.includes("SPS_AGENT_JWT_SECRET")) missing.push("SPS_AGENT_JWT_SECRET");
+    if (!content.includes("SPS_SECRET_REGISTRY_JSON")) missing.push("SPS_SECRET_REGISTRY_JSON");
+
+    if (missing.length > 0) {
+      console.log(`⚠️  Some new variables are missing in your .env.test: ${missing.join(", ")}`);
+      console.log("   Action: Compare with .env.test.example to enable all Phase 3B features.");
+    }
   } catch {
     console.log("❌ packages/sps-server/.env.test is MISSING");
     console.log("   Action: cp packages/sps-server/.env.test.example packages/sps-server/.env.test");

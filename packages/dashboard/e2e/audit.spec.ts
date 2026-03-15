@@ -5,7 +5,7 @@ test.describe("Audit Log & Timeline", () => {
   const password = "LongPassword123!";
 
   async function setupWorkspace(page: any) {
-    const timestamp = Date.now() + Math.floor(Math.random() * 1000);
+    const timestamp = Date.now() + Math.floor(Math.random() * 10000);
     const workspaceSlug = `e2e-audit-${timestamp}`;
     const adminEmail = `admin-audit-${timestamp}@example.com`;
 
@@ -58,12 +58,12 @@ test.describe("Audit Log & Timeline", () => {
     // Test filters
     await page.getByLabel("Filter audit by event type").selectOption("agent_enrolled");
     await page.getByRole("button", { name: /Apply filters/i }).click();
-    await expect(page.getByText("agent_enrolled").first()).toBeVisible();
+    await expect(page.getByRole("cell", { name: "agent_enrolled" }).first()).toBeVisible();
     
     // Expand row
-    await page.getByText("agent_enrolled").first().click();
+    await page.getByRole("cell", { name: "agent_enrolled" }).first().click();
     await expect(page.locator(".audit-expanded")).toBeVisible();
-    await expect(page.getByText("Sanitized metadata")).toBeVisible();
+    await expect(page.getByText("Sanitized metadata", { exact: true })).toBeVisible();
   });
 
   test("Scenario 402: Exchange lifecycle drill-down", async ({ page }) => {

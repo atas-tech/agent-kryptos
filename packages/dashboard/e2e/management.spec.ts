@@ -5,7 +5,7 @@ test.describe("Management", () => {
   const password = "LongPassword123!";
 
   async function setupWorkspace(page: any) {
-    const timestamp = Date.now() + Math.floor(Math.random() * 1000);
+    const timestamp = Date.now() + Math.floor(Math.random() * 10000);
     const workspaceSlug = `e2e-mgmt-${timestamp}`;
     const adminEmail = `admin-mgmt-${timestamp}@example.com`;
 
@@ -20,7 +20,7 @@ test.describe("Management", () => {
     await expect(page).toHaveURL("/");
     
     // 2. Mark owner as verified in DB
-    const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+    const client = new pg.Client({ connectionString: process.env.DATABASE_URL || "postgresql://kryptos:localdev@127.0.0.1:5433/agent_kryptos" });
     await client.connect();
     try {
       await client.query(
@@ -124,10 +124,10 @@ test.describe("Management", () => {
 
     const newName = `Updated Space ${Date.now()}`;
     await page.getByTestId("workspace-display-name-input").first().fill(newName);
-    const responsePromise = page.waitForResponse(r => r.url().includes("/api/v2/workspace") && r.request().method() === "PUT");
+    const responsePromise = page.waitForResponse(r => r.url().includes("/api/v2/workspace") && r.request().method() === "PATCH");
     await page.getByRole("button", { name: /Save workspace/i }).first().click();
     await responsePromise;
     await page.getByRole("link", { name: /Dashboard/i }).click(); // Use Dashboard to see sidebar update
-    await expect(page.locator(".sidebar-workspace__name").first()).toHaveText(newName);
+    await expect(page.locator(".dashboard-sidebar .workspace-meta").first()).toHaveText(newName);
   });
 });

@@ -3,6 +3,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { createLocalJWKSet, jwtVerify, type JSONWebKeySet, type JWTPayload } from "jose";
 import { verifyPayload } from "../services/crypto.js";
 import { checkPermission, isUserRole, type UserRole } from "../services/rbac.js";
+import { userJwtSecret } from "../utils/crypto.js";
 import type { RequestScope } from "../types.js";
 
 interface JwksCacheEntry {
@@ -306,9 +307,6 @@ export async function requireAdminAgentAuth(
   return payload;
 }
 
-function userJwtSecret(): Uint8Array {
-  return new TextEncoder().encode(process.env.SPS_USER_JWT_SECRET?.trim() || "local-dev-user-jwt-secret");
-}
 
 function agentJwtSecret(): Uint8Array | null {
   const configured = process.env.SPS_AGENT_JWT_SECRET?.trim();
@@ -372,7 +370,8 @@ export async function requireUserAuth(
     }
 
     return claims;
-  } catch {
+  } catch (err) {
+    req.log.error({ err, token: token.substring(0, 10) + "..." }, "JWT verification failed");
     reply.code(401).send({ error: "Invalid token" });
     return null;
   }

@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { createHash } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
+import { userJwtSecret } from "../utils/crypto.js";
 import type { Pool, PoolClient } from "pg";
 import { decodePageCursor, encodePageCursor } from "./pagination.js";
 import { isUserRole, type UserRole } from "./rbac.js";
@@ -110,9 +111,6 @@ export class UserServiceError extends Error {
   }
 }
 
-function userJwtSecret(): Uint8Array {
-  return new TextEncoder().encode(process.env.SPS_USER_JWT_SECRET?.trim() || "local-dev-user-jwt-secret");
-}
 
 function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
@@ -566,7 +564,6 @@ async function verifyRefreshToken(refreshToken: string): Promise<JWTPayload & { 
     if (error instanceof UserServiceError) {
       throw error;
     }
-
     throw new UserServiceError(401, "invalid_refresh_token", "Invalid refresh token");
   }
 }

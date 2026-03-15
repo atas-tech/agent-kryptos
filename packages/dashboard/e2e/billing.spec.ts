@@ -25,7 +25,7 @@ test.describe("Billing & Quotas (Milestone 5)", () => {
   });
 
   async function setupWorkspace(page: any) {
-    const timestamp = Math.floor(Date.now() / 1000) + Math.floor(Math.random() * 100);
+    const timestamp = Date.now() + Math.floor(Math.random() * 10000);
     const adminEmail = `admin-billing-${timestamp}@example.com`;
     const workspaceSlug = `e2e-billing-${timestamp}`;
     const testPassword = commonPassword;
@@ -97,7 +97,7 @@ test.describe("Billing & Quotas (Milestone 5)", () => {
     await page.reload();
     await page.goto("/billing");
     
-    await expect(page.locator('.status-badge').filter({ hasText: /standard/i }).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.panel-card').filter({ hasText: /Workspace plan/i }).locator('.status-badge').first()).toHaveText(/standard/i, { timeout: 15000 });
     
     const portalButton = page.getByRole("button", { name: /Manage subscription/i });
     await expect(portalButton).toBeVisible();

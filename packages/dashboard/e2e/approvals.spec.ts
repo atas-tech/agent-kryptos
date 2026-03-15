@@ -6,7 +6,7 @@ test.describe("Approvals Inbox", () => {
   const password = "LongPassword123!";
 
   async function setupWorkspace(page: any) {
-    const timestamp = Date.now() + Math.floor(Math.random() * 1000);
+    const timestamp = Date.now() + Math.floor(Math.random() * 10000);
     const workspaceSlug = `e2e-approvals-${timestamp}`;
     const adminEmail = `admin-approvals-${timestamp}@example.com`;
 
