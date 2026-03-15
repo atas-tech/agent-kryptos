@@ -369,7 +369,8 @@ async function mintRefreshToken(user: UserRecord, sessionId: string): Promise<{ 
   const token = await new SignJWT({
     workspace_id: user.workspaceId,
     sid: sessionId,
-    typ: "refresh"
+    typ: "refresh",
+    jti: randomBytes(16).toString("hex")
   })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setIssuer("sps")
@@ -778,6 +779,51 @@ export async function verifyEmail(db: Pool, token: string): Promise<UserWithWork
       user: toUserRecord(row),
       workspace
     };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function retriggerEmailVerification(db: Pool, userId: string): Promise<boolean> {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query<UserRow>(
+      `
+        SELECT id, email, email_verified, verification_token
+        FROM users
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [userId]
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      throw new UserServiceError(404, "user_not_found", "User not found");
+    }
+
+    if (row.email_verified) {
+      throw new UserServiceError(400, "already_verified", "Email is already verified");
+    }
+
+    const verificationToken = generateVerificationToken();
+    await client.query(
+      `
+        UPDATE users
+        SET verification_token = $2, updated_at = now()
+        WHERE id = $1
+      `,
+      [userId, verificationToken]
+    );
+
+    await client.query("COMMIT");
+
+    logVerificationUrl(row.email, verificationToken);
+    return true;
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw error;

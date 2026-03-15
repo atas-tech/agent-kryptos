@@ -1,13 +1,30 @@
-import { AlertTriangle, BadgeDollarSign, Bot, KeyRound, ShieldCheck, Users } from "lucide-react";
-import { useEffect } from "react";
+import { AlertTriangle, BadgeDollarSign, Bot, KeyRound, ShieldCheck, Users, Mail, CheckCircle2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../auth/useAuth.js";
 import { QuotaMeter } from "../components/QuotaMeter.js";
 import { StatusBadge } from "../components/StatusBadge.js";
 import { useDashboardSummary } from "../hooks/useDashboardSummary.js";
+import { apiRequest } from "../api/client.js";
 
 export function DashboardPage() {
   const { workspace, user, setWorkspaceSummary } = useAuth();
   const { summary, loading, error, refresh } = useDashboardSummary();
+  const [resending, setResending] = useState(false);
+  const [resendStatus, setResendStatus] = useState<"idle" | "success" | "error">("idle");
+
+  const handleResendVerification = async () => {
+    setResending(true);
+    setResendStatus("idle");
+    try {
+      await apiRequest("/api/v2/auth/retrigger-verification", { method: "POST" });
+      setResendStatus("success");
+    } catch (err) {
+      console.error("Failed to resend verification email:", err);
+      setResendStatus("error");
+    } finally {
+      setResending(false);
+    }
+  };
 
   useEffect(() => {
     if (summary?.workspace) {
@@ -52,6 +69,40 @@ export function DashboardPage() {
 
   return (
     <section className="page-stack">
+      {user && !user.email_verified && (
+        <div className="verification-banner">
+          <div className="verification-banner__text">
+            {resendStatus === "success" ? (
+              <>
+                <CheckCircle2 size={20} className="text-success" />
+                <div>
+                  <strong>Verification email sent!</strong>
+                  <p className="hero-card__body">Please check your inbox for the new link.</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <Mail size={20} />
+                <div>
+                  <strong>Your email is not verified</strong>
+                  <p className="hero-card__body">Verify your email to ensure uninterrupted access to all features.</p>
+                </div>
+              </>
+            )}
+          </div>
+          {resendStatus !== "success" && (
+            <button
+              className="primary-button"
+              disabled={resending}
+              onClick={handleResendVerification}
+              type="button"
+            >
+              {resending ? "Sending..." : resendStatus === "error" ? "Try again" : "Resend verification email"}
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="hero-card hero-card--dashboard">
         <div>
           <div className="section-label">Workspace summary</div>

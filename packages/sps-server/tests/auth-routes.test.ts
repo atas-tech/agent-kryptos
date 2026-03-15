@@ -399,4 +399,72 @@ describePg("auth routes", () => {
       await disposeIsolatedPool(pool, schema);
     }
   });
+
+  it("re-triggers email verification tokens", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const app = await buildApp({ db: pool, useInMemoryStore: true });
+
+      const registerResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/register",
+        payload: {
+          email: "retrigger@example.com",
+          password: "Password123!",
+          workspace_slug: "retrigger-space",
+          display_name: "Retrigger Space"
+        }
+      });
+
+      expect(registerResponse.statusCode).toBe(201);
+      const registered = registerResponse.json() as { access_token: string };
+
+      const firstTokenResult = await pool.query<{ verification_token: string }>(
+        "SELECT verification_token FROM users WHERE email = $1",
+        ["retrigger@example.com"]
+      );
+      const firstToken = firstTokenResult.rows[0]?.verification_token;
+      expect(firstToken).toBeTruthy();
+
+      const retriggerResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/retrigger-verification",
+        headers: {
+          authorization: `Bearer ${registered.access_token}`
+        }
+      });
+
+      expect(retriggerResponse.statusCode).toBe(200);
+
+      const secondTokenResult = await pool.query<{ verification_token: string }>(
+        "SELECT verification_token FROM users WHERE email = $1",
+        ["retrigger@example.com"]
+      );
+      const secondToken = secondTokenResult.rows[0]?.verification_token;
+      expect(secondToken).toBeTruthy();
+      expect(secondToken).not.toBe(firstToken);
+
+      // Attempt to re-trigger for already verified user
+      await pool.query("UPDATE users SET email_verified = true WHERE email = $1", ["retrigger@example.com"]);
+      
+      const alreadyVerifiedResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/retrigger-verification",
+        headers: {
+          authorization: `Bearer ${registered.access_token}`
+        }
+      });
+
+      expect(alreadyVerifiedResponse.statusCode).toBe(400);
+      expect(alreadyVerifiedResponse.json()).toMatchObject({
+        code: "already_verified"
+      });
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
 });

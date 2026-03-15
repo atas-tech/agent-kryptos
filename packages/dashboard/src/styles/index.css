@@ -321,6 +321,17 @@
     background: rgba(127, 29, 29, 0.24);
     color: #fecaca;
   }
+  
+  .verification-banner {
+    @apply flex flex-col gap-4 rounded-2xl border px-5 py-5 text-sm sm:flex-row sm:items-center sm:justify-between;
+    border-color: rgba(251, 191, 36, 0.32);
+    background: rgba(251, 191, 36, 0.08);
+    color: #fde68a;
+  }
+
+  .verification-banner__text {
+    @apply flex items-center gap-3;
+  }
 
   .auth-form__actions {
     @apply flex flex-col gap-4 pt-1 sm:flex-row sm:items-center sm:justify-between;

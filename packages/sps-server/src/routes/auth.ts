@@ -9,6 +9,7 @@ import {
   logoutSession,
   refreshSession,
   registerUser,
+  retriggerEmailVerification,
   UserServiceError,
   verifyEmail
 } from "../services/user.js";
@@ -282,6 +283,20 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
         user: toUserResponse(result.user),
         workspace: toWorkspaceResponse(result.workspace)
       });
+    } catch (error) {
+      return sendServiceError(reply, error);
+    }
+  });
+
+  app.post("/retrigger-verification", async (req, reply) => {
+    const currentUser = await requireCurrentUser(req, reply);
+    if (!currentUser) {
+      return;
+    }
+
+    try {
+      await retriggerEmailVerification(opts.db, currentUser.sub);
+      return reply.code(200).send({ message: "Verification email re-triggered" });
     } catch (error) {
       return sendServiceError(reply, error);
     }
