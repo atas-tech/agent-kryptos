@@ -15,7 +15,7 @@ Planning and security docs are in `docs/`, and executable demos/integration help
 - `npm run build`: build all packages (`tsc` + Vite build where defined).
 - `npm test`: run all workspace tests.
 - `npm run test:e2e --workspace=packages/sps-server`: run PostgreSQL-backed E2E tests (requires `DATABASE_URL` and `SPS_PG_INTEGRATION=1`).
-- `npm run dev --workspace=packages/sps-server`: run SPS server in watch mode.
+- `npm run dev --workspace=packages/sps-server`: run SPS server in watch mode (defaults to `.env`). Use `DOTENV_CONFIG_PATH=.env.test` to override.
 - `npm run dev --workspace=packages/browser-ui`: start browser UI locally.
 - `npm run test:integration`: run Redis integration test for SPS server.
 - `npm run redis:up` / `npm run redis:down`: start/stop local Redis via Docker Compose.

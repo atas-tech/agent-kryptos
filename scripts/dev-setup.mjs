@@ -78,8 +78,10 @@ async function main() {
         console.log("   Please ensure PostgreSQL is running. (Docker Compose might have it)");
         // Try starting via docker compose just in case
         await startService(service);
+      } else if (service.name === "SPS Server") {
+        console.log(`   Suggestion: Run 'DOTENV_CONFIG_PATH=.env.test ${service.start}' in a new terminal.`);
       } else {
-        // For Dashboard and SPS, we might want to start them in background or just tell the user
+        // For Dashboard, we might want to start them in background or just tell the user
         console.log(`   Suggestion: Run '${service.start}' in a new terminal.`);
       }
     }
