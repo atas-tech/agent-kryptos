@@ -52,6 +52,14 @@ Detailed documentation and planning can be found in the `docs/` folder:
 - [Security Audit](docs/security/Security%20Audit.md)
 - [Telegram Plugin Plan](docs/plugins/Implementation%20Plan%20-%20Plugin%20-%20Telegram.md)
 
+## Licensing
+
+This repository uses a mixed-license model:
+- `packages/sps-server` and `packages/dashboard` are licensed under `AGPL-3.0-only`.
+- `packages/agent-skill`, `packages/browser-ui`, `packages/gateway`, and `packages/openclaw-plugin` are licensed under `MIT`.
+
+See `LICENSES.md` for the package licensing matrix and rollout notes.
+
 ## Features
 
 - **Zero-Knowledge Encryption:** Secrets are encrypted in the user's browser using HPKE before transmission. The server only sees ciphertext.

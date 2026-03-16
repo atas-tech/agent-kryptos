@@ -1,6 +1,7 @@
 {
   "name": "agent-kryptos",
   "private": true,
+  "license": "SEE LICENSE IN LICENSES.md",
   "version": "0.1.0",
   "workspaces": [
     "packages/*"
