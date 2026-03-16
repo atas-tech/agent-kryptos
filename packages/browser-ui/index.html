@@ -5,30 +5,171 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="referrer" content="no-referrer" />
-  <title>Secure Secret Input</title>
+  <title>Secure Secret Input | agent-Kryptos</title>
 </head>
 
 <body>
-  <main class="card">
-    <h1>Secure Secret Input</h1>
-    <p id="status">Loading request...</p>
-    <p id="code" class="code"></p>
+  <header class="security-banner">
+    <strong>Important:</strong> Verify the address bar and TLS certificate before entering any password, key, or credential.
+  </header>
 
-    <label id="secret-label" for="secret-single">Secret</label>
-    <input id="secret-single" type="password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
-    <textarea id="secret-multi" rows="8" hidden autocomplete="off" autocorrect="off" autocapitalize="off"
-      spellcheck="false"></textarea>
+  <div class="app-shell">
+    <nav class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">K</div>
+        <div class="brand-copy">
+          <span class="brand-name">agent-Kryptos</span>
+          <span class="brand-subtitle">Secure secret exchange</span>
+        </div>
+      </div>
 
-    <div id="secret-controls" class="secret-controls">
-      <button id="toggle-visibility" type="button" class="secondary">Show</button>
-      <label class="inline-toggle" for="multiline-toggle">
-        <input id="multiline-toggle" type="checkbox" />
-        <span>Multiline secret (PEM/JSON)</span>
-      </label>
-    </div>
+      <div class="topbar-actions">
+        <div class="status-chip">Client-side encryption</div>
+        <div id="mode-badge" class="mode-chip" data-mode="locked">Session required</div>
+      </div>
+    </nav>
 
-    <button id="submit" type="button">Encrypt and Submit</button>
-  </main>
+    <main class="workspace">
+      <section class="trust-panel">
+        <p class="section-label">Zero-knowledge handoff</p>
+        <h1>Secure Secret Input</h1>
+        <p class="hero-copy">
+          Your secret is encrypted locally in your browser. Encrypted data is then sent securely to the agent—plaintext
+          never leaves this page.
+        </p>
+
+        <div class="handoff-visualizer" aria-hidden="true">
+          <div class="visualizer-track">
+            <div class="visual-node node-client">
+              <div class="node-icon">👤</div>
+              <span class="node-label">You</span>
+            </div>
+            <div class="visual-connector">
+              <div class="pulse-line"></div>
+              <div class="encryption-morph">
+                <div class="morph-shield">🔒</div>
+                <div class="morph-data">•••</div>
+              </div>
+            </div>
+            <div class="visual-node node-agent">
+              <div class="node-icon">🤖</div>
+              <span class="node-label">Agent</span>
+            </div>
+          </div>
+          <div class="visualizer-labels">
+            <span>Plaintext input</span>
+            <span>Local encryption</span>
+            <span>Secure transfer</span>
+          </div>
+        </div>
+
+        <div class="trust-grid">
+          <article class="trust-card">
+            <span class="trust-kicker">Local Encryption</span>
+            <strong>Your data, your key</strong>
+            <p>Encryption happens in your browser. No plaintext is ever uploaded.</p>
+          </article>
+
+          <article class="trust-card">
+            <span class="trust-kicker">Signed Access</span>
+            <strong>Secure session</strong>
+            <p>This page is protected by a temporary, single-use security link.</p>
+          </article>
+
+          <article class="trust-card">
+            <span class="trust-kicker">One-time Delivery</span>
+            <strong>Direct to agent</strong>
+            <p>Data is held securely until retrieved by the intended agent.</p>
+          </article>
+        </div>
+
+        <div class="trust-checklist">
+          <p>1. Check that the address bar is correct.</p>
+          <p>2. Match the session code with your request.</p>
+          <p>3. Close this tab when you are finished.</p>
+        </div>
+      </section>
+
+      <section id="form-container" class="secret-card">
+        <div class="card-header">
+          <div>
+            <p class="section-label">Secure channel</p>
+            <h2>Submit a secret to the agent</h2>
+          </div>
+          <div id="session-state" class="card-state" data-mode="locked">Awaiting session</div>
+        </div>
+
+        <p id="status" data-tone="muted">Loading request...</p>
+
+        <div id="code-box" class="code-container" hidden>
+          <span id="session-caption" class="code-label">Identity session code</span>
+          <p id="code" class="code"></p>
+        </div>
+
+        <div id="preview-notice" class="notice notice-info" hidden>
+          Preview mode is active. Inputs are enabled for local QA only and no secret will be transmitted.
+        </div>
+
+
+        <div class="input-group">
+          <div class="input-header">
+            <label id="secret-label" for="secret-single">Sensitive secret value</label>
+          </div>
+
+          <div class="input-wrapper">
+            <input id="secret-single" type="password" autocomplete="off" autocorrect="off" autocapitalize="off"
+              spellcheck="false" placeholder="Enter a password, token, or API key" />
+            <textarea id="secret-multi" hidden autocomplete="off" autocorrect="off" autocapitalize="off"
+              spellcheck="false" placeholder="Paste a certificate, PEM block, or JSON credential"></textarea>
+          </div>
+        </div>
+
+        <div id="secret-controls" class="secret-controls">
+          <label class="inline-toggle" for="multiline-toggle">
+            <input id="multiline-toggle" type="checkbox" />
+            <span>Multiline secret (PEM/JSON)</span>
+          </label>
+
+          <div class="toolbar-actions">
+            <button id="clear-secret" type="button" class="secondary">Clear</button>
+            <button id="toggle-visibility" type="button" class="secondary">Show Secret</button>
+          </div>
+        </div>
+
+        <button id="submit" type="button" disabled>Encrypt and Submit</button>
+
+        <p id="security-footnote" class="security-footnote">
+          Client-side encryption happens before any payload leaves this page.
+        </p>
+
+        <div class="assurance-row">
+          <span class="assurance-pill">TLS protected</span>
+          <span class="assurance-pill">Zero-knowledge path</span>
+          <span class="assurance-pill">One-time exchange</span>
+        </div>
+      </section>
+
+      <section id="success-container" class="secret-card success-container" hidden>
+        <div class="success-icon">✓</div>
+        <p class="section-label">Secret received</p>
+        <h2 class="success-title">Secret securely encrypted</h2>
+        <p id="success-status" class="success-status">
+          Secret submitted successfully. You may safely close this window.
+        </p>
+        <p id="success-detail" class="success-detail">
+          Only the intended retrieval flow should be able to decrypt the submitted payload.
+        </p>
+
+        <div class="assurance-row success-pills">
+          <span class="assurance-pill">Encrypted payload only</span>
+          <span class="assurance-pill">Ephemeral delivery</span>
+        </div>
+
+        <button type="button" onclick="window.close()" class="primary-close">Dismiss and Close Window</button>
+      </section>
+    </main>
+  </div>
+
   <script type="module" src="/src/app.js"></script>
 </body>
 
