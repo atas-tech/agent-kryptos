@@ -6,6 +6,7 @@ This repository contains the architecture, implementation plans, and source code
 
 ## Table of Contents
 - [Overview](#overview)
+- [Hosted Services](#hosted-services)
 - [Architecture](#architecture)
 - [Directory Structure](#directory-structure)
 - [Documentation](#documentation)
@@ -18,13 +19,22 @@ When an AI Agent needs a secret to complete a task (e.g., "Deploy my website to 
 
 Agent-Kryptos solves this by using SPS as the trust anchor and coordinator. For Human -> Agent flow, the gateway generates a secure, single-use, out-of-band link for the user. The user encrypts the secret in their browser, and only the agent's constrained execution environment can decrypt and hold it in memory. For Agent -> Agent flow, SPS coordinates a pull-based exchange between stable agent identities, enforcing policy, approvals, and one-time retrieval without requiring Kubernetes or a cluster control plane.
 
+## Hosted Services
+
+Access the live Agent-Kryptos platform:
+- **Landing Page**: [kryptos.atas.tech](https://kryptos.atas.tech/)
+- **Operator Dashboard**: [app.atas.tech](https://app.atas.tech/)
+- **SPS API Server**: [sps.atas.tech](https://sps.atas.tech/)
+- **Secure Secret Input**: [secret.atas.tech](https://secret.atas.tech/)
+
 ## Architecture
 
-The system consists of 4 main components:
+The system consists of 5 main components:
 1. **SPS Server:** A Fastify backend with Redis-backed storage for handling encrypted payload submission and retrieval. All data has a strict TTL.
-2. **Browser UI:** A zero-dependency, static HTML/JS page served to the user. It handles client-side HPKE encryption so the plaintext secret never traverses the network.
-3. **Agent Skill:** A package that gives agents the `request_secret` tool, handles keypair generation, and securely manages the in-memory `SecretStore`.
-4. **Gateway Middleware / Runtime Integration:** Intercepts LLM tool calls, replaces them with secure out-of-band links, enforces outbound URL filtering, and can mint or forward SPS-trusted agent tokens for coordinated agent-to-agent exchange.
+2. **Operator Dashboard:** A Vite + React application providing a persistent human-facing interface for workspace management, audit logging, and agent enrollment.
+3. **Browser UI:** A zero-dependency, static HTML/JS page served to the user. It handles client-side HPKE encryption so the plaintext secret never traverses the network.
+4. **Agent Skill:** A package that gives agents the `request_secret` tool, handles keypair generation, and securely manages the in-memory `SecretStore`.
+5. **Gateway Middleware / Runtime Integration:** Intercepts LLM tool calls, replaces them with secure out-of-band links, enforces outbound URL filtering, and can mint or forward SPS-trusted agent tokens for coordinated agent-to-agent exchange.
 
 ## Directory Structure
 
@@ -32,12 +42,12 @@ The system consists of 4 main components:
 agent-kryptos/
 ├── docs/                 # System architecture, security audits, and test plans
 │   ├── architecture/     # Implementation plans and system design docs
-│   ├── plugins/          # Telegram and other plugin integration plans
 │   ├── security/         # Security audit documentation
 │   └── testing/          # E2E and component test plans
 ├── packages/             # Monorepo packages (TypeScript)
 │   ├── agent-skill/      # Agent-side secret management skill
 │   ├── browser-ui/       # Secure client-side encryption interface
+│   ├── dashboard/        # Operator Dashboard (Vite + React SPA)
 │   ├── gateway/          # Gateway security middleware
 │   ├── openclaw-plugin/  # OpenClaw specific integration
 │   └── sps-server/       # Secret Provisioning Service backend
@@ -47,10 +57,14 @@ agent-kryptos/
 ## Documentation
 
 Detailed documentation and planning can be found in the `docs/` folder:
-- [Implementation Plan](docs/architecture/Implementation%20Plan.md)
-- [Secure Secret Input Service Design](docs/architecture/Secure%20Secret%20Input%20Service%20Design.txt)
-- [Security Audit](docs/security/Security%20Audit.md)
-- [Telegram Plugin Plan](docs/plugins/Implementation%20Plan%20-%20Plugin%20-%20Telegram.md)
+- **Core Strategy**: [Implementation Plan](docs/architecture/Implementation%20Plan.md) | [Security Audit](docs/security/Security%20Audit.md) | [Licensing Proposal](docs/architecture/Licensing_Proposal.md)
+- **Roadmap & Phases**:
+    - [Phase 1: Core MVP](docs/architecture/Phase%201%20-%20Core%20MVP.md)
+    - [Phase 2A: Agent to Agent Exchange](docs/architecture/Phase%202A%20-%20Agent%20to%20Agent%20Exchange.md)
+    - [Phase 2B: Production A2A](docs/architecture/Phase%202B%20-%20Production%20A2A.md)
+    - [Phase 3A: Hosted Platform](docs/architecture/Phase%203A%20-%20Hosted%20Platform.md)
+    - [Phase 3B: UI & Operations](docs/architecture/Phase%203B%20-%20UI%20&%20Operations.md)
+- **Maintenance**: [Dashboard Maintainability](docs/architecture/dashboard-maintainability.md)
 
 ## Licensing
 
