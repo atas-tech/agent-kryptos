@@ -10,6 +10,7 @@ The test plan is intentionally separated from Phase 3D because the enrolled-agen
 ## Preconditions
 
 - Phase 3A hosted platform is working locally with PostgreSQL and Redis
+- The hosted workspace policy foundation is available locally so guest offers resolve against workspace-scoped PostgreSQL policy
 - Phase 3D enrolled-agent x402 flow is available as the provider/client baseline when x402 is the chosen payment rail
 - Browser UI is available for human-submit scenarios
 - Production-style guest offer tokens are generated from the server, not fixtures hand-built in the test body
@@ -124,12 +125,19 @@ The test plan is intentionally separated from Phase 3D because the enrolled-agen
 
 - [ ] **E2E 918: Human fulfills and guest retrieves exactly once**
   - [ ] Have the guest agent forward only the returned `fulfill_url` to the human
-  - [ ] Open the returned `fulfill_url`
+  - [ ] Open the returned `fulfill_url` while logged out
+  - [ ] Assert the hosted flow requires workspace authentication before rendering submit controls
+  - [ ] Sign in as a member of the target workspace and return to the same fulfill flow
   - [ ] Verify the page shows immutable SPS-controlled request details such as requester label, purpose, and expiry
   - [ ] Submit ciphertext through the browser UI
   - [ ] Poll with the guest token until `submitted`
   - [ ] Retrieve successfully once
   - [ ] Attempt a second retrieval and assert not available
+
+- [ ] **Integration 918B: Wrong-workspace or non-member user cannot consume the fulfill flow**
+  - [ ] Create a paid human-delivery guest request
+  - [ ] Open the `fulfill_url` as a user outside the target workspace or without a valid hosted session
+  - [ ] Assert metadata display and submit are denied
 
 - [ ] **Integration 919: Wrong guest token cannot retrieve**
   - [ ] Create and fulfill a paid guest request
@@ -138,7 +146,7 @@ The test plan is intentionally separated from Phase 3D because the enrolled-agen
 
 - [ ] **Integration 920: Revoked guest intent cannot be fulfilled or retrieved**
   - [ ] Create a paid guest request
-  - [ ] Revoke it before human submit
+  - [ ] Revoke it via `POST /api/v2/public/intents/:id/revoke` before human submit
   - [ ] Assert browser submit and guest retrieve both fail closed
 
 - [ ] **Integration 921: Guest request audit records use guest actor metadata without secret leakage**
@@ -206,5 +214,6 @@ The test plan is intentionally separated from Phase 3D because the enrolled-agen
 - Guest payment retries are idempotent
 - `quota_then_x402` allows request continuation after free quota exhaustion
 - Human and agent delivery modes both preserve one-time retrieval ownership
+- Hosted human fulfill requires an active same-workspace login; leaked `fulfill_url` alone is insufficient
 - Public abuse controls are enforced independently from enrolled-agent quotas
 - Audit and dashboard operations make guest traffic supportable without exposing secrets

@@ -13,6 +13,7 @@ None of those three pieces, by themselves, provide a safe public ingress path fo
 **Prerequisites**
 
 - Phase 3A hosted platform is complete: workspaces, users, enrolled agents, RBAC, audit, billing, and rate limits
+- [Hosted Workspace Policy Foundation](Hosted%20Workspace%20Policy%20Foundation.md) is complete in hosted mode so guest offers resolve against workspace-scoped PostgreSQL policy rather than the process-global env path
 - Phase 3D payment rail abstractions for the chosen payment model (or equivalent internal provider/client abstractions) are available to reuse
 - Phase 2A/2B exchange contracts exist; human-submit browser flow already exists
 
@@ -137,8 +138,9 @@ For `delivery_mode=human`, Phase 3C should reuse the current Human -> Agent secr
 - SPS creates a normal secret request record bound to the guest actor
 - after allow/approval/payment checks, SPS returns **two different capabilities**:
   - `guest_access_token` for the requester: status + retrieve only
-  - `fulfill_url` for the human: metadata + submit only
+  - `fulfill_url` for the human: request locator + metadata/submit capability for this specific intent
 - the guest agent forwards only the `fulfill_url` to the human fulfiller
+- the hosted browser flow requires an active workspace user session before rendering or submitting the fulfill page
 - human fulfills through the existing browser UI and `POST /api/v2/secret/submit/:id`
 
 This is the fastest and lowest-risk v1 because the secure browser encryption path already exists and the requester never receives a submit-capable browser token.
@@ -170,7 +172,7 @@ Instead, the SPS-hosted fulfill page should show immutable request details contr
 - expiry
 - hosted SPS branding/domain warnings
 
-The signed `fulfill_url` remains the actual capability. Any displayed confirmation code is informational only and must not be treated as a second independently trusted factor when the guest is the relay.
+The signed `fulfill_url` remains the request-scoped capability, but in hosted mode it is not sufficient identity proof by itself. Any displayed confirmation code is informational only and must not be treated as a second independently trusted factor when the guest is the relay.
 
 ## System Model
 
@@ -350,6 +352,7 @@ Suggested columns:
 | `GET /api/v2/public/intents/:id` | User JWT (`workspace_operator+`) | Inspect a guest intent and its payment/delivery state |
 | `POST /api/v2/public/intents/:id/approve` | User JWT (`workspace_operator+`) | Approve a pending guest intent so it may become payable or ready |
 | `POST /api/v2/public/intents/:id/reject` | User JWT (`workspace_operator+`) | Reject a pending guest intent before any payment is accepted |
+| `POST /api/v2/public/intents/:id/revoke` | User JWT (`workspace_operator+`) | Revoke a specific guest intent, including a paid-but-not-yet-fulfilled intent |
 
 ### Public Guest Routes
 
@@ -388,6 +391,8 @@ After successful allow/approval/payment handling for `delivery_mode=human`, SPS 
 
 The fulfill capability must not allow retrieval, status listing across other intents, or any admin operation.
 
+In hosted mode, the browser flow consuming `fulfill_url` must also require an active workspace user session in the same workspace before rendering request metadata or allowing submit. If the human is not logged in, SPS or the hosted UI should redirect through login and then return to the original fulfill flow.
+
 ### Settled Policy Snapshot Enforcement
 
 For paid guest intents, later lifecycle steps (`status`, human submit, guest retrieve) should read authorization from the settled snapshot created at payment time rather than re-evaluating mutable workspace policy on every step.
@@ -418,7 +423,7 @@ The only exceptions are platform-level emergency restrictions such as:
    - `fulfill_url`
    - optional display-only request summary for the human page
 8. Guest agent forwards only `fulfill_url` to the workspace human
-9. Workspace human fulfills through the existing browser UI
+9. Workspace human authenticates to the hosted workspace if needed, then fulfills through the existing browser UI
 10. Guest polls status and retrieves once
 
 The guest does **not** receive a submit-capable browser token beyond the purpose-built `fulfill_url` it forwards to the human.
@@ -433,6 +438,8 @@ The page opened through `fulfill_url` should show SPS-controlled immutable detai
 - secret alias or request category
 - expiry
 - hosted SPS branding and warning text
+- if the user is not already authenticated, redirect through hosted login and then return to the same fulfill flow
+- after login, confirm the caller is an active member of the target workspace before allowing submit
 
 This page should not rely on a guest-relayed confirmation code as its primary trust signal.
 
@@ -508,7 +515,7 @@ Phase 3C should keep the payment abstraction open, but the first machine-to-mach
 - Guest intent creation, status, expiry, and revocation
 - Guest requester token minting
 - `payment_policy` support including `quota_then_x402`
-- Guest intent approval / rejection control-plane endpoints
+- Guest intent approval / rejection / operator revoke control-plane endpoints
 
 ### Milestone 2: Guest -> Human Delivery
 
@@ -542,9 +549,10 @@ Phase 3C should keep the payment abstraction open, but the first machine-to-mach
 - A guest agent can pay via x402, forward a fulfill link to a workspace human, and complete a one-time flow without becoming an enrolled agent
 - Payment is never captured for a request that is still pending approval
 - `quota_then_x402` lets a guest continue paying per request after the included free quota is exhausted
-- Human fulfillment works with the existing browser encryption model
+- Human fulfillment works with the existing browser encryption model and requires an active same-workspace hosted login
 - Guest retrieval remains one-time and requester-bound
 - The requester and human fulfiller never share the same retrieval/submit capability
+- Workspace operators can revoke a specific guest intent even after settlement but before completion
 - Ordinary workspace policy edits after settlement do not void a paid guest intent; only emergency overrides or explicit revocation can do that
 - Offer misuse, token replay, and payment-id reuse fail closed
 - Guest traffic is visible in audit and operations views without leaking secrets

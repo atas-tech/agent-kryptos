@@ -650,6 +650,12 @@ This keeps the wire contract stable while tightening the trust model later.
 - [x] Dashboard home summary and quota overview shipped
 - [x] Billing portal and recurring subscription management admin UX shipped
 
+### Shared Hosted Foundation: Workspace Policy Engine
+- [ ] Workspace-admin-managed secret registry and exchange policy documents, stored and resolved per workspace in PostgreSQL instead of relying on process-global `SPS_SECRET_REGISTRY_JSON` / `SPS_EXCHANGE_POLICY_JSON` in hosted mode
+- [ ] Existing hosted workspaces are auto-seeded from the current env-backed hosted policy during rollout, then hosted policy reads switch to PostgreSQL without a permanent runtime fallback chain
+- [ ] New hosted workspaces initialize from the platform bootstrap/default policy template, then diverge in their own DB-backed workspace policy state
+- [ ] This shared foundation lands before Phase 3C guest-intent flows and before later Phase 3E hosted hardening work that assumes tenant-scoped policy
+
 ### Phase 3C: Paid Guest Secret Exchange
 - [ ] Workspace-issued public offers/invites for one-time paid guest requests
 - [ ] First-class guest requester identity instead of temporary enrolled-agent records
@@ -671,7 +677,6 @@ This keeps the wire contract stable while tightening the trust model later.
 
 ### Phase 3E: Hosted Hardening, Ecosystem & Launch
 - [ ] Hosted analytics surfaces for request volume, exchange outcomes, and active agents
-- [ ] Workspace-admin-managed secret registry and exchange policy documents, stored and resolved per workspace instead of relying on process-global `SPS_SECRET_REGISTRY_JSON` / `SPS_EXCHANGE_POLICY_JSON` in hosted mode
 - [ ] Platform-global emergency deny / revocation layer above workspace policy for coordinated abuse response
 - [ ] Advanced abuse controls: burst anomaly detection, Turnstile challenge gates, and strict free-tier throttling
 - [ ] Language SDKs: Python, Go, and published Node.js package(s) from the current `agent-skill` implementation

@@ -270,10 +270,12 @@ Add a separate human-admin crypto purchase lane for workspace plan upgrades and 
 
 ### Product Rules
 
-- Use **Coinbase Payment Links** (or equivalent hosted crypto checkout), not the recurring Stripe subscription abstraction
+- Use **Coinbase Payment Links** as the **first shipped hosted crypto checkout provider**, not the recurring Stripe subscription abstraction
 - Treat the first crypto SKU as a **fixed-term Standard plan purchase**
 - Store provider payment reference plus `plan_expires_at`
 - Downgrade back to Free when the term expires and no renewal is present
+
+The billing model and storage should remain future-friendly for other providers, but Milestone 3 is planned and tested against Coinbase as the concrete first provider.
 
 ### Why This Is Separate From x402
 
@@ -312,3 +314,4 @@ Detailed E2E and integration scenarios for this phase live in `docs/testing/Phas
 - **Signer isolation**: payer private keys live behind a dedicated signer/provider boundary and are not normal LLM-accessible process state in production
 - **Guest traffic**: public paid guest requesters remain a separate Phase 3C product surface
 - **Crypto billing**: hosted crypto checkout is a fixed-term plan purchase, not an auto-renewing subscription
+- **First crypto billing provider**: Coinbase Payment Links is the committed first hosted checkout provider; later providers can plug into the same broader billing model

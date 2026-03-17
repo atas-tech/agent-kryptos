@@ -2,7 +2,7 @@
 
 Phase 3E picks up after the core operator dashboard and admin workflows are in place. This phase hardens the hosted product for broader use, adds the ecosystem and documentation work needed for adoption, and closes with the actual hosted go-live path.
 
-It also absorbs the first hosted policy-management slice that was intentionally left out of Phase 3B: workspace-admin-managed secret registry and exchange policy configuration. In hosted mode, these policy documents must become tenant-scoped workspace state, not process-global environment variables.
+The workspace-scoped PostgreSQL policy engine that was once bundled into Phase 3E is now tracked separately in [Hosted Workspace Policy Foundation](Hosted%20Workspace%20Policy%20Foundation.md). Phase 3E assumes that foundation already exists and focuses on session hardening, abuse controls, analytics, ecosystem work, and launch readiness.
 
 This phase is intentionally separate from:
 
@@ -14,16 +14,71 @@ This phase is intentionally separate from:
 
 - Phase 3A hosted platform is complete
 - Phase 3B operator dashboard and recurring billing admin UX are complete
+- [Hosted Workspace Policy Foundation](Hosted%20Workspace%20Policy%20Foundation.md) is complete
 - Hosted APIs are stable enough to publish SDKs and onboarding docs
 
-**Development strategy**: local-first for analytics and abuse controls, then ecosystem packaging and documentation, with production deployment and domain cutover left for the final milestone.
+**Development strategy**: land hosted session hardening and abuse controls first, then analytics and ecosystem packaging/documentation, with production deployment and domain cutover left for the final milestone.
 
 > [!IMPORTANT]
-> This plan is divided into **3 incremental milestones**. The order is: Analytics, Workspace Policy Management & Abuse Controls → SDKs, Docs & Community → Hosted Deployment & Domain Cutover.
+> This plan is divided into **3 incremental milestones**. The order is: Session Hardening & Abuse Controls → Analytics, SDKs, Docs & Community → Hosted Deployment & Domain Cutover.
 
-## Milestone 1: Analytics, Workspace Policy Management & Advanced Abuse Controls
+## Milestone 1: Dashboard Session Hardening & Advanced Abuse Controls
 
-Add workspace-level operational metrics, make hosted policy tenant-scoped and admin-manageable, and strengthen signup/auth abuse protections with advanced abuse controls.
+Harden hosted dashboard authentication before wider rollout, then strengthen signup/auth abuse protections.
+
+### Dashboard Session Hardening
+
+The current dashboard stores the refresh token in `localStorage`. That is acceptable only as an MVP shortcut. Before wider hosted rollout, the dashboard should migrate to a cookie-based refresh model:
+
+- refresh token stored in a `Secure` + `httpOnly` cookie in hosted mode
+- access token remains memory-only in the dashboard runtime
+- hosted dashboard API calls use `credentials: include` for refresh/logout flows
+- logout clears both the cookie and the server-side session
+- no refresh token remains readable through `localStorage`, `sessionStorage`, or other JS-visible browser storage in hosted mode
+
+This migration is a prerequisite for production hosted go-live, not a late checklist item.
+
+#### [MODIFY] `packages/sps-server/src/routes/auth.ts`
+
+- hosted login/register/refresh responses set or rotate the refresh cookie instead of returning a JS-managed refresh token
+- logout clears the refresh cookie and revokes the backing session
+- cookie behavior is configured for hosted HTTPS deployment and fails closed in production if secure cookie requirements are not met
+
+#### [MODIFY] `packages/dashboard/src/auth/AuthContext.tsx`
+
+- remove refresh-token persistence from `localStorage`
+- switch refresh/logout flows to cookie-backed requests
+- keep the access token memory-only
+- update E2E and component tests so the dashboard asserts the refresh token is not readable from JS-visible storage
+
+### Advanced Abuse Controls
+
+Strengthen protections beyond Phase 3A's per-IP rate limiting.
+
+#### [MODIFY] Frontend: Cloudflare Turnstile Integration
+
+- Add Turnstile challenge widget to `Register.tsx` and `Login.tsx`
+- Dashboard sends the Turnstile response token with auth requests
+- Backend validates the token server-side via Turnstile `/siteverify` before processing registration/login
+
+#### [MODIFY] `packages/sps-server/src/routes/auth.ts`
+
+- Add optional `cf_turnstile_response` field to register/login request bodies
+- When `SPS_TURNSTILE_SECRET` is set, validate the token before auth processing
+- When it is not set, skip challenge verification for local/dev
+
+#### [MODIFY] `packages/sps-server/src/middleware/rate-limit.ts`
+
+- Add anomaly burst detection: if a single workspace exceeds 5x its tier quota within a sliding hour window, emit an `abuse_alert` audit event and temporarily throttle to 1 req/min for that workspace
+- Workspace-level throttle is self-clearing after the hour window passes
+
+**Acceptance**: Hosted dashboard refresh handling no longer relies on JS-visible refresh-token storage. Login, refresh, and logout work through secure cookie-backed session flows in hosted mode. Turnstile blocks automated signup in hosted mode. Burst anomaly detection throttles and logs abuse attempts.
+
+---
+
+## Milestone 2: Analytics, SDKs, Documentation & Community
+
+Add hosted operational analytics, then make the platform accessible to developers who are not reading source code directly.
 
 ### Analytics Page (`/analytics`)
 
@@ -52,89 +107,6 @@ All queries return counts and timestamps only. They never expose secret names, c
 | `GET /api/v2/analytics/agents` | User JWT (admin/operator) | Active agent count |
 
 RBAC: `workspace_viewer` cannot access analytics in the MVP.
-
-### Workspace Policy Management
-
-Move Agent-to-Agent policy off the app-wide `SPS_SECRET_REGISTRY_JSON` and `SPS_EXCHANGE_POLICY_JSON` singleton path for hosted workspaces.
-
-Hosted policy source of truth:
-
-- `workspace_admin` manages a workspace-scoped secret registry and exchange policy document
-- policy is stored in PostgreSQL and versioned per workspace
-- SPS resolves and caches compiled policy by `workspace_id`
-- environment variables remain valid only as self-hosted bootstrap/default configuration, not as the hosted per-workspace control plane
-
-### [NEW] `packages/sps-server/src/services/workspace-policy.ts`
-
-Workspace-scoped policy persistence and validation:
-
-- store `secret_registry_json`, `exchange_policy_json`, `version`, `updated_by_user_id`, `created_at`, `updated_at`
-- validate that every policy rule references a declared `secretName`
-- reject duplicate `ruleId` values within a workspace
-- limit list sizes and field lengths to avoid pathological policy payloads
-- compile and cache an `ExchangePolicyEngine` per `(workspace_id, version)`
-
-### [NEW] `packages/sps-server/src/routes/workspace-policy.ts`
-
-| Endpoint | Auth | Behavior |
-|----------|------|----------|
-| `GET /api/v2/workspace/policy` | User JWT (admin/operator) | Return the current workspace policy document and metadata |
-| `PATCH /api/v2/workspace/policy` | User JWT (admin) | Replace the workspace policy document after validation and optimistic concurrency checks |
-| `POST /api/v2/workspace/policy/validate` | User JWT (admin) | Validate a draft policy without persisting it |
-
-Admin-editable policy fields are limited to business-policy inputs:
-
-- secret registry entries: `secretName`, `classification`, `description`
-- exchange rules: `ruleId`, `secretName`, requester/fulfiller identities or rings, `purposes`, `mode`, `reason`, same-ring constraints
-
-Fields that remain platform-controlled and must not be workspace-admin-editable:
-
-- `workspace_id`, approval references, policy hashes, fulfillment reservations, and other runtime-generated state
-- workload identity trust settings such as issuer, audience, JWKS, or SPIFFE requirements
-- cross-workspace tenancy rules
-- TTL, quota, rate-limit, billing, cryptography, and audit-retention controls
-
-### Platform Global Emergency Overrides
-
-Hosted mode should keep a separate **platform global policy** layer for emergency restriction and coordinated-response cases. This layer is outside tenant-editable workspace policy and is maintained only by platform operators.
-
-Rules for this layer:
-
-- it may only **restrict** or revoke behavior, never grant access
-- it applies before or alongside workspace policy evaluation
-- it can target compromised agent ids, abusive requester identities, payment rails, offer classes, or workspaces under active abuse review
-- it must be fully audited and versioned
-
-For paid guest intents and other settled flows, the normal workspace policy snapshot remains authoritative after payment or approval. Platform global overrides are the narrow exception that may still block execution after settlement.
-
-### Advanced Abuse Controls
-
-Strengthen protections beyond Phase 3A's per-IP rate limiting.
-
-#### [MODIFY] Frontend: Cloudflare Turnstile Integration
-
-- Add Turnstile challenge widget to `Register.tsx` and `Login.tsx`
-- Dashboard sends the Turnstile response token with auth requests
-- Backend validates the token server-side via Turnstile `/siteverify` before processing registration/login
-
-#### [MODIFY] `packages/sps-server/src/routes/auth.ts`
-
-- Add optional `cf_turnstile_response` field to register/login request bodies
-- When `SPS_TURNSTILE_SECRET` is set, validate the token before auth processing
-- When it is not set, skip challenge verification for local/dev
-
-#### [MODIFY] `packages/sps-server/src/middleware/rate-limit.ts`
-
-- Add anomaly burst detection: if a single workspace exceeds 5x its tier quota within a sliding hour window, emit an `abuse_alert` audit event and temporarily throttle to 1 req/min for that workspace
-- Workspace-level throttle is self-clearing after the hour window passes
-
-**Acceptance**: Analytics page renders business-event charts for request volume, exchange outcomes, and active agents. Workspace admins can manage tenant-scoped secret registry and exchange policy documents without editing server env vars. Policy edits are workspace-scoped, validated, audited, and re-evaluated on later exchange lifecycle steps. Turnstile blocks automated signup in hosted mode. Burst anomaly detection throttles and logs abuse attempts.
-
----
-
-## Milestone 2: SDKs, Documentation & Community
-
-Make the platform accessible to developers who are not reading source code directly.
 
 ### Language SDKs
 
@@ -249,11 +221,10 @@ Update the SPS egress URL filter allowlist to match the production domains:
 | Variable | Used By | Purpose |
 |----------|---------|---------|
 | `SPS_TURNSTILE_SECRET` | sps-server | Cloudflare Turnstile server-side validation key |
+| `SPS_AUTH_COOKIE_DOMAIN` | sps-server | Cookie domain for hosted refresh-session cookies |
 | `VITE_TURNSTILE_SITE_KEY` | dashboard | Turnstile widget site key baked into the build |
 | `BILLING_PORTAL_RETURN_URL` | sps-server | URL to redirect after billing portal session (default: `https://app.atas.tech/billing`) |
 | `VITE_SPS_API_URL` | dashboard, browser-ui | SPS API base URL baked at build time |
-
-`SPS_SECRET_REGISTRY_JSON` and `SPS_EXCHANGE_POLICY_JSON` remain supported for self-hosted installations, but in hosted Phase 3E they are treated as bootstrap/default configuration rather than the long-term source of truth for individual workspaces.
 
 ---
 
@@ -271,19 +242,20 @@ npm test --workspace=packages/sps-server
 npm test --workspace=packages/dashboard
 ```
 
-#### Milestone 1: `analytics.test.ts`, `workspace-policy.test.ts`, and hosted auth/rate-limit coverage
+#### Milestone 1: hosted auth hardening and abuse-control coverage
+
+- hosted login/register/refresh set or rotate the refresh cookie with the expected hosted security attributes
+- dashboard refresh/logout flows work with cookie-backed auth and no refresh token in JS-visible storage
+- logout clears the hosted refresh cookie and revokes the backing session
+- Turnstile validation rejects invalid tokens when configured
+- Burst anomaly detection triggers workspace throttle after 5x quota
+
+#### Milestone 2: analytics, SDK integration, and documentation validation
 
 - `getRequestVolume` returns correct daily counts from `audit_log`
 - `getExchangeMetrics` groups by terminal status correctly
 - `getActiveAgentCount` counts distinct actors within the time window
 - Analytics endpoints return only caller-workspace data
-- `GET /api/v2/workspace/policy` returns only caller-workspace policy documents
-- `PATCH /api/v2/workspace/policy` is admin-only, validates drafts, increments version, and records audit events
-- policy changes invalidate stale exchange decisions on later fulfill/submit paths without affecting other workspaces
-- Turnstile validation rejects invalid tokens when configured
-- Burst anomaly detection triggers workspace throttle after 5x quota
-
-#### Milestone 2: SDK integration and documentation validation
 
 - Node.js SDK bootstrap → request secret → retrieve flow succeeds
 - Python SDK succeeds with the same hosted bootstrap and delivery flow
@@ -297,12 +269,13 @@ npm test --workspace=packages/dashboard
 - `GET /readyz` returns `503` when PostgreSQL or Redis is unavailable
 - Production image builds pass CI
 - All three subdomains resolve and serve with valid TLS
+- Hosted login / refresh / logout work correctly with secure cookie-backed session auth at production URLs
 
 ### Manual Verification
 
-1. **Analytics**: generate traffic over several days and verify charts render on the analytics page.
-2. **Workspace policy**: as a workspace admin, create a secret registry entry and approval-gated exchange rule in the dashboard, then verify the next matching exchange request moves to `pending_approval` without editing server env vars.
-3. **Abuse controls**: attempt rapid-fire signups and verify Turnstile appears; trigger a burst and verify throttle + `abuse_alert`.
+1. **Session hardening**: log in to the hosted dashboard, verify no refresh token is readable from browser storage, refresh the page, and verify the session persists through the hosted cookie flow.
+2. **Abuse controls**: attempt rapid-fire signups and verify Turnstile appears; trigger a burst and verify throttle + `abuse_alert`.
+3. **Analytics**: generate traffic over several days and verify charts render on the analytics page.
 4. **SDK quickstart**: follow the quickstart guide from a clean machine and verify first secret delivery succeeds.
 5. **Production**: deploy all containers to Unraid and complete a full register → enroll agent → deliver secret flow at production URLs.
 
@@ -310,10 +283,10 @@ npm test --workspace=packages/dashboard
 
 ## Resolved Decisions
 
+- **Dashboard refresh-token handling** → hosted mode must migrate refresh handling to `Secure` + `httpOnly` cookies before wider go-live; `localStorage` persistence is not the long-term hosted model
 - **Turnstile** → Cloudflare Turnstile for signup/login challenge, gated by env var so local/dev can skip it
 - **Analytics scope** → business-event counts and timestamps only; no secret names, ciphertext, token values, specific agent identifiers, or HTTP response-class telemetry
-- **Hosted policy source of truth** → workspace-scoped PostgreSQL policy documents in hosted mode; `SPS_SECRET_REGISTRY_JSON` and `SPS_EXCHANGE_POLICY_JSON` remain self-hosted bootstrap/default inputs
-- **Global governance** → platform operators keep a separate emergency-restriction layer above workspace policy; it may deny or revoke globally, but never grant access
+- **Hosted policy foundation** → workspace-scoped PostgreSQL policy lives in the separate Hosted Workspace Policy Foundation milestone and is a prerequisite for later hosted phases
 - **SDK priority** → Node.js first, then Python, then Go
 - **API documentation** → OpenAPI 3.0 spec; hand-written initially, auto-generation deferred
 - **Reverse proxy** → operator-managed; no bundled reverse proxy
@@ -322,6 +295,6 @@ npm test --workspace=packages/dashboard
 
 ### Suggested Work Breakdown
 
-1. Analytics backend + workspace policy management + dashboard policy UI + Turnstile + burst detection
-2. Node.js SDK publish + Python SDK + Go SDK + docs + community guide
+1. Hosted cookie/session migration + dashboard auth updates + Turnstile + burst detection
+2. Analytics backend + analytics UI + Node.js SDK publish + Python SDK + Go SDK + docs + community guide
 3. Hosted deployment + domain cutover + health checks

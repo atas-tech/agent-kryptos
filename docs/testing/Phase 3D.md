@@ -10,6 +10,8 @@ Phase 3D covers:
 - real Node-runtime x402 payer support
 - hosted crypto billing checkout for fixed-term workspace plans
 
+For Milestone 3, the test plan intentionally assumes **Coinbase Payment Links** as the first shipped hosted crypto billing provider. The broader billing model may remain extensible, but these rollout scenarios are intentionally Coinbase-specific.
+
 > [!NOTE]
 > Public paid guest requester flows are tracked separately in `docs/testing/Phase 3C.md`.
 

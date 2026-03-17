@@ -15,6 +15,12 @@ Implementation plans for each phase of the Agent Kryptos secure secret provision
 | [Phase 3D](Phase%203D%20-%20Autonomous%20Payments%20%26%20Crypto%20Billing.md) | Autonomous Payments & Crypto Billing | 🚧 In Progress (Milestone 1 foundation landed) |
 | [Phase 3E](Phase%203E%20-%20Hosted%20Hardening,%20Ecosystem%20%26%20Launch.md) | Hosted Hardening, Ecosystem & Launch | 📝 Planned |
 
+## Shared Hosted Foundations
+
+| Milestone | Scope | Status |
+|-----------|-------|--------|
+| [Hosted Workspace Policy Foundation](Hosted%20Workspace%20Policy%20Foundation.md) | Workspace-scoped PostgreSQL policy engine and dashboard policy management required before hosted guest-intent flows | 📝 Planned |
+
 ## Reference
 
 - **Design doc**: [Brainstorm Secure Secret System.md](Brainstorm%20Secure%20Secret%20System.md) — full architecture and roadmap through Phase 5
