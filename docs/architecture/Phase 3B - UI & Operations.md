@@ -1,10 +1,10 @@
-# Phase 3B: UI Dashboard, Operations, SDKs & Community
+# Phase 3B: Operator Dashboard & Admin UX
 
-Phase 3B transitions the focus from building the underlying backend SaaS primitives (completed in Phase 3A) to operationalizing the platform. This phase introduces the persistent human-facing Operator Dashboard, hardens public endpoints against abuse, and improves the onboarding experience for both humans and agents.
+Phase 3B transitions the focus from building the underlying hosted SaaS primitives (completed in Phase 3A) to shipping the core human-facing control plane. This phase introduces the persistent Operator Dashboard, completes the main admin workflows, and lands the recurring billing and quota surfaces needed for day-to-day workspace management.
 
 **Prerequisite**: All 6 Phase 3A milestones are complete — PostgreSQL-backed workspaces, human auth, workspace-scoped SPS, agent enrollment, Stripe billing, rate limiting, and durable audit are all in place.
 
-**Development strategy**: Local-first. All dashboard and backend work is developed and tested locally before any production deployment. Hosted deployment and domain cutover come last.
+**Development strategy**: Local-first. All dashboard and backend work is developed and tested locally before any production deployment. Hosted deployment and domain cutover are tracked separately in Phase 3E.
 
 **Frontend stack**: The Operator Dashboard is a new `packages/dashboard` package using **Vite + React** (TypeScript). The existing `packages/browser-ui` (vanilla JS zero-knowledge sandbox) remains a separate, isolated package — it must never share runtime code or session state with the dashboard.
 
@@ -13,15 +13,16 @@ Phase 3B transitions the focus from building the underlying backend SaaS primiti
 **Theming & Color Consistency**: To maintain visual identity, all dashboard components must exclusively use the CSS variables defined in `src/styles/index.css`. Ad-hoc color utilities or hardcoded hex values from Stitch exports must be replaced with theme variables (e.g., `--bg`, `--primary`, `--purple`) to ensure any future system-wide theme changes (like a Light Mode) can be applied automatically.
 
 > [!IMPORTANT]
-> This plan is divided into **9 incremental milestones**, each independently deployable. The order is: UI Design (Stitch) → Dashboard Shell & Auth → Agent & Member Management → Audit & Approvals → Billing & Quotas → x402 Payments → Analytics & Abuse Controls → SDKs, Docs & Community → Hosted Deployment.
+> This plan is divided into **5 incremental milestones**, each independently deployable. The order is: UI Design (Stitch) → Dashboard Shell & Auth → Agent & Member Management → Audit & Approvals → Billing & Quotas.
 
 ## Progress
 
 - `2026-03-12`: Milestone 1 complete — All 14 dashboard screens designed in Stitch (Project ID: `5937100388262572555`). Ready for implementation.
-- `2026-03-13`: Milestone 2 frontend implementation landed in `packages/dashboard` using Stitch HTML exports as the layout reference. Auth flows, refresh persistence, force-password-change routing, role-aware sidebar navigation, and responsive placeholder routes for the full shell are now in place. Later CRUD pages remain scaffolded until Milestones 3-6 wire their APIs.
+- `2026-03-13`: Milestone 2 frontend implementation landed in `packages/dashboard` using Stitch HTML exports as the layout reference. Auth flows, refresh persistence, force-password-change routing, role-aware sidebar navigation, and responsive placeholder routes for the full shell are now in place. Later CRUD pages remain scaffolded until Milestones 3-5 wire their APIs.
 - `2026-03-13`: Milestone 3 complete — Agent & Member management landed. CRUD interfaces for agents and members are fully operational with paginated backend support and enforced last-admin lockout. E2E and component verification complete.
 - `2026-03-13`: Milestone 4 complete — Audit Log Viewer and Approvals Inbox landed. Paginated audit log with filtering, exchange lifecycle drill-down, and A2A approval inbox are fully operational and verified. Data leak scanning confirms no sensitive keys exist in audit metadata.
 - `2026-03-14`: Milestone 5 complete — Billing & Quota Dashboard landed. Live quota summary (secret requests, agents, members), subscription management UI with Stripe integration (checkout/portal), and provider-agnostic billing service abstraction are fully operational and verified via E2E tests.
+- `2026-03-17`: Phase 3B scope tightened to the completed dashboard/admin UX slice. Follow-on analytics, ecosystem, and launch work now live in Phase 3E.
 
 ---
 
@@ -57,8 +58,7 @@ packages/dashboard/                       # [NEW] Operator Dashboard SPA
       Audit.tsx                           # Paginated audit log viewer with filters
       Approvals.tsx                       # Pending A2A approval inbox
       Billing.tsx                         # Current tier, quota meters, Billing provider portal link
-      Analytics.tsx                       # Workspace metrics (Milestone 7)
-      Settings.tsx                        # Workspace display name, slug (read-only in MVP)
+      Settings.tsx                        # Workspace display name, slug (read-only in MVP); advanced policy management deferred to Phase 3E
     components/
       Layout.tsx                          # App shell: role-aware sidebar nav, header, content area
       ApiKeyReveal.tsx                    # One-time display of ak_ key with copy button
@@ -74,18 +74,11 @@ packages/dashboard/                       # [NEW] Operator Dashboard SPA
       usePagination.ts                    # Cursor pagination for audit, agents, members
       useQuota.ts                         # Fetch + cache workspace quota state
 
-deploy/
-  unraid/
-    agent-kryptos-dashboard.xml           # [NEW] Unraid template for dashboard container
-
 packages/sps-server/src/
   routes/
-    health.ts                             # [NEW] Health/readiness endpoints
     dashboard.ts                          # [NEW] Dashboard summary endpoint
-    analytics.ts                          # [NEW] Workspace metrics endpoints
   services/
     dashboard.ts                          # [NEW] Workspace overview + quota summary aggregation
-    analytics.ts                          # [NEW] Workspace aggregate metrics
 ```
 
 ---
@@ -109,8 +102,8 @@ Design all dashboard screens using **Stitch via MCP** before writing any React c
 | **Exchange Timeline** | Drill-down from audit | Vertical timeline of lifecycle events with approval history interleaved |
 | **Approvals Inbox** | Pending A2A approvals | Approval cards with agent details, purpose, Approve/Deny action buttons |
 | **Billing** | Subscription management | Current tier card, feature comparison, upgrade CTA / Billing portal link |
-| **Analytics** | Workspace metrics | Request volume bar chart, exchange outcome chart, active agents counter, error rate trend |
-| **Settings** | Workspace configuration | Display name edit, slug (read-only), owner verification status |
+| **Analytics** | Workspace metrics | Request volume bar chart, exchange outcome chart, active agents counter, error rate trend (implemented later in Phase 3E) |
+| **Settings** | Workspace configuration | Display name edit, slug (read-only), owner verification status; workspace policy editing explicitly deferred to Phase 3E |
 | **App Shell / Layout** | Sidebar + header | Navigation sidebar, workspace name, user dropdown, responsive collapse |
 
 #### Design Process
@@ -142,8 +135,6 @@ Design all dashboard screens using **Stitch via MCP** before writing any React c
 ### Milestone 2: Dashboard Shell & Authentication UI (Self-service Signup)
 
 Bootstrap the React dashboard and implement auth flows. Adapt HTML/CSS from the Stitch designs in Milestone 1 into React components. This milestone establishes the **self-service human signup** foundation.
-
-Bootstrap the React dashboard and implement auth flows. Adapt HTML/CSS from the Stitch designs in Milestone 1 into React components.
 
 #### [NEW] `packages/dashboard` package
 
@@ -275,6 +266,7 @@ Milestone 3 must continue the same design workflow used in Milestone 2: extract 
 - Read-only display of workspace slug, display name, tier
 - `workspace_admin` can edit display name via `PATCH /api/v2/workspace`
 - Owner email verification status indicator
+- Secret registry and exchange policy management are intentionally out of Phase 3B scope and move to Phase 3E
 
 #### [MODIFY] Backend list endpoints for dashboard pagination
 
@@ -347,9 +339,7 @@ Milestone 5 should keep the same workflow as Milestones 2-4: use Stitch screens 
   - `agent-Kryptos Dashboard Home`
   - `agent-Kryptos Billing Variant`
 - Rule: preserve Stitch spacing, card hierarchy, responsive breakpoints, and information density; replace raw hex colors, gradients, and badges with Kryptos design tokens
-- Rule: the billing surface must now show **two distinct concepts**:
-  - recurring workspace subscription state (`Free` / `Standard`, checkout, billing portal)
-  - agent x402 payment readiness as a separate “coming next” or “future capability” section, not mixed into the subscription card
+- Rule: the billing surface must now show recurring workspace subscription state (`Free` / `Standard`, checkout, billing portal) without collapsing future non-subscription payment products into the same card. Agent x402 and hosted crypto checkout are tracked separately in Phase 3D.
 
 #### Recommended implementation order
 
@@ -383,16 +373,16 @@ Milestone 5 should keep the same workflow as Milestones 2-4: use Stitch screens 
    - Replace the placeholder page with a live current-plan card, feature comparison, and subscription status
    - Wire the Free-tier CTA to `POST /api/v2/billing/checkout`
    - Wire the Standard-tier portal action to `POST /api/v2/billing/portal`
-   - Keep x402 out of the live recurring billing card for this milestone; if mentioned at all, present it as a future agent-payment capability card
+   - Keep non-subscription payment products out of the live recurring billing card for this milestone; if mentioned at all, present them as future capabilities tracked in Phase 3D
 
 7. **Land tests with each slice**
    - `packages/sps-server`: summary contract, RBAC, billing portal edge cases, and provider-agnostic response shape
    - `packages/dashboard`: `QuotaMeter`, summary rendering, admin-only billing access, and checkout/portal CTA states
    - End-to-end: admin home summary, Stripe checkout handoff, and portal launch behavior
 
-#### Provider Architecture Split
+#### Recurring Billing Architecture
 
-The billing backend is split into two distinct abstraction layers to handle both traditional fiat subscriptions and autonomous agent payments:
+The Milestone 5 billing backend stays focused on the recurring workspace subscription surface:
 
 1. **`SubscriptionProvider` interface (e.g., Stripe, Lemonsqueezy):**
    Handles human checkout, recurring workspace subscriptions, customer portal sessions, and asynchronous webhook events.
@@ -405,14 +395,7 @@ The billing backend is split into two distinct abstraction layers to handle both
    }
    ```
 
-2. **`X402Provider` / Facilitator Client (e.g., Coinbase CDP):**
-   Handles HTTP-native quote/verification/settlement for autonomous agent payments. In v1, x402 is not a workspace subscription provider and does not back the human billing portal.
-   ```typescript
-   interface X402Provider {
-     verifyPayment(payload: PaymentPayload, details: PaymentDetails): Promise<VerificationResult>;
-     settlePayment(payload: PaymentPayload, details: PaymentDetails): Promise<SettlementResult>;
-   }
-   ```
+Autonomous request payments and hosted crypto checkout are tracked separately in [Phase 3D - Autonomous Payments & Crypto Billing](Phase%203D%20-%20Autonomous%20Payments%20%26%20Crypto%20Billing.md).
 
 ##### DB schema changes (migration `007_billing_provider`)
 
@@ -421,7 +404,7 @@ The billing backend is split into two distinct abstraction layers to handle both
 - Added `billing_provider TEXT` column for the recurring subscription provider (for example `'stripe'`, later `'lemonsqueezy'`)
 - PostgreSQL `RENAME COLUMN` preserves existing unique indexes from `005_billing.sql`
 - Existing Stripe rows are backfilled with `billing_provider = 'stripe'`
-- x402 payment state is stored separately in its own ledger / allowance tables and does not set workspace `billing_provider`
+- non-subscription payment state is stored separately and does not set workspace `billing_provider`
 
 ##### API response shape change
 
@@ -442,7 +425,7 @@ All billing API responses now return provider-agnostic field names:
 - **Upgrade button** (Free tier only): calls `POST /api/v2/billing/checkout` → redirects to Payment Checkout
 - **Manage subscription link** (Subscription-backed Standard tier): opens Billing Provider Portal using an auto-generated portal session URL
 - **Subscription status badge**: active, past_due, canceled, etc.
-- If the workspace later gains a non-subscription paid product, show that separately from the recurring subscription card instead of forcing portal semantics onto x402
+- If the workspace later gains a non-subscription paid product, show that separately from the recurring subscription card instead of forcing portal semantics onto recurring billing
 - RBAC: only `workspace_admin` can access this page in the MVP
 
 #### Quota Usage Section (on Dashboard home page)
@@ -467,422 +450,12 @@ All billing API responses now return provider-agnostic field names:
 
 ---
 
-### Milestone 6: x402 (HTTP 402) Autonomous Agent Payments
+### Follow-On Phase Split
 
-Implement zero-human-in-the-loop payment flows for agent requests using the [x402.org](https://www.x402.org/) open standard (v2). Phase 3B starts with x402 as a per-request overage payment path for agent-authenticated routes after a free monthly cap is exhausted. Future phases may add one-time x402 products (for example request bundles or a fixed-duration Standard pass) and only later revisit true x402 recurring subscriptions.
+Phase 3B ends at the recurring billing and quota dashboard. Follow-on work is intentionally tracked elsewhere:
 
-#### x402 Protocol Overview
-
-x402 is an HTTP-native payment standard. When a resource requires payment, the server responds with `402 Payment Required` and a `PAYMENT-REQUIRED` header. The client constructs a payment payload and retries with a `PAYMENT-SIGNATURE` header. Settlement is handled by an x402 **facilitator** (e.g., Coinbase CDP) — SPS never interacts with blockchain directly. In the MVP, pricing is defined internally in **USD cents** and quoted to agents using **USDC on Base Sepolia** so operator budgets stay predictable during development. For v1, SPS uses a fixed `1 USD = 1 USDC` quote ratio.
-
-#### x402 Protocol Flow
-
-The payment intercept happens on selected **agent-authenticated** routes once the free monthly exchange cap is exhausted, starting with `POST /api/v2/secret/exchange/request`.
-- **Free-tier workspaces, under monthly cap**: request proceeds normally.
-- **Free-tier workspaces, monthly cap exhausted**: server responds with `402 Payment Required`.
-- **Paid (Standard) workspaces**: server skips the x402 payment gate and allows the request to proceed.
-- **If the agent does not pay, payment verification fails, settlement fails, the agent is out of allowance, or no allowance is configured**: SPS denies the request and does not release the paid resource.
-
-```mermaid
-sequenceDiagram
-    participant Agent as 🤖 Agent B (Client)
-    participant SPS as 🔒 SPS (Resource Server)
-    participant Facilitator as 💳 x402 Facilitator
-    participant Chain as ⛓️ Blockchain
-
-    Agent->>SPS: POST /api/v2/secret/exchange/request
-    SPS->>SPS: Check workspace monthly free exchange usage & tier
-    SPS->>SPS: Free tier over monthly cap → Determine cost ($0.05 flat platform fee)
-    SPS-->>Agent: 402 Payment Required + PAYMENT-REQUIRED header
-    Agent->>Agent: Check agent allowance budget (fiat equivalent)
-    Agent->>Agent: Construct PaymentPayload (sign tx)
-    Agent->>SPS: POST /api/v2/secret/exchange/request + PAYMENT-SIGNATURE + payment-identifier
-    SPS->>Facilitator: POST /verify {paymentPayload, paymentDetails}
-    Facilitator-->>SPS: VerificationResponse (valid/invalid)
-    SPS->>SPS: Lock agent allowance row + reserve/debit quoted USD budget
-    SPS->>Facilitator: POST /settle {paymentPayload, paymentDetails}
-    Facilitator->>Chain: Submit transaction
-    Facilitator-->>SPS: SettlementResponse {txHash, status}
-    SPS->>SPS: Record in x402_transactions
-    SPS->>SPS: Create exchange only after settlement succeeds
-    SPS-->>Agent: 200 OK + {exchange_id, token} + PAYMENT-RESPONSE header
-```
-
-#### SPS as Resource Server
-
-SPS acts as the x402 **resource server**. Payment-gated routes respond with `402 Payment Required` when:
-- The request requires payment (e.g., free-tier monthly cap exhausted).
-- No valid `PAYMENT-SIGNATURE` header is present.
-
-Cost determination is handled entirely by SPS providing a flat, hardcoded service fee for all resource types. In v1:
-- Free-tier workspaces receive **10 free exchange requests per workspace per UTC calendar month**
-- Overage exchange requests are billed at a flat **$0.05 USD** each
-- SPS quotes only **USDC on Base Sepolia** using the CAIP-2 network id `eip155:84532`
-- SPS keeps the source-of-truth price in USD cents internally and uses a fixed `1 USD = 1 USDC` quote ratio
-
-This can be expanded later to support dynamic routing, mainnet networks, additional assets, or fulfiller-defined prices if needed.
-
-To stay aligned with x402 best practice, SPS also requires a `payment-identifier` for paid requests and treats it as the idempotency key for retries.
-
-The `PAYMENT-REQUIRED` header contains base64-encoded JSON:
-
-```json
-{
-  "accepts": [
-    {
-      "scheme": "exact",
-      "network": "eip155:84532",
-      "maxAmountRequired": "50000",
-      "resource": "secret_exchange:abc123",
-      "description": "Secret exchange retrieval",
-      "payTo": "0x..."
-    }
-  ],
-  "x402Version": 2
-}
-```
-
-In addition to the x402-standard payment fields, SPS includes internal metadata with the quoted USD amount and quote expiry so the agent SDK can enforce allowance rules locally before signing.
-
-#### Facilitator Integration
-
-SPS delegates payment verification and settlement to an external x402 facilitator behind an internal `X402Provider` abstraction:
-
-| Step | SPS Action | Facilitator |
-|------|-----------|-------------|
-| **Verify** | `POST {facilitatorUrl}/verify` with `{paymentPayload, paymentDetails}` | Validates the payment payload against the requirements |
-| **Settle** | `POST {facilitatorUrl}/settle` with `{paymentPayload, paymentDetails}` | Submits to blockchain, returns `txHash` |
-
-The facilitator URL is configured via `SPS_X402_FACILITATOR_URL` env var. In test environments, a mock provider can be injected. Phase 3B v1 targets the x402 development flow on Base Sepolia only; mainnet support is deferred until later.
-
-#### Expansion Path for Paid Products
-
-- **v1 (Phase 3B MVP)**: x402 supports per-request overage payments only. Workspace recurring subscriptions remain owned by `SubscriptionProvider`.
-- **v1.5 (optional follow-on)**: add one-time x402 products such as request bundles or a fixed-duration `standard_pass_30d`. These are tracked as standalone entitlements, not recurring subscriptions, and should not imply Billing Portal access.
-- **v2+ (future)**: evaluate true x402 recurring subscriptions only if there is strong demand and a clean portal / lifecycle story.
-
-#### Agent Allowances (Budget Enforcement)
-
-Admins configure per-agent monthly spending budgets using **fiat equivalents** (USD cents). SPS enforces these fiat-based allowances server-side as a safety net. The agent SDK checks its remaining fiat allowance before signing a payment payload, ensuring operators are not surprised by fluctuating crypto exchange rates during high-frequency execution. In v1, the allowance check and debit are atomic against the quoted USD amount.
-
-Allowance behavior for v1:
-- **Deny by default**: if no allowance row exists for the requesting agent, SPS denies the paid request
-- Budgets are configured only for enrolled agents in the workspace
-- Budgets reset on the **UTC calendar month boundary**
-- Reset is handled lazily on allowance reads/writes when `budget_reset_at <= now()`
-- Failed verify/settle attempts roll back any reserved spend immediately
-
-#### [NEW] Database Tables
-
-```sql
--- Agent spending budgets
-CREATE TABLE IF NOT EXISTS agent_allowances (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id),
-  agent_id TEXT NOT NULL,
-  monthly_budget_cents BIGINT NOT NULL DEFAULT 0,
-  current_spend_cents BIGINT NOT NULL DEFAULT 0,
-  budget_reset_at TIMESTAMPTZ NOT NULL DEFAULT date_trunc('month', now()) + INTERVAL '1 month',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (workspace_id, agent_id)
-);
-
--- x402 transaction ledger
-CREATE TABLE IF NOT EXISTS x402_transactions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workspace_id UUID NOT NULL REFERENCES workspaces(id),
-  agent_id TEXT NOT NULL,
-  payment_id TEXT NOT NULL,
-  request_hash TEXT NOT NULL,
-  quoted_amount_cents BIGINT NOT NULL,
-  quoted_currency TEXT NOT NULL DEFAULT 'USD',
-  quoted_asset_symbol TEXT NOT NULL DEFAULT 'USDC',
-  quoted_asset_amount TEXT NOT NULL,
-  scheme TEXT NOT NULL,          -- e.g., 'exact', 'exact-evm'
-  network_id TEXT NOT NULL,      -- e.g., 'eip155:84532'
-  resource_type TEXT NOT NULL,   -- e.g., 'secret_exchange', 'tier_upgrade'
-  resource_id TEXT,              -- exchange_id or null
-  tx_hash TEXT,                  -- blockchain transaction hash from facilitator
-  facilitator_url TEXT,          -- which facilitator verified/settled
-  quote_expires_at TIMESTAMPTZ,
-  status TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending', 'verified', 'settled', 'failed')),
-  settled_at TIMESTAMPTZ,
-  response_cache JSONB,
-  response_cache_expires_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (workspace_id, payment_id)
-);
-
--- Monthly free exchange tracking for free-tier workspaces
-CREATE TABLE IF NOT EXISTS workspace_exchange_usage (
-  workspace_id UUID NOT NULL REFERENCES workspaces(id),
-  usage_month DATE NOT NULL,
-  free_exchange_used INTEGER NOT NULL DEFAULT 0,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (workspace_id, usage_month)
-);
-
--- Lease table for per-agent x402 serialization
-CREATE TABLE IF NOT EXISTS x402_inflight (
-  workspace_id UUID NOT NULL REFERENCES workspaces(id),
-  agent_id TEXT NOT NULL,
-  payment_id TEXT NOT NULL,
-  lease_expires_at TIMESTAMPTZ NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (workspace_id, agent_id),
-  UNIQUE (workspace_id, payment_id)
-);
-```
-
-`payment_id` uniqueness is scoped to the workspace rather than being globally unique. This avoids cross-workspace collisions or accidental denial-of-service if a client reuses an idempotency key that exists in another tenant.
-
-#### x402 Middleware (Fastify `preHandler`)
-
-Payment-gated routes use a Fastify `preHandler` hook:
-
-1. Check if route is payment-gated (via route metadata)
-2. For free-tier workspaces, check monthly free exchange usage for the current UTC month
-3. If the workspace is still within the free cap → proceed without x402
-4. If payment is required and no `PAYMENT-SIGNATURE` header is present → return `402` with `PAYMENT-REQUIRED`
-5. Require `payment-identifier` for paid requests and reuse it as the idempotency key
-6. Acquire an `(workspace_id, agent_id)` lease from `x402_inflight`; if another payment is active, return `409 payment_in_progress`
-7. If header present → decode and verify via facilitator `/verify`
-8. If valid → lock the allowance row, lazily reset it if needed, and reserve/debit the quoted USD amount atomically
-9. Settle via facilitator `/settle`
-10. If settlement succeeds → call the handler / create the paid resource, record transaction in `x402_transactions`, cache the successful response, and return `PAYMENT-RESPONSE`
-11. If settlement fails → roll back the reserved budget, mark the transaction failed, release the lease, and deny the request
-
-For v1 safety, SPS serializes x402 payment attempts per `(workspace_id, agent_id)` using the `x402_inflight` lease table rather than holding a database transaction open across settlement. If a second payment-gated request arrives while another x402 settlement is in progress for the same agent, SPS returns `409 payment_in_progress`.
-
-If the same `payment-identifier` is retried with the same logical request after a successful settlement, SPS returns the cached success response. SPS stores a `request_hash` alongside the transaction so that if the same `payment-identifier` is reused with different request contents, SPS returns `409`.
-
-SPS must not tie settlement/finalization to the Fastify request abort signal. If the client disconnects after payment begins, SPS still completes settlement, records the transaction, and creates the exchange resource. The agent can recover the result by retrying with the same `payment-identifier`.
-
-For v1, use a concrete lease and timeout policy:
-- `x402_inflight` lease duration: **60 seconds**
-- Facilitator client timeout: **20 seconds per verify/settle call**
-- Lease is always released on success/failure, and expired leases may be reclaimed on the next attempt
-
-This keeps external call timeouts shorter than the lease window while avoiding stale long-lived locks.
-
-#### Dashboard Integration (`/billing`)
-
-- **Agent Allowances table**: admins set monthly spend limits per enrolled agent
-- **Per-agent spend view**: current spend, remaining budget, and next reset date
-- **x402 Transactions ledger**: paginated list of all autonomous payments with agent filter, `txHash`, quoted USD amount, quoted asset amount, status
-
-Idempotency cache retention:
-- `response_cache` exists only to support paid-request retries
-- Keep cached responses for **30 days**, then clear the cached payload while retaining the core ledger row
-- Cleanup can run as a lightweight scheduled task or piggyback on an existing retention job
-
-#### [NEW] Backend Endpoints
-
-| Endpoint | Auth | Behavior |
-|----------|------|----------|
-| `POST /api/v2/billing/allowances` | User JWT (admin) | Set or update an agent's monthly x402 budget |
-| `GET /api/v2/billing/allowances` | User JWT (admin) | List budgets and current spend per agent |
-| `GET /api/v2/billing/x402/transactions` | User JWT (admin) | Paginated ledger of x402 payments |
-
-#### New Environment Variables
-
-| Variable | Used By | Purpose |
-|----------|---------|---------|
-| `SPS_X402_FACILITATOR_URL` | sps-server | x402 facilitator base URL for `/verify` and `/settle` |
-| `SPS_X402_PAY_TO_ADDRESS` | sps-server | Wallet address for receiving x402 payments |
-| `SPS_X402_ENABLED` | sps-server | Enable x402 payment-gated routes (default: disabled) |
-| `SPS_X402_PRICE_USD_CENTS` | sps-server | Flat overage price per paid exchange request (default: `5`) |
-| `SPS_X402_FREE_EXCHANGE_MONTHLY_CAP` | sps-server | Free-tier workspace monthly free exchange cap (default: `10`) |
-| `SPS_X402_NETWORK_ID` | sps-server | x402 v1 development network id (default: `eip155:84532`) |
-
-**Acceptance**: A free-tier workspace can create up to 10 exchange requests per UTC calendar month before SPS returns `402 Payment Required`. An agent can autonomously negotiate and pay `$0.05` in USDC on Base Sepolia using the x402.org v2 flow within its admin-defined budget after that cap is exhausted. Admins can configure per-agent allowances, view per-agent spend, and see transaction history in the dashboard. SPS settles payment before releasing the paid resource, requires `payment-identifier` idempotency, denies paid requests by default when no allowance exists, and serializes concurrent x402 payments safely.
-
----
-
-### Milestone 7: Analytics & Advanced Abuse Controls
-
-Add workspace-level operational metrics and strengthen signup/auth abuse protections with **advanced abuse controls**.
-
-#### Analytics Page (`/analytics`)
-
-Metadata-minimized, zero-knowledge-preserving workspace metrics:
-
-- **Request volume**: daily secret request count over last 30 days (bar chart)
-- **Exchange metrics**: successful vs. failed/expired/denied exchanges over last 30 days
-- **Active agents**: count of agents that minted a JWT in the last 24 hours
-
-#### [NEW] [services/analytics.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/services/analytics.ts)
-
-Backend aggregate queries over the `audit_log` table, scoped by `workspace_id`:
-
-- `getRequestVolume(workspaceId, days)` → daily counts of `request_created` events
-- `getExchangeMetrics(workspaceId, days)` → daily counts grouped by terminal status
-- `getActiveAgentCount(workspaceId, hours)` → distinct `actor_id` where `actor_type = 'agent'`
-
-All queries return counts and timestamps only — never secret names, agent identifiers beyond counts, or ciphertext.
-Analytics in Phase 3B is intentionally limited to business-event telemetry sourced from audit events; HTTP response-class metrics and infrastructure telemetry are out of scope.
-
-#### [NEW] [routes/analytics.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/routes/analytics.ts)
-
-| Endpoint | Auth | Behavior |
-|----------|------|----------|
-| `GET /api/v2/analytics/requests` | User JWT (admin/operator) | Daily request volume for last N days |
-| `GET /api/v2/analytics/exchanges` | User JWT (admin/operator) | Daily exchange outcome metrics |
-| `GET /api/v2/analytics/agents` | User JWT (admin/operator) | Active agent count |
-
-RBAC: `workspace_viewer` cannot access analytics in the MVP — analytics visibility may expand later.
-
-#### Advanced Abuse Controls
-
-Strengthen protections beyond Phase 3A's per-IP rate limiting:
-
-##### [MODIFY] Frontend: Cloudflare Turnstile Integration
-
-- Add Turnstile challenge widget to `Register.tsx` and `Login.tsx` pages
-- Dashboard sends the Turnstile response token with the auth request
-- Backend validates the token server-side via Turnstile's `/siteverify` API before processing registration/login
-
-##### [MODIFY] [routes/auth.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/routes/auth.ts)
-
-- Add optional `cf_turnstile_response` field to register/login request bodies
-- When `SPS_TURNSTILE_SECRET` env var is set, validate the token against the Cloudflare Turnstile API before auth processing
-- When not set, skip challenge verification (backward compatible for local/dev)
-
-##### [MODIFY] [middleware/rate-limit.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/middleware/rate-limit.ts)
-
-- Add anomaly burst detection: if a single workspace exceeds 5× its tier quota within a sliding hour window, emit an `abuse_alert` audit event and temporarily throttle to 1 req/min for that workspace
-- Workspace-level throttle is self-clearing after the hour window passes
-
-**Acceptance**: Analytics page renders business-event charts for request volume, exchange outcomes, and active agents. Turnstile challenge blocks automated signup in hosted mode. Burst anomaly detection throttles and logs abuse attempts.
-
----
-
-### Milestone 8: SDKs, Documentation & Community
-
-Make the platform accessible to developers who aren't reading source code.
-
-#### Language SDKs
-
-Publish officially supported SDK packages that wrap the SPS API. **Node.js first**, then Python and Go.
-
-| SDK | Package Name | Key Capabilities |
-|-----|-------------|-----------------|
-| **Node.js** | `@agent-kryptos/sdk` | Published from existing `packages/agent-skill` with documentation, types, and npm release |
-| **Python** | `agent-kryptos` (PyPI) | HPKE keygen, secret request/retrieve, exchange request/fulfill/retrieve, bootstrap auth |
-| **Go** | `github.com/tuthan/agent-kryptos-go` | Same capabilities as Python SDK |
-
-All SDKs must support:
-- Bootstrap API key → JWT minting flow
-- HPKE key generation and secret decryption
-- Human→Agent: `requestSecret()`, `retrieveSecret()`
-- Agent→Agent: `requestExchange()`, `fulfillExchange()`, `submitExchange()`, `retrieveExchange()`
-- In-memory-only secret storage with explicit zeroing
-
-#### Documentation
-
-| Document | Location | Content |
-|----------|----------|---------|
-| API Reference | `docs/api/` | OpenAPI 3.0 spec for all SPS routes, auto-generated from route schemas where possible |
-| Quick Start | `docs/guides/quickstart.md` | 5-minute guide: register workspace → enroll agent → deliver first secret |
-| Identity Bootstrap | `docs/guides/identity.md` | How to get an `ak_` key, mint JWTs, configure agent-skill |
-| Policy Configuration | `docs/guides/policy.md` | Trust rings, secret registry, exchange policies, approval workflows |
-| Self-Hosting | `docs/guides/self-hosting.md` | Docker Compose guide with env var reference and reverse proxy setup |
-
-#### Docker Compose Community Guide
-
-Sanitize and publish the production Docker Compose setup:
-
-- Remove operator-specific details
-- Add `.env.example` with all required variables and sensible defaults
-- Add `Makefile` with `make up`, `make down`, `make logs`, `make migrate` targets
-- Include clear README with prerequisites (Docker, domain, DNS)
-
-#### [MODIFY] [Brainstorm Secure Secret System.md](file:///home/hvo/Projects/agent-kryptos/docs/architecture/Brainstorm%20Secure%20Secret%20System.md) Roadmap Section
-
-Update the Phase 3B items to reflect the 8-milestone breakdown and mark items as they are completed.
-
-**Acceptance**: Node.js SDK publishes to npm. Python and Go SDKs install and complete the bootstrap → secret delivery flow against a running SPS instance. API documentation covers all Phase 3A + 3B routes. Docker Compose community guide brings up a working stack from scratch.
-
----
-
-### Milestone 9: Hosted Deployment & Domain Cutover
-
-Stand up the production deployment with proper domains and TLS. All services become reachable at their public URLs. This is the final milestone — all dashboard features are complete and tested locally before going live.
-
-#### Deployment Architecture
-
-| Subdomain | Service | Container |
-|-----------|---------|-----------|
-| `sps.atas.tech` | SPS API | `ghcr.io/tuthan/agent-kryptos-sps-server` |
-| `secret.atas.tech` | Browser UI (zero-knowledge sandbox) | `ghcr.io/tuthan/agent-kryptos-browser-ui` |
-| `app.atas.tech` | Operator Dashboard | `ghcr.io/tuthan/agent-kryptos-dashboard` |
-
-Reverse proxy and TLS are handled by the operator's existing Unraid reverse proxy (e.g., Nginx Proxy Manager, Traefik, or whatever is already in use). No bundled reverse proxy is included — this follows the same pattern as the existing Unraid deployment guide.
-
-#### [NEW] [routes/health.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/routes/health.ts)
-
-| Endpoint | Auth | Behavior |
-|----------|------|----------|
-| `GET /healthz` | None | Returns `200` if server is up |
-| `GET /readyz` | None | Returns `200` if PostgreSQL + Redis are reachable; `503` otherwise |
-
-Health checks are used by Docker `HEALTHCHECK` and by the reverse proxy for upstream readiness.
-
-#### [MODIFY] [.github/workflows/build-and-push-images.yml](file:///home/hvo/Projects/agent-kryptos/.github/workflows/build-and-push-images.yml)
-
-- Add `dashboard` image build target (`ghcr.io/tuthan/agent-kryptos-dashboard`)
-- Pin `VITE_SPS_API_URL=https://sps.atas.tech` for production browser-ui and dashboard builds
-
-#### [MODIFY] [docs/deployment/Unraid.md](file:///home/hvo/Projects/agent-kryptos/docs/deployment/Unraid.md)
-
-- Add Dashboard container template reference
-- Update domain examples to `sps.atas.tech`, `secret.atas.tech`, `app.atas.tech`
-- Document reverse proxy configuration for the three domains
-- Add `SPS_HOSTED_MODE`, `SPS_TURNSTILE_SECRET`, and other Phase 3B env vars
-
-#### [NEW] [deploy/unraid/agent-kryptos-dashboard.xml](file:///home/hvo/Projects/agent-kryptos/deploy/unraid/agent-kryptos-dashboard.xml)
-
-Unraid Docker template for the dashboard SPA container.
-
-#### DNS Setup
-
-Create A or CNAME records for `sps.atas.tech`, `secret.atas.tech`, and `app.atas.tech` pointing to the Unraid host. TLS is managed by the operator's reverse proxy (Nginx Proxy Manager with Let's Encrypt, or equivalent).
-
-#### Gateway Allowlist Update
-
-Update the SPS egress URL filter allowlist to match the production domains:
-- Secret input sandbox: `https://secret.atas.tech/*`
-- Dashboard: `https://app.atas.tech/*` (if links are ever sent in chat)
-
-**Acceptance**: All three subdomains serve over HTTPS with valid TLS. Health checks pass. Existing SPS operations work at the new URLs. Dashboard login/registration flow completes successfully against the production API. Gateway egress URL allowlist is verified.
-
----
-
-## Infrastructure Changes
-
-#### Container Images
-
-| Image | Source | Notes |
-|-------|--------|-------|
-| `ghcr.io/tuthan/agent-kryptos-sps-server` | Existing | Add health check endpoints + analytics routes |
-| `ghcr.io/tuthan/agent-kryptos-browser-ui` | Existing | Rebuild with production `VITE_SPS_API_URL` |
-| `ghcr.io/tuthan/agent-kryptos-dashboard` | New | Vite build, served via lightweight static server |
-| `postgres:16-alpine` | Upstream | Production credentials via env |
-| `redis:7-alpine` | Upstream | Unchanged |
-
-#### New Environment Variables
-
-| Variable | Used By | Purpose |
-|----------|---------|---------|
-| `SPS_TURNSTILE_SECRET` | sps-server | Cloudflare Turnstile server-side validation key |
-| `VITE_TURNSTILE_SITE_KEY` | dashboard | Turnstile widget site key (public, baked into build) |
-| `BILLING_PORTAL_RETURN_URL` | sps-server | URL to redirect after billing portal session (default: `https://app.atas.tech/billing`) |
-| `VITE_SPS_API_URL` | dashboard, browser-ui | SPS API base URL (baked at build time) |
-| `SPS_X402_FACILITATOR_URL` | sps-server | x402 facilitator base URL for `/verify` and `/settle` |
-| `SPS_X402_PAY_TO_ADDRESS` | sps-server | Wallet address for receiving x402 payments |
-| `SPS_X402_ENABLED` | sps-server | Enable x402 payment-gated routes (default: disabled) |
+- **Phase 3D**: autonomous request payments and hosted crypto billing
+- **Phase 3E**: analytics and abuse hardening, SDK/docs/community work, and hosted deployment + domain cutover
 
 ---
 
@@ -933,38 +506,6 @@ npm test --workspace=packages/dashboard
 - Billing API responses use `billing_provider`, `provider_customer_id`, `provider_subscription_id`
 - Quota meter component renders correct percentages and color states
 
-#### Milestone 6: `x402.test.ts` (sps-server)
-- Free-tier workspace gets 10 free exchange requests per UTC calendar month before the route returns `402` with `PAYMENT-REQUIRED`
-- `PAYMENT-REQUIRED` payload uses `eip155:84532` and quotes `$0.05` / `0.05 USDC`
-- Agent retry with valid `PAYMENT-SIGNATURE` and `payment-identifier` succeeds after facilitator verify/settle
-- Agent exceeding configured budget is denied (allowance check fails), and missing allowance rows deny paid requests by default
-- A second concurrent x402 payment attempt for the same agent returns `409 payment_in_progress`
-- Idempotent retry with the same `payment-identifier` returns the cached success response without double-charging
-- `GET /api/v2/billing/allowances` returns accurate spend per agent
-- `GET /api/v2/billing/x402/transactions` returns paginated ledger
-- SPS records quoted USD + asset amounts and settles before releasing the paid resource
-
-#### Milestone 7: `analytics.test.ts` (sps-server)
-- `getRequestVolume` returns correct daily counts from audit_log
-- `getExchangeMetrics` groups by terminal status correctly
-- `getActiveAgentCount` counts distinct actors within time window
-- Analytics endpoints return only caller-workspace data
-- Turnstile validation rejects invalid tokens (mocked API)
-- Burst anomaly detection triggers workspace throttle after 5× quota
-
-#### Milestone 8: SDK integration tests
-- Node.js SDK: bootstrap → request secret → retrieve flow against test SPS
-- Python SDK: same flow
-- Go SDK: same flow
-- OpenAPI spec validates against running server responses
-
-#### Milestone 9: `health.test.ts` (sps-server)
-- `GET /healthz` returns `200`
-- `GET /readyz` returns `200` when both PostgreSQL and Redis are reachable
-- `GET /readyz` returns `503` when PostgreSQL is down (mocked)
-- Production image builds pass CI
-- All three subdomains resolve and serve with valid TLS
-
 ### Manual Verification
 
 1. **Design review** (Milestone 1): Review all Stitch designs in the Stitch project for visual consistency, completeness, and brand alignment
@@ -972,10 +513,6 @@ npm test --workspace=packages/dashboard
 3. **Agent enrollment** (Milestone 3): Enroll an agent → see `ak_` key → dismiss → verify key is no longer visible → use key to mint JWT → hit SPS endpoint
 4. **Audit viewing** (Milestone 4): Perform several secret requests → open audit page → verify events appear with correct filters → drill into exchange lifecycle
 5. **Billing flow** (Milestone 5): Free-tier workspace → click upgrade → complete Payment test checkout → verify tier badge changes → click "Manage Subscription" → verify Billing portal opens
-6. **x402 Payments** (Milestone 6): Exhaust a free-tier workspace's 10 monthly free exchanges → configure per-agent budget → trigger 402 flow → verify agent pays `$0.05` on Base Sepolia and receives secret → verify spend increments in dashboard
-7. **Analytics** (Milestone 7): Generate traffic over several days → verify charts render on analytics page → attempt rapid-fire signups → verify Turnstile challenge appears
-8. **SDK quickstart** (Milestone 8): Follow the quickstart guide from scratch on a clean machine → verify first secret delivery succeeds
-9. **Production** (Milestone 9): Deploy all containers to Unraid → verify all three subdomains serve via HTTPS → complete a full register → enroll agent → deliver secret flow at production URLs
 
 ---
 
@@ -986,17 +523,10 @@ npm test --workspace=packages/dashboard
 - **Design workflow** → All screens designed first in Stitch (MCP), then implemented by extracting HTML/Tailwind CSS and adapting into React components
 - **Dashboard home** → admin-only. Operators land on Agents; viewers land on Audit.
 - **Browser-UI isolation** → `browser-ui` (zero-knowledge sandbox) and `dashboard` (control plane) are separate packages, separate containers, separate domains; they share no runtime code or session state
-- **Reverse proxy** → Operator-managed (Nginx Proxy Manager, Traefik, etc. on Unraid); no bundled reverse proxy
-- **Turnstile** → Cloudflare Turnstile for signup/login challenge; behind an env-var gate so local/dev skips it
-- **Analytics scope** → Business-event counts and timestamps only; never exposes secret names, ciphertext, token values, specific agent identifiers, or HTTP response-class telemetry
-- **SDK priority** → Node.js first (existing `agent-skill` code), then Python, then Go
-- **API documentation** → OpenAPI 3.0 spec; hand-written initially, auto-generation deferred
-- **Domain strategy** → `app.atas.tech` for dashboard, `secret.atas.tech` for sandbox, `sps.atas.tech` for API
-- **Billing architecture** → Split architecture: `SubscriptionProvider` handles recurring workspace subscriptions (Stripe today) and webhooks. `X402Provider` handles agent-payment verify/settle flows only. DB columns renamed from `stripe_*` to `billing_provider_*`, and x402 ledger data stays in separate x402-specific tables.
-- **x402 protocol** → Follows [x402.org](https://www.x402.org/) v2 standard. Phase 3B starts with per-request agent overage payments after a free-tier workspace monthly cap of 10 exchange requests is exhausted on selected agent routes; paid workspaces bypass this. SPS prices in USD cents internally, charges `$0.05` per overage request, quotes USDC on Base Sepolia (`eip155:84532`) using a fixed `1 USD = 1 USDC` ratio in v1, requires `payment-identifier` idempotency, settles before releasing the resource, and serializes concurrent x402 payments per agent.
+- **Recurring billing architecture** → `SubscriptionProvider` handles recurring workspace subscriptions (Stripe today) and webhooks. Provider-facing wire fields stay provider-agnostic (`billing_provider_*`). Autonomous payments and hosted crypto checkout are tracked in Phase 3D.
 - **Dashboard auth token storage** → refresh token in `localStorage`, access token in memory only; accept the XSS trade-off for MVP simplicity with CSP headers as mitigation. **Note: We must revisit this and evaluate migrating to `httpOnly` cookies before wide / GA go-live.**
 - **Force-password-change UX** → dashboard redirects to `/change-password` before allowing any other navigation when `fpc=true`
-- **Development order** → local-first; all dashboard features developed and tested locally before any production deployment (Milestone 9 is last)
+- **Phase boundary** → Phase 3B ends once the core operator dashboard and recurring billing admin UX are complete. Hardening, ecosystem, and launch work live in Phase 3E.
 
 ### Suggested Work Breakdown
 
@@ -1005,7 +535,3 @@ npm test --workspace=packages/dashboard
 3. Agent enrollment + member management + settings UI
 4. Audit log viewer + exchange timeline + approvals inbox
 5. Billing page + quota meters + Stripe portal integration
-6. x402 autonomous agent payments backend + budget UI
-7. Analytics backend + dashboard charts + Turnstile + burst detection
-8. Node.js SDK publish + Python SDK + Go SDK + docs + community guide
-9. Hosted deployment + domain cutover + health checks

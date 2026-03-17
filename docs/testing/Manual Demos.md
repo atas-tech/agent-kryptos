@@ -14,6 +14,8 @@ This flow triggers when an exchange request requires human intervention accordin
   SPS_EXCHANGE_POLICY_JSON='[{"ruleId": "require-human", "secretName": "restricted.secret", "mode": "pending_approval"}]'
   ```
 
+This env-based setup is appropriate for local and self-hosted demos. In the hosted Phase 3E model, the same policy should be configured per workspace through the dashboard/API rather than by editing server env vars.
+
 ### Steps
 1. **Setup Workspace & Request**: Run the demo script in manual mode:
    `node scripts/demo-a2a.mjs manual`

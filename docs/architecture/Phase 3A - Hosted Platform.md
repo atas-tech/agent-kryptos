@@ -21,7 +21,7 @@ Build the first hosted SaaS layer on top of the existing SPS core. Multiple cust
 - `2026-03-12`: Milestone 4 implemented with the `enrolled_agents` migration, hosted agent bootstrap API key enrollment and JWT minting routes, workspace member management, shared RBAC helpers, owner-verification gating for higher-risk hosted actions, and PostgreSQL integration coverage in `tests/agents-routes.test.ts`
 - `2026-03-12`: Milestone 5 implemented with the `005_billing.sql` workspace billing state migration, Stripe-backed checkout/webhook routes, mocked Stripe integration coverage in `tests/billing.test.ts`, and free-vs-standard quota enforcement for secret requests, enrolled agents, workspace members, and exchange availability
 - `2026-03-12`: Milestone 6 implemented with reusable per-IP rate limiting for register/login/hosted token minting, durable PostgreSQL-backed audit persistence and query routes, scheduled audit retention cleanup, and PostgreSQL integration coverage in `tests/rate-limit.test.ts`
-- The 6 planned Phase 3A core milestones are now complete. All follow-on operational, UI, and deployment hardening work has been explicitly moved to **Phase 3B**.
+- The 6 planned Phase 3A core milestones are now complete. All follow-on operational, UI, deployment, guest-intake, payment hardening, and ecosystem work has been explicitly moved to **Phase 3B**, **Phase 3C**, **Phase 3D**, and **Phase 3E**.
 
 ---
 

@@ -10,6 +10,10 @@ Implementation plans for each phase of the Agent Kryptos secure secret provision
 | [Phase 2A](Phase%202A%20-%20Agent%20to%20Agent%20Exchange.md) | Pull-Based Agent-to-Agent (Local/Dev) | ✅ Complete |
 | [Phase 2B](Phase%202B%20-%20Production%20A2A.md) | Production Networked Agent-to-Agent | ✅ Largely Complete |
 | [Phase 3A](Phase%203A%20-%20Hosted%20Platform.md) | Hosted Managed Platform | 🚧 In Progress (Core Milestones 1-6 complete) |
+| [Phase 3B](Phase%203B%20-%20UI%20%26%20Operations.md) | Operator Dashboard & Admin UX | ✅ Complete |
+| [Phase 3C](Phase%203C%20-%20Paid%20Guest%20Secret%20Exchange.md) | Paid Guest Secret Exchange | 📝 Planned |
+| [Phase 3D](Phase%203D%20-%20Autonomous%20Payments%20%26%20Crypto%20Billing.md) | Autonomous Payments & Crypto Billing | 🚧 In Progress (Milestone 1 foundation landed) |
+| [Phase 3E](Phase%203E%20-%20Hosted%20Hardening,%20Ecosystem%20%26%20Launch.md) | Hosted Hardening, Ecosystem & Launch | 📝 Planned |
 
 ## Reference
 

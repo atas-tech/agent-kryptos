@@ -70,8 +70,8 @@ Recommended values:
    - `SPS_HMAC_SECRET`: required, strong random value
    - `SPS_UI_BASE_URL`: your public browser UI URL
    - `SPS_AGENT_AUTH_PROVIDERS_JSON`: Optional for hosted/API-key-only deployments. Use this only when SPS must trust self-hosted or external workload JWT issuers via `{name, issuer, audience, jwks_url/jwks_file, require_spiffe}`. This replaces the legacy `SPS_GATEWAY_JWKS_URL` and `SPS_GATEWAY_JWKS_FILE` variables.
-   - `SPS_EXCHANGE_POLICY_JSON`: **(Phase 2B)** optional JSON array defining Agent-to-Agent exchange policies.
-   - `SPS_SECRET_REGISTRY_JSON`: **(Phase 2B)** optional JSON array defining known secrets and their classifications.
+   - `SPS_EXCHANGE_POLICY_JSON`: optional JSON array defining Agent-to-Agent exchange policies for self-hosted bootstrap/default configuration.
+   - `SPS_SECRET_REGISTRY_JSON`: optional JSON array defining known secrets and their classifications for self-hosted bootstrap/default configuration.
 
    Preferred auth path:
    - Hosted agents and local OpenClaw/plugin installs should use agent API keys and `POST /api/v2/agents/token`.
@@ -93,6 +93,10 @@ Recommended values:
 
     Add more providers only if you actually have multiple workload issuers to trust.
     Skip this setting entirely if you are using hosted agent API keys only.
+
+   Policy configuration note:
+   - In self-hosted single-tenant deployments, `SPS_SECRET_REGISTRY_JSON` and `SPS_EXCHANGE_POLICY_JSON` are still valid as startup configuration.
+   - In the hosted Phase 3E model, these env vars are not the per-workspace control plane. Workspace admins manage secret registry and exchange policy through the hosted dashboard/API, and SPS resolves policy by `workspace_id`.
 
 7. If you use `jwks_file` in your JSON config, place the file on Unraid first.
    Recommended host path:
