@@ -6,6 +6,7 @@ import { userJwtSecret } from "../utils/crypto.js";
 import type { Pool, PoolClient } from "pg";
 import { decodePageCursor, encodePageCursor } from "./pagination.js";
 import { isUserRole, type UserRole } from "./rbac.js";
+import { initializeWorkspacePolicy, loadBootstrapWorkspacePolicyFromEnv } from "./workspace-policy.js";
 import type { WorkspaceRecord } from "./workspace.js";
 import { createWorkspace, getWorkspace } from "./workspace.js";
 
@@ -17,6 +18,11 @@ const TEMPORARY_PASSWORD_MIN_LENGTH = 12;
 const WEAK_TEMPORARY_PASSWORDS = new Set(["password123", "password123!", "changeme123", "temporary123"]);
 
 export type UserStatus = "active" | "suspended" | "deleted";
+
+function isHostedModeEnabled(): boolean {
+  const raw = process.env.SPS_HOSTED_MODE?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
 
 interface UserRow {
   id: string;
@@ -458,6 +464,12 @@ export async function registerUser(
     await client.query("BEGIN");
 
     const workspace = await createWorkspace(client, workspaceSlug, displayName, null);
+    if (isHostedModeEnabled()) {
+      await initializeWorkspacePolicy(client, workspace.id, loadBootstrapWorkspacePolicyFromEnv(), {
+        source: "bootstrap"
+      });
+    }
+
     const insertedUser = await client.query<UserRow>(
       `
         INSERT INTO users (email, password_hash, verification_token, workspace_id, role)

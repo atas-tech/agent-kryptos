@@ -134,7 +134,10 @@ describePg("database foundation", () => {
         "003_user_sessions.sql",
         "004_agents.sql",
         "005_billing.sql",
-        "006_audit_log.sql"
+        "006_audit_log.sql",
+        "007_billing_provider.sql",
+        "008_x402.sql",
+        "009_workspace_policy.sql"
       ]);
       expect(secondRun).toEqual([]);
 

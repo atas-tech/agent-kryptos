@@ -19,7 +19,7 @@ Implementation plans for each phase of the Agent Kryptos secure secret provision
 
 | Milestone | Scope | Status |
 |-----------|-------|--------|
-| [Hosted Workspace Policy Foundation](Hosted%20Workspace%20Policy%20Foundation.md) | Workspace-scoped PostgreSQL policy engine and dashboard policy management required before hosted guest-intent flows | 📝 Planned |
+| [Hosted Workspace Policy Foundation](Hosted%20Workspace%20Policy%20Foundation.md) | Workspace-scoped PostgreSQL policy engine and dashboard policy management required before hosted guest-intent flows | ✅ Complete (storage, API, DB-only hosted reads, dashboard UI, and PG integration verification landed) |
 
 ## Reference
 

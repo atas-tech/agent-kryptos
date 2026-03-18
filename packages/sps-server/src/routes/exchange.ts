@@ -13,7 +13,8 @@ import {
   promoteApprovedDecision
 } from "../services/approval.js";
 import { logAudit } from "../services/audit.js";
-import { ExchangePolicyEngine, hashPolicyDecision } from "../services/policy.js";
+import { hashPolicyDecision } from "../services/policy.js";
+import { WorkspacePolicyResolver, WorkspacePolicyServiceError } from "../services/workspace-policy.js";
 import {
   acquireInflightLease,
   buildExchangeQuote,
@@ -204,10 +205,21 @@ function attachApprovalReference(decision: PolicyDecision, approvalReference: st
   };
 }
 
+function sendWorkspacePolicyError(reply: FastifyReply, error: unknown) {
+  if (error instanceof WorkspacePolicyServiceError) {
+    return reply.code(error.statusCode).send({
+      error: error.message,
+      code: error.code
+    });
+  }
+
+  throw error;
+}
+
 export interface ExchangeRoutesOptions extends FastifyPluginOptions {
   store: RequestStore;
   hmacSecret: string;
-  policyEngine: ExchangePolicyEngine;
+  policyResolver: WorkspacePolicyResolver;
   db?: Pool | null;
   quotaService?: QuotaService;
   x402Provider?: X402Provider;
@@ -435,7 +447,8 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
     allowedFulfillerId: string | null;
     approvalRecordStatus?: "pending" | "approved" | "rejected";
   } | null> {
-    const evaluated = opts.policyEngine.evaluate({
+    const resolvedPolicy = await opts.policyResolver.resolve(requesterWorkspaceId);
+    const evaluated = resolvedPolicy.engine.evaluate({
       requesterId,
       requesterWorkspaceId,
       secretName,
@@ -602,13 +615,18 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         }
       }
 
-      const resolvedPolicy = await resolveDecision(
-        agent.sub,
-        agent.workspaceId ?? undefined,
-        secretName,
-        purpose,
-        fulfillerHint
-      );
+      let resolvedPolicy;
+      try {
+        resolvedPolicy = await resolveDecision(
+          agent.sub,
+          agent.workspaceId ?? undefined,
+          secretName,
+          purpose,
+          fulfillerHint
+        );
+      } catch (error) {
+        return sendWorkspacePolicyError(reply, error);
+      }
       if (!resolvedPolicy) {
         await logAudit(opts.db, {
           event: "exchange_denied",
@@ -979,26 +997,38 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         return notAvailable(reply);
       }
 
-      const currentPolicy = opts.policyEngine.evaluate({
-        requesterId: exchange.requesterId,
-        requesterWorkspaceId: exchange.workspaceId,
-        secretName: exchange.secretName,
-        purpose: exchange.purpose,
-        fulfillerHint: agent.sub,
-        fulfillerWorkspaceId: agent.workspaceId ?? undefined
-      });
+      let currentResolvedPolicy;
+      let currentPolicy;
+      try {
+        currentResolvedPolicy = await opts.policyResolver.resolve(exchange.workspaceId);
+        currentPolicy = currentResolvedPolicy.engine.evaluate({
+          requesterId: exchange.requesterId,
+          requesterWorkspaceId: exchange.workspaceId,
+          secretName: exchange.secretName,
+          purpose: exchange.purpose,
+          fulfillerHint: agent.sub,
+          fulfillerWorkspaceId: agent.workspaceId ?? undefined
+        });
+      } catch (error) {
+        return sendWorkspacePolicyError(reply, error);
+      }
       if (!currentPolicy) {
         return reply.code(409).send({ error: "Exchange policy no longer allows fulfillment" });
       }
 
-      const resolvedCurrentPolicy = await resolveDecision(
-        exchange.requesterId,
-        exchange.workspaceId,
-        exchange.secretName,
-        exchange.purpose,
-        agent.sub,
-        agent.workspaceId ?? undefined
-      );
+      let resolvedCurrentPolicy;
+      try {
+        resolvedCurrentPolicy = await resolveDecision(
+          exchange.requesterId,
+          exchange.workspaceId,
+          exchange.secretName,
+          exchange.purpose,
+          agent.sub,
+          agent.workspaceId ?? undefined
+        );
+      } catch (error) {
+        return sendWorkspacePolicyError(reply, error);
+      }
       if (!resolvedCurrentPolicy) {
         return reply.code(409).send({ error: "Exchange policy no longer allows fulfillment" });
       }

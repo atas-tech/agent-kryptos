@@ -89,6 +89,56 @@ export interface X402TransactionListResponse {
   next_cursor: string | null;
 }
 
+export interface WorkspacePolicyValidationIssue {
+  path: string;
+  code: string;
+  message: string;
+}
+
+export interface SecretRegistryEntry {
+  secretName: string;
+  classification: string;
+  description?: string;
+}
+
+export interface ExchangePolicyRule {
+  ruleId: string;
+  secretName: string;
+  requesterIds?: string[];
+  fulfillerIds?: string[];
+  approverIds?: string[];
+  requesterRings?: string[];
+  fulfillerRings?: string[];
+  approverRings?: string[];
+  purposes?: string[];
+  sameRing?: boolean;
+  allowedRings?: string[];
+  mode?: "allow" | "deny" | "pending_approval";
+  approvalReference?: string | null;
+  reason?: string;
+}
+
+export interface WorkspacePolicyRecord {
+  id: string;
+  workspace_id: string;
+  version: number;
+  source: "bootstrap" | "env_seed" | "manual" | "test";
+  secret_registry: SecretRegistryEntry[];
+  exchange_policy: ExchangePolicyRule[];
+  updated_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspacePolicyResponse {
+  policy: WorkspacePolicyRecord;
+}
+
+export interface WorkspacePolicyValidationResponse {
+  valid: boolean;
+  issues: WorkspacePolicyValidationIssue[];
+}
+
 export function getDashboardSummary(): Promise<DashboardSummaryResponse> {
   return apiRequest<DashboardSummaryResponse>("/api/v2/dashboard/summary");
 }
@@ -121,4 +171,29 @@ export function upsertBillingAllowance(input: {
 
 export function listX402Transactions(): Promise<X402TransactionListResponse> {
   return apiRequest<X402TransactionListResponse>("/api/v2/billing/x402/transactions");
+}
+
+export function getWorkspacePolicy(): Promise<WorkspacePolicyResponse> {
+  return apiRequest<WorkspacePolicyResponse>("/api/v2/workspace/policy");
+}
+
+export function validateWorkspacePolicy(input: {
+  secret_registry: SecretRegistryEntry[];
+  exchange_policy: ExchangePolicyRule[];
+}): Promise<WorkspacePolicyValidationResponse> {
+  return apiRequest<WorkspacePolicyValidationResponse>("/api/v2/workspace/policy/validate", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export function updateWorkspacePolicy(input: {
+  expected_version: number;
+  secret_registry: SecretRegistryEntry[];
+  exchange_policy: ExchangePolicyRule[];
+}): Promise<WorkspacePolicyResponse> {
+  return apiRequest<WorkspacePolicyResponse>("/api/v2/workspace/policy", {
+    method: "PATCH",
+    body: JSON.stringify(input)
+  });
 }

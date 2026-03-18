@@ -1060,4 +1060,161 @@
   .resource-label__copy svg {
     @apply transition-transform active:scale-90;
   }
+
+  .policy-layout {
+    @apply grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.9fr)];
+  }
+
+  .policy-table-card {
+    @apply overflow-x-auto;
+  }
+
+  .policy-action-bar {
+    @apply flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between;
+  }
+
+  .policy-input {
+    @apply min-h-[40px] rounded-xl border px-3 py-2 text-sm text-white outline-none;
+    border-color: rgba(0, 245, 212, 0.18);
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .policy-input:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .policy-rule-grid {
+    @apply grid gap-4;
+  }
+
+  .policy-rule-card {
+    border-left-width: 4px;
+  }
+
+  .policy-rule-card--allow {
+    border-left-color: rgba(46, 213, 115, 0.9);
+  }
+
+  .policy-rule-card--pending_approval {
+    border-left-color: rgba(255, 159, 67, 0.9);
+  }
+
+  .policy-rule-card--deny {
+    border-left-color: rgba(255, 71, 87, 0.9);
+  }
+
+  .policy-rule-summary {
+    @apply grid gap-4 rounded-2xl border p-4 md:grid-cols-2 xl:grid-cols-4;
+    border-color: rgba(0, 245, 212, 0.12);
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .policy-summary-block {
+    @apply flex flex-col gap-2;
+  }
+
+  .policy-summary-block span {
+    @apply text-[10px] font-bold uppercase tracking-[0.18em];
+    color: var(--muted);
+  }
+
+  .policy-summary-copy {
+    @apply text-sm leading-6;
+    color: rgba(240, 244, 255, 0.76);
+  }
+
+  .policy-chip-row {
+    @apply flex flex-wrap gap-2;
+  }
+
+  .policy-chip {
+    @apply inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold;
+    border-color: rgba(0, 245, 212, 0.14);
+    background: rgba(0, 245, 212, 0.08);
+    color: var(--primary);
+  }
+
+  .policy-rule-footer {
+    @apply flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between;
+    border-color: rgba(0, 245, 212, 0.12);
+  }
+
+  .policy-callout {
+    @apply mt-4 flex flex-col gap-1 rounded-2xl border px-4 py-4 text-sm;
+    border-color: rgba(0, 245, 212, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .policy-callout span {
+    color: rgba(240, 244, 255, 0.72);
+  }
+
+  .policy-checkbox {
+    @apply inline-flex items-center gap-2 text-sm font-semibold text-white;
+  }
+
+  .policy-checkbox input {
+    accent-color: var(--primary);
+  }
+
+  .policy-issue-list {
+    @apply flex flex-col gap-3;
+  }
+
+  .policy-validation-header {
+    @apply rounded-t-[24px] px-5 py-4;
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .policy-validation-header--issues {
+    background: rgba(255, 71, 87, 0.08);
+    border-bottom: 1px solid rgba(255, 71, 87, 0.18);
+  }
+
+  .policy-issue {
+    @apply flex gap-3 rounded-2xl border px-4 py-3 text-sm;
+    border-color: rgba(0, 245, 212, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    color: rgba(240, 244, 255, 0.78);
+  }
+
+  .policy-issue--danger {
+    border-color: rgba(255, 71, 87, 0.24);
+    background: rgba(255, 71, 87, 0.08);
+  }
+
+  .policy-issue--warning {
+    border-color: rgba(255, 159, 67, 0.24);
+    background: rgba(255, 159, 67, 0.08);
+  }
+
+  .policy-issue__icon {
+    @apply mt-0.5 shrink-0;
+  }
+
+  .policy-metadata-list {
+    @apply flex flex-col rounded-2xl border px-4 py-2;
+    border-color: rgba(0, 245, 212, 0.12);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .policy-metadata-row {
+    @apply flex items-center justify-between gap-4 border-b py-3 text-sm;
+    border-color: rgba(0, 245, 212, 0.1);
+  }
+
+  .policy-metadata-row:last-child {
+    @apply border-b-0;
+  }
+
+  .policy-metadata-row span {
+    color: var(--muted);
+  }
+
+  .policy-metadata-code {
+    @apply max-w-[220px] truncate;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    color: var(--primary);
+  }
 }

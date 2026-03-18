@@ -12,6 +12,7 @@ export interface AuthApiResponse {
 export interface ApiErrorPayload {
   error?: string;
   code?: string;
+  issues?: unknown;
 }
 
 interface ApiClientConfig {
@@ -31,12 +32,14 @@ let clientConfig: ApiClientConfig = {
 export class ApiError extends Error {
   status: number;
   code?: string;
+  issues?: unknown;
 
-  constructor(status: number, message: string, code?: string) {
+  constructor(status: number, message: string, code?: string, issues?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.issues = issues;
   }
 }
 
@@ -49,7 +52,7 @@ export function configureApiClient(config: ApiClientConfig): void {
 }
 
 function parseResponseError(status: number, payload: ApiErrorPayload | null): never {
-  throw new ApiError(status, payload?.error ?? `Request failed with status ${status}`, payload?.code);
+  throw new ApiError(status, payload?.error ?? `Request failed with status ${status}`, payload?.code, payload?.issues);
 }
 
 async function parseJson<T>(response: Response): Promise<T> {

@@ -11,6 +11,24 @@ It is intentionally tracked outside Phase 3E because:
 > [!IMPORTANT]
 > This milestone must land before **Phase 3C** in hosted mode.
 
+## Current Status
+
+Implementation snapshot as of `2026-03-18`:
+
+- milestone implementation is **complete** in `packages/sps-server` and `packages/dashboard`
+- implemented:
+  - versioned PostgreSQL workspace policy storage and validation
+  - hosted startup seeding for existing workspaces missing policy rows
+  - hosted registration-time bootstrap policy creation for new workspaces
+  - workspace policy management API (`GET`, `PATCH`, `POST /validate`)
+  - audit events for policy validate/update actions
+  - hosted exchange enforcement resolving policy from workspace-scoped PostgreSQL state
+  - hosted fail-closed behavior when a workspace policy row is missing after rollout
+  - dashboard policy-management UI with admin edit/validate/save flows and operator read-only inspection
+  - PostgreSQL-backed integration verification for storage, routes, seeding, and enforcement
+- follow-up hardening still worth adding later:
+  - broader dashboard E2E coverage beyond the focused page tests
+
 ## Prerequisites
 
 - Phase 3A hosted platform is complete
@@ -34,7 +52,7 @@ The rollout strategy for hosted mode is **auto-seed, then DB-only**:
 - new hosted workspaces created after rollout initialize their first policy row from the platform bootstrap/default policy template at creation time
 - self-hosted deployments may continue using env-backed policy directly if they do not enable the hosted workspace policy model
 
-This keeps hosted behavior backwards-compatible during rollout without carrying permanent runtime fallback complexity.
+The current implementation has completed the rollout strategy: startup backfill and new-workspace bootstrap are implemented, hosted exchange enforcement reads workspace policy from PostgreSQL, and hosted runtime now fails closed if a workspace policy row is unexpectedly missing instead of silently falling back to bootstrap policy.
 
 > [!NOTE]
 > If the hosted env-backed bootstrap policy is invalid or missing at migration time, the rollout should fail closed rather than silently creating empty hosted workspace policy state.
@@ -83,13 +101,13 @@ Fields that remain platform-controlled and must not be workspace-admin-editable:
 
 ## Acceptance
 
-- hosted workspaces no longer require editing `SPS_SECRET_REGISTRY_JSON` or `SPS_EXCHANGE_POLICY_JSON` for per-workspace policy changes
-- existing hosted workspaces are auto-seeded from the current env-backed hosted policy during rollout
-- after seeding, hosted policy reads come from PostgreSQL rather than a runtime env fallback chain
-- `GET /api/v2/workspace/policy` returns only caller-workspace policy state
-- `PATCH /api/v2/workspace/policy` is admin-only, validates drafts, and records audit events
-- policy changes affect only the target workspace and are reflected in later exchange lifecycle checks
-- dashboard policy management works for `workspace_admin` and exposes read-only inspection for `workspace_operator` if the route is enabled
+- [x] hosted workspaces no longer require editing `SPS_SECRET_REGISTRY_JSON` or `SPS_EXCHANGE_POLICY_JSON` for per-workspace policy changes
+- [x] existing hosted workspaces are auto-seeded from the current env-backed hosted policy during rollout
+- [x] after seeding, hosted policy reads come from PostgreSQL rather than a runtime env fallback chain
+- [x] `GET /api/v2/workspace/policy` returns only caller-workspace policy state
+- [x] `PATCH /api/v2/workspace/policy` is admin-only, validates drafts, and records audit events
+- [x] policy changes affect only the target workspace and are reflected in later exchange lifecycle checks
+- [x] dashboard policy management works for `workspace_admin` and exposes read-only inspection for `workspace_operator`
 
 ## Verification Plan
 

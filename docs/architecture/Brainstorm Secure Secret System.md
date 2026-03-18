@@ -631,7 +631,7 @@ This keeps the wire contract stable while tightening the trust model later.
 ### Phase 3A: Hosted Managed Platform
 - Current implementation snapshot as of `2026-03-12`: Milestones 1-6 are complete in `packages/sps-server`; the remaining Phase 3A work is follow-on hosted operations rather than another numbered core slice
 - Implemented so far in code: PostgreSQL-backed workspaces/users/sessions/enrolled agents, user JWT auth, workspace-scoped SPS identity, hosted agent bootstrap API keys and hosted JWT minting, workspace member management, workspace-local RBAC, Stripe checkout/webhook billing state, free-vs-standard quota enforcement, per-IP auth/token rate limiting, and workspace-scoped PostgreSQL audit persistence/query routes with retention cleanup
-- Still pending in Phase 3A: production hosted deployment/domain cutover, stronger signup/challenge abuse controls, richer onboarding/discovery flows, workspace-admin policy abstractions beyond static env allowlists, analytics, and other hosted operations work
+- Still pending in Phase 3A: production hosted deployment/domain cutover, stronger signup/challenge abuse controls, richer onboarding/discovery flows, analytics, and other hosted operations work
 - `Moved to later hosted phases`: Hosted deployment, UI dashboards, advanced signup/abuse controls, public guest intake, ecosystem work, and payment-product work now live in Phases 3B, 3C, 3D, and 3E.
 - [x] Phase 3A is the first pooled hosted SaaS phase: multiple customer workspaces share one control plane, but each workspace/org is the tenant boundary for identity, policy, audit visibility, quotas, and billing
 - [x] Mandatory hosted identity contract: every authenticated human and agent request carries a workspace-scoped identity (`workspace_id` plus stable `sub` / role claims), and SPS resolves policy, audit, and ownership on `(workspace_id, subject)` rather than global IDs alone
@@ -651,10 +651,10 @@ This keeps the wire contract stable while tightening the trust model later.
 - [x] Billing portal and recurring subscription management admin UX shipped
 
 ### Shared Hosted Foundation: Workspace Policy Engine
-- [ ] Workspace-admin-managed secret registry and exchange policy documents, stored and resolved per workspace in PostgreSQL instead of relying on process-global `SPS_SECRET_REGISTRY_JSON` / `SPS_EXCHANGE_POLICY_JSON` in hosted mode
-- [ ] Existing hosted workspaces are auto-seeded from the current env-backed hosted policy during rollout, then hosted policy reads switch to PostgreSQL without a permanent runtime fallback chain
-- [ ] New hosted workspaces initialize from the platform bootstrap/default policy template, then diverge in their own DB-backed workspace policy state
-- [ ] This shared foundation lands before Phase 3C guest-intent flows and before later Phase 3E hosted hardening work that assumes tenant-scoped policy
+- [x] Workspace-admin-managed secret registry and exchange policy documents are stored and resolved per workspace in PostgreSQL in hosted mode, with validation, versioning, audit events, and policy API routes landed in `packages/sps-server`
+- [x] Existing hosted workspaces are auto-seeded from the current env-backed hosted policy during rollout, and hosted runtime now fails closed instead of falling back to bootstrap policy if a workspace row is unexpectedly missing
+- [x] New hosted workspaces initialize from the platform bootstrap/default policy template and start with their own DB-backed workspace policy state
+- [x] Dashboard policy editor and operator read-only inspection UI are implemented in `packages/dashboard`, and the shared hosted foundation is complete ahead of Phase 3C and later Phase 3E hosted hardening work
 
 ### Phase 3C: Paid Guest Secret Exchange
 - [ ] Workspace-issued public offers/invites for one-time paid guest requests

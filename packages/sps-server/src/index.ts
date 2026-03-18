@@ -11,13 +11,20 @@ import { registerBillingRoutes } from "./routes/billing.js";
 import { registerExchangeRoutes } from "./routes/exchange.js";
 import { registerMemberRoutes } from "./routes/members.js";
 import { registerSecretRoutes } from "./routes/secrets.js";
+import { registerWorkspacePolicyRoutes } from "./routes/workspace-policy.js";
 import { registerWorkspaceRoutes } from "./routes/workspace.js";
 import { InMemoryRateLimitService, RedisRateLimitService, type RateLimitService } from "./middleware/rate-limit.js";
 import { cleanupExpiredAuditRecords } from "./services/audit.js";
 import { StripeBillingProvider, MockBillingProvider, createStripeClient, type BillingProvider } from "./services/billing.js";
-import { ExchangePolicyEngine, type ExchangePolicyRule, type SecretRegistryEntry } from "./services/policy.js";
+import type { ExchangePolicyRule, SecretRegistryEntry } from "./services/policy.js";
 import { InMemoryQuotaService, RedisQuotaService, type QuotaService } from "./services/quota.js";
 import { InMemoryRequestStore, RedisRequestStore, createRedisClient } from "./services/redis.js";
+import {
+  listWorkspaceIdsMissingPolicy,
+  loadBootstrapWorkspacePolicyFromEnv,
+  seedMissingWorkspacePolicies,
+  WorkspacePolicyResolver
+} from "./services/workspace-policy.js";
 import { HttpX402Provider, type X402Provider, x402ConfigFromEnv } from "./services/x402.js";
 import type { RequestStore } from "./types.js";
 export interface BuildAppOptions {
@@ -36,34 +43,6 @@ export interface BuildAppOptions {
   runMigrations?: boolean;
   closeDbOnClose?: boolean;
   trustProxy?: boolean;
-}
-
-function policyRulesFromEnv(): ExchangePolicyRule[] {
-  const raw = process.env.SPS_EXCHANGE_POLICY_JSON?.trim();
-  if (!raw) {
-    return [];
-  }
-
-  const parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed)) {
-    throw new Error("SPS_EXCHANGE_POLICY_JSON must be a JSON array");
-  }
-
-  return parsed as ExchangePolicyRule[];
-}
-
-function secretRegistryFromEnv(): SecretRegistryEntry[] {
-  const raw = process.env.SPS_SECRET_REGISTRY_JSON?.trim();
-  if (!raw) {
-    return [];
-  }
-
-  const parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed)) {
-    throw new Error("SPS_SECRET_REGISTRY_JSON must be a JSON array");
-  }
-
-  return parsed as SecretRegistryEntry[];
 }
 
 function trustProxyFromEnv(): boolean {
@@ -87,6 +66,11 @@ function auditCleanupIntervalMsFromEnv(): number {
   }
 
   return Math.floor(raw);
+}
+
+function isHostedModeEnabled(): boolean {
+  const raw = process.env.SPS_HOSTED_MODE?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
 }
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -145,10 +129,28 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   quotaService ??= new InMemoryQuotaService();
   rateLimitService ??= new InMemoryRateLimitService();
 
-  const policyEngine = new ExchangePolicyEngine(
-    options.secretRegistry ?? secretRegistryFromEnv(),
-    options.exchangePolicyRules ?? policyRulesFromEnv()
-  );
+  const bootstrapWorkspacePolicy = loadBootstrapWorkspacePolicyFromEnv();
+  if (options.db && isHostedModeEnabled()) {
+    await seedMissingWorkspacePolicies(options.db, bootstrapWorkspacePolicy, {
+      source: "env_seed"
+    });
+
+    const remainingMissingPolicies = await listWorkspaceIdsMissingPolicy(options.db);
+    if (remainingMissingPolicies.length > 0) {
+      throw new Error("Hosted workspace policy bootstrap did not initialize all workspaces");
+    }
+  }
+
+  const policyResolver = new WorkspacePolicyResolver({
+    db: options.db,
+    bootstrapPolicy: bootstrapWorkspacePolicy,
+    overridePolicy: (options.secretRegistry || options.exchangePolicyRules)
+      ? {
+          secretRegistry: options.secretRegistry ?? bootstrapWorkspacePolicy.secretRegistry,
+          exchangePolicyRules: options.exchangePolicyRules ?? bootstrapWorkspacePolicy.exchangePolicyRules
+        }
+      : null
+  });
 
   if (options.db && options.closeDbOnClose) {
     app.addHook("onClose", async () => {
@@ -180,7 +182,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
           : undefined
       ),
       hmacSecret,
-      policyEngine,
+      policyResolver,
       requestTtlSeconds: 180,
       submittedTtlSeconds: 60,
       revokedTtlSeconds: 300
@@ -202,6 +204,10 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     await app.register(async (workspaceRoutesApp) => {
       await registerWorkspaceRoutes(workspaceRoutesApp, { db: options.db! });
     }, { prefix: "/api/v2/workspace" });
+
+    await app.register(async (workspacePolicyRoutesApp) => {
+      await registerWorkspacePolicyRoutes(workspacePolicyRoutesApp, { db: options.db! });
+    }, { prefix: "/api/v2/workspace/policy" });
 
     await app.register(async (agentRoutesApp) => {
       await registerAgentRoutes(agentRoutesApp, {

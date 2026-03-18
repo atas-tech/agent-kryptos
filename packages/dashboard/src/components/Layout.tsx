@@ -41,6 +41,12 @@ const NAV_ITEMS: NavItem[] = [
     icon: ArrowLeftRight,
     roles: ["workspace_admin", "workspace_operator", "workspace_viewer"]
   },
+  {
+    label: "Policy",
+    path: "/policy",
+    icon: ShieldCheck,
+    roles: ["workspace_admin", "workspace_operator"]
+  },
   { label: "Billing", path: "/billing", icon: BadgeDollarSign, roles: ["workspace_admin"] },
   { label: "Analytics", path: "/analytics", icon: BarChart3, roles: ["workspace_admin", "workspace_operator"] },
   { label: "Settings", path: "/settings", icon: Settings, roles: ["workspace_admin"] }

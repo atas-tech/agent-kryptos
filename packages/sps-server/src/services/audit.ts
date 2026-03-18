@@ -29,7 +29,9 @@ export interface AuditEvent {
     | "agent_api_key_rotated"
     | "agent_revoked"
     | "member_created"
-    | "member_updated";
+    | "member_updated"
+    | "workspace_policy_validated"
+    | "workspace_policy_updated";
   requestId?: string;
   exchangeId?: string;
   approvalReference?: string | null;
