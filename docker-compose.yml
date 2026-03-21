@@ -1,7 +1,7 @@
 services:
   redis:
     image: redis:7-alpine
-    container_name: agent-kryptos-redis
+    container_name: blindpass-redis
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports:
       - "6380:6379"
@@ -14,17 +14,17 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    container_name: agent-kryptos-postgres
+    container_name: blindpass-postgres
     environment:
-      POSTGRES_DB: agent_kryptos
-      POSTGRES_USER: kryptos
+      POSTGRES_DB: blindpass
+      POSTGRES_USER: blindpass
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localdev}
     ports:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U kryptos -d agent_kryptos"]
+      test: ["CMD-SHELL", "pg_isready -U blindpass -d blindpass"]
       interval: 1s
       timeout: 3s
       retries: 30

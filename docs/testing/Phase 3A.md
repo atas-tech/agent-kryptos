@@ -1,6 +1,6 @@
 # Phase 3A Test Plan: Hosted Managed Platform
 
-This document outlines the End-to-End (E2E) testing scenarios for Phase 3A of the Agent Kryptos project.
+This document outlines the End-to-End (E2E) testing scenarios for Phase 3A of the Agent BlindPass project.
 
 ## How To Run
 
@@ -9,7 +9,7 @@ Phase 3A E2E coverage is PostgreSQL-backed and is skipped unless `DATABASE_URL` 
 1. Start local dependencies:
    `docker compose up -d redis postgres`
 2. Export the PostgreSQL connection string:
-   `export DATABASE_URL=postgresql://kryptos:localdev@127.0.0.1:5433/agent_kryptos`
+   `export DATABASE_URL=postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass`
 3. Run the SPS E2E suite:
    `npm run test:e2e --workspace=packages/sps-server`
 

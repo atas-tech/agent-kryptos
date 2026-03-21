@@ -30,7 +30,7 @@ export function AuthShell({
             <div className="brand-mark">
               <ShieldCheck size={18} />
             </div>
-            <span>agent-Kryptos</span>
+            <span>agent-BlindPass</span>
           </div>
 
           <div className="auth-shell__hero-copy">
@@ -57,7 +57,7 @@ export function AuthShell({
               <div className="brand-mark">
                 <ShieldCheck size={18} />
               </div>
-              <span>agent-Kryptos</span>
+              <span>agent-BlindPass</span>
             </div>
             <div className="section-label">{eyebrow}</div>
             <h2>{title}</h2>

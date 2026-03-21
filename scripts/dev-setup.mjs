@@ -60,7 +60,7 @@ async function checkEnv() {
 }
 
 async function main() {
-  console.log("🚀 Agent Kryptos Dev Environment Setup\n");
+  console.log("🚀 Agent BlindPass Dev Environment Setup\n");
 
   await checkEnv();
   console.log("");

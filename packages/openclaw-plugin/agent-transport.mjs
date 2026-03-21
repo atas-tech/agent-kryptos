@@ -1,4 +1,4 @@
-export const EXCHANGE_FULFILLMENT_ENVELOPE_KIND = "agent-kryptos.exchange-fulfillment.v1";
+export const EXCHANGE_FULFILLMENT_ENVELOPE_KIND = "blindpass.exchange-fulfillment.v1";
 
 function lookupInMapLike(source, key) {
     if (!source || !key) {
@@ -146,7 +146,7 @@ export function buildExchangeDeliveryMessage(envelope) {
     };
 
     return [
-        "Agent-Kryptos secret exchange request.",
+        "BlindPass secret exchange request.",
         "Invoke `fulfill_secret_exchange` with the payload below.",
         "```json",
         JSON.stringify(payload, null, 2),
@@ -212,7 +212,7 @@ export async function deliverExchangeToAgent(api, params) {
             await candidate.fn.call(candidate.owner, ...candidate.args);
             return { ok: true, via: candidate.label };
         } catch (err) {
-            console.warn(`[agent-kryptos] ${candidate.label} failed: ${err?.message ?? String(err)}`);
+            console.warn(`[blindpass] ${candidate.label} failed: ${err?.message ?? String(err)}`);
         }
     }
 

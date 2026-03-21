@@ -1,6 +1,6 @@
 # Policy Configuration
 
-This guide defines what policy configuration means in agent-Kryptos, which parts belong to a workspace admin, and which parts remain controlled by the platform or self-hosted operator.
+This guide defines what policy configuration means in agent-BlindPass, which parts belong to a workspace admin, and which parts remain controlled by the platform or self-hosted operator.
 
 ## Overview
 

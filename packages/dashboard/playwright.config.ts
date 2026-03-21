@@ -57,7 +57,7 @@ export default defineConfig({
       cwd: "../sps-server",
       timeout: 120000,
       env: {
-        DATABASE_URL: process.env.DATABASE_URL || "postgresql://kryptos:localdev@127.0.0.1:5433/agent_kryptos",
+        DATABASE_URL: process.env.DATABASE_URL || "postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass",
         REDIS_URL: "redis://127.0.0.1:6380",
         SPS_PG_INTEGRATION: "1",
         SPS_USER_JWT_SECRET: "test-user-jwt-secret",

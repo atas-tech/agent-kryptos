@@ -114,9 +114,9 @@ Publish officially supported SDK packages that wrap the SPS API. **Node.js first
 
 | SDK | Package Name | Key Capabilities |
 |-----|-------------|-----------------|
-| **Node.js** | `@agent-kryptos/sdk` | Published from existing `packages/agent-skill` with documentation, types, and npm release |
-| **Python** | `agent-kryptos` (PyPI) | HPKE keygen, secret request/retrieve, exchange request/fulfill/retrieve, bootstrap auth |
-| **Go** | `github.com/tuthan/agent-kryptos-go` | Same capabilities as Python SDK |
+| **Node.js** | `@blindpass/sdk` | Published from existing `packages/agent-skill` with documentation, types, and npm release |
+| **Python** | `blindpass` (PyPI) | HPKE keygen, secret request/retrieve, exchange request/fulfill/retrieve, bootstrap auth |
+| **Go** | `github.com/tuthan/blindpass-go` | Same capabilities as Python SDK |
 
 All SDKs must support:
 
@@ -157,9 +157,9 @@ Stand up the production deployment with proper domains and TLS. This is the fina
 
 | Subdomain | Service | Container |
 |-----------|---------|-----------|
-| `sps.atas.tech` | SPS API | `ghcr.io/tuthan/agent-kryptos-sps-server` |
-| `secret.atas.tech` | Browser UI (zero-knowledge sandbox) | `ghcr.io/tuthan/agent-kryptos-browser-ui` |
-| `app.atas.tech` | Operator Dashboard | `ghcr.io/tuthan/agent-kryptos-dashboard` |
+| `sps.atas.tech` | SPS API | `ghcr.io/tuthan/blindpass-sps-server` |
+| `secret.atas.tech` | Browser UI (zero-knowledge sandbox) | `ghcr.io/tuthan/blindpass-browser-ui` |
+| `app.atas.tech` | Operator Dashboard | `ghcr.io/tuthan/blindpass-dashboard` |
 
 Reverse proxy and TLS are handled by the operator's existing Unraid reverse proxy (for example Nginx Proxy Manager or Traefik). No bundled reverse proxy is included.
 
@@ -174,7 +174,7 @@ Health checks are used by Docker `HEALTHCHECK` and by the reverse proxy for upst
 
 ### [MODIFY] `.github/workflows/build-and-push-images.yml`
 
-- Add `dashboard` image build target (`ghcr.io/tuthan/agent-kryptos-dashboard`)
+- Add `dashboard` image build target (`ghcr.io/tuthan/blindpass-dashboard`)
 - Pin `VITE_SPS_API_URL=https://sps.atas.tech` for production browser-ui and dashboard builds
 
 ### [MODIFY] `docs/deployment/Unraid.md`
@@ -185,7 +185,7 @@ Health checks are used by Docker `HEALTHCHECK` and by the reverse proxy for upst
 - Add `SPS_HOSTED_MODE`, `SPS_TURNSTILE_SECRET`, and other Phase 3E env vars
 - Clarify that `SPS_SECRET_REGISTRY_JSON` and `SPS_EXCHANGE_POLICY_JSON` are self-hosted bootstrap/default inputs, not the hosted per-workspace configuration path
 
-### [NEW] `deploy/unraid/agent-kryptos-dashboard.xml`
+### [NEW] `deploy/unraid/blindpass-dashboard.xml`
 
 Unraid Docker template for the dashboard SPA container.
 
@@ -210,9 +210,9 @@ Update the SPS egress URL filter allowlist to match the production domains:
 
 | Image | Source | Notes |
 |-------|--------|-------|
-| `ghcr.io/tuthan/agent-kryptos-sps-server` | Existing | Add health check endpoints + analytics routes |
-| `ghcr.io/tuthan/agent-kryptos-browser-ui` | Existing | Rebuild with production `VITE_SPS_API_URL` |
-| `ghcr.io/tuthan/agent-kryptos-dashboard` | New | Vite build, served via lightweight static server |
+| `ghcr.io/tuthan/blindpass-sps-server` | Existing | Add health check endpoints + analytics routes |
+| `ghcr.io/tuthan/blindpass-browser-ui` | Existing | Rebuild with production `VITE_SPS_API_URL` |
+| `ghcr.io/tuthan/blindpass-dashboard` | New | Vite build, served via lightweight static server |
 | `postgres:16-alpine` | Upstream | Production credentials via env |
 | `redis:7-alpine` | Upstream | Unchanged |
 

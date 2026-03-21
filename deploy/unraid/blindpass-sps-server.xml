@@ -1,18 +1,18 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>Agent Kryptos SPS Server</Name>
-  <Repository>ghcr.io/tuthan/agent-kryptos-sps-server:latest</Repository>
+  <Name>BlindPass SPS Server</Name>
+  <Repository>ghcr.io/tuthan/blindpass-sps-server:latest</Repository>
   <Registry>https://ghcr.io</Registry>
   <Network>bridge</Network>
   <MyIP />
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/tuthan/agent-kryptos</Support>
-  <Project>https://github.com/tuthan/agent-kryptos</Project>
-  <Overview>Secret Provisioning Service API for Agent Kryptos. Requires Redis and a configured workload identity provider (via SPS_AGENT_AUTH_PROVIDERS_JSON).</Overview>
+  <Support>https://github.com/tuthan/blindpass</Support>
+  <Project>https://github.com/tuthan/blindpass</Project>
+  <Overview>Secret Provisioning Service API for BlindPass. Requires Redis and a configured workload identity provider (via SPS_AGENT_AUTH_PROVIDERS_JSON).</Overview>
   <Category>Network:Web</Category>
   <WebUI>http://[IP]:[PORT:3100]/healthz</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/tuthan/agent-kryptos/main/deploy/unraid/agent-kryptos-sps-server.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/tuthan/blindpass/main/deploy/unraid/blindpass-sps-server.xml</TemplateURL>
   <Icon />
   <ExtraParams />
   <PostArgs />
@@ -25,11 +25,11 @@
   <Config Name="NODE_ENV" Target="NODE_ENV" Default="production" Mode="" Description="Node environment" Type="Variable" Display="always" Required="true" Mask="false">production</Config>
   <Config Name="PORT" Target="PORT" Default="3100" Mode="" Description="Container listen port" Type="Variable" Display="always" Required="true" Mask="false">3100</Config>
   <Config Name="SPS_HOST" Target="SPS_HOST" Default="0.0.0.0" Mode="" Description="Bind address inside the container" Type="Variable" Display="always" Required="true" Mask="false">0.0.0.0</Config>
-  <Config Name="REDIS_URL" Target="REDIS_URL" Default="redis://agent-kryptos-redis:6379" Mode="" Description="Redis URL reachable from the same custom Docker network" Type="Variable" Display="always" Required="true" Mask="false">redis://agent-kryptos-redis:6379</Config>
+  <Config Name="REDIS_URL" Target="REDIS_URL" Default="redis://blindpass-redis:6379" Mode="" Description="Redis URL reachable from the same custom Docker network" Type="Variable" Display="always" Required="true" Mask="false">redis://blindpass-redis:6379</Config>
   <Config Name="SPS_HMAC_SECRET" Target="SPS_HMAC_SECRET" Default="" Mode="" Description="Required strong shared HMAC secret" Type="Variable" Display="always" Required="true" Mask="true"></Config>
   <Config Name="SPS_UI_BASE_URL" Target="SPS_UI_BASE_URL" Default="https://secrets.example.com" Mode="" Description="Public browser UI URL used in generated secret links" Type="Variable" Display="always" Required="true" Mask="false">https://secrets.example.com</Config>
   <Config Name="SPS_AGENT_AUTH_PROVIDERS_JSON" Target="SPS_AGENT_AUTH_PROVIDERS_JSON" Default="" Mode="" Description="Required for production: JSON array of workload identity providers {name, issuer, audience, jwks_url or jwks_file, require_spiffe}" Type="Variable" Display="always" Required="true" Mask="false"></Config>
-  <Config Name="Gateway JWKS File (Host Path)" Target="/config/jwks.json" Default="/mnt/user/appdata/agent-kryptos/jwks.json" Mode="rw" Description="Optional host path for a local JWKS file if used by an auth provider in SPS_AGENT_AUTH_PROVIDERS_JSON" Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/agent-kryptos/jwks.json</Config>
+  <Config Name="Gateway JWKS File (Host Path)" Target="/config/jwks.json" Default="/mnt/user/appdata/blindpass/jwks.json" Mode="rw" Description="Optional host path for a local JWKS file if used by an auth provider in SPS_AGENT_AUTH_PROVIDERS_JSON" Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/blindpass/jwks.json</Config>
   <Config Name="SPS_EXCHANGE_POLICY_JSON" Target="SPS_EXCHANGE_POLICY_JSON" Default="" Mode="" Description="Optional JSON array defining Agent-to-Agent exchange policies" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
   <Config Name="SPS_SECRET_REGISTRY_JSON" Target="SPS_SECRET_REGISTRY_JSON" Default="" Mode="" Description="Optional JSON array defining known secrets and their classifications" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
 </Container>

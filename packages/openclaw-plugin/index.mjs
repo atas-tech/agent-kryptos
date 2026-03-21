@@ -1,5 +1,5 @@
 /**
- * OpenClaw Plugin: agent-kryptos
+ * OpenClaw Plugin: blindpass
  *
  * Registers a `request_secret` tool that enables the agent to securely
  * request secrets from the user via an encrypted browser link.
@@ -89,7 +89,7 @@ async function resolveStoredSecret(api, context, name) {
                 return normalized;
             }
         } catch (err) {
-            console.warn(`[agent-kryptos] Secret lookup via runtime failed: ${err?.message ?? String(err)}`);
+            console.warn(`[blindpass] Secret lookup via runtime failed: ${err?.message ?? String(err)}`);
         }
     }
 
@@ -206,7 +206,7 @@ function resolveMessageTarget(params, context, channelId) {
 }
 
 function resolveConfiguredAgentId() {
-    return process.env.AGENT_KRYPTOS_AGENT_ID?.trim() || process.env.OPENCLAW_AGENT_ID?.trim() || "agent-kryptos-agent";
+    return process.env.BLINDPASS_AGENT_ID?.trim() || process.env.OPENCLAW_AGENT_ID?.trim() || "blindpass-agent";
 }
 
 async function runExecFile(execFileFn, file, args, timeoutMs = 15000) {
@@ -313,7 +313,7 @@ async function sendViaRuntimeChannel(api, message, channelId) {
             await c.fn.call(channel, ...c.args);
             return { ok: true, via: c.label };
         } catch (err) {
-            console.warn(`[agent-kryptos] ${c.label} failed: ${err?.message ?? String(err)}`);
+            console.warn(`[blindpass] ${c.label} failed: ${err?.message ?? String(err)}`);
         }
     }
 
@@ -345,7 +345,7 @@ async function sendMessageToChannel(api, context, message, channelId) {
             await target.fn.call(target.owner, ...target.args);
             return { ok: true, via: target.label };
         } catch (err) {
-            console.warn(`[agent-kryptos] ${target.label} failed: ${err?.message ?? String(err)}`);
+            console.warn(`[blindpass] ${target.label} failed: ${err?.message ?? String(err)}`);
         }
     }
 
@@ -601,7 +601,7 @@ export default function register(api, runtime = {}) {
                     spsBaseUrl,
                     agentId: resolveConfiguredAgentId(),
                     onSecretLink: async (secretUrl, confirmationCode) => {
-                        console.log(`[agent-kryptos] Delivering secret link: ${secretUrl}`);
+                        console.log(`[blindpass] Delivering secret link: ${secretUrl}`);
 
                         const useRawLink = params.raw_link === true || process.env.OPENCLAW_SECRETS_RAW_LINK === "true" || process.env.OPENCLAW_SECRETS_RAW_LINK === "1";
                         const isReRequest = params.re_request === true;
@@ -632,13 +632,13 @@ export default function register(api, runtime = {}) {
 
                         const routed = await sendMessageToChannel(api, context, message, channelId);
                         if (routed.ok) {
-                            console.log(`[agent-kryptos] Secret link delivered via ${routed.via}.`);
+                            console.log(`[blindpass] Secret link delivered via ${routed.via}.`);
                             return;
                         }
 
                         const runtimeRouted = await sendViaRuntimeChannel(api, message, channelId);
                         if (runtimeRouted.ok) {
-                            console.log(`[agent-kryptos] Secret link delivered via ${runtimeRouted.via}.`);
+                            console.log(`[blindpass] Secret link delivered via ${runtimeRouted.via}.`);
                             return;
                         }
 
@@ -649,13 +649,13 @@ export default function register(api, runtime = {}) {
                             execFileFn,
                         });
                         if (cli.ok) {
-                            console.log("[agent-kryptos] Secret link delivered via OpenClaw CLI fallback.");
+                            console.log("[blindpass] Secret link delivered via OpenClaw CLI fallback.");
                             return;
                         }
 
                         const telegram = await sendTelegramFallback(message, channelId);
                         if (telegram.ok) {
-                            console.log("[agent-kryptos] Secret link delivered via Telegram API fallback.");
+                            console.log("[blindpass] Secret link delivered via Telegram API fallback.");
                             return;
                         }
 
@@ -664,7 +664,7 @@ export default function register(api, runtime = {}) {
                         const runtimeKeys = Object.keys(api?.runtime ?? {});
                         const runtimeChannelKeys = Object.keys(api?.runtime?.channel ?? {});
                         console.error(
-                            `[agent-kryptos] No outbound chat transport available. attempted=${routed.attempted.join(",")} runtimeAttempted=${runtimeRouted.attempted.join(",")} cli=${cli.reason} telegram=${telegram.reason} contextKeys=${contextKeys.join(",")} apiKeys=${apiKeys.join(",")} runtimeKeys=${runtimeKeys.join(",")} runtimeChannelKeys=${runtimeChannelKeys.join(",")} channel=${channelName} target=${target}`
+                            `[blindpass] No outbound chat transport available. attempted=${routed.attempted.join(",")} runtimeAttempted=${runtimeRouted.attempted.join(",")} cli=${cli.reason} telegram=${telegram.reason} contextKeys=${contextKeys.join(",")} apiKeys=${apiKeys.join(",")} runtimeKeys=${runtimeKeys.join(",")} runtimeChannelKeys=${runtimeChannelKeys.join(",")} channel=${channelName} target=${target}`
                         );
                         throw new Error(
                             "Could not deliver secure link to chat channel. Configure plugin chat API (sendText/sendMessage/reply), OpenClaw CLI target/channel, or TELEGRAM_BOT_TOKEN with channel_id/TELEGRAM_CHAT_ID."
@@ -776,7 +776,7 @@ export default function register(api, runtime = {}) {
                 await runCleanup();
             },
             {
-                name: "agent-kryptos.cleanup",
+                name: "blindpass.cleanup",
                 description: "Cleanup temporary gateway identity files",
             },
         );
@@ -789,7 +789,7 @@ export default function register(api, runtime = {}) {
                 disposeAllInMemorySecrets();
             },
             {
-                name: "agent-kryptos.dispose-secrets",
+                name: "blindpass.dispose-secrets",
                 description: "Zero and dispose in-memory secret buffers",
             },
         );

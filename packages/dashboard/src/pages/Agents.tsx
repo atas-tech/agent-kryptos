@@ -123,7 +123,7 @@ export function AgentsPage() {
         setRevealedKey({
           apiKey: payload.bootstrap_api_key,
           title: `Bootstrap key for ${payload.agent.agent_id}`,
-          description: "Store this API key in the agent runtime now. Kryptos will not reveal it again after dismissal."
+          description: "Store this API key in the agent runtime now. BlindPass will not reveal it again after dismissal."
         });
       }
       await loadAgents(true);

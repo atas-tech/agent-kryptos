@@ -86,7 +86,7 @@ export function RegisterPage() {
           onChange={(event) => setWorkspaceSlug(event.target.value)}
           placeholder="acme-corp"
           required
-          trailing={<span className="slug-suffix">.kryptos.ai</span>}
+          trailing={<span className="slug-suffix">.blindpass.ai</span>}
           value={workspaceSlug}
         />
         <FormField

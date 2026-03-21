@@ -1,5 +1,5 @@
 {
-    "name": "@agent-kryptos/openclaw-plugin",
+    "name": "@blindpass/openclaw-plugin",
     "version": "0.1.0",
     "private": true,
     "license": "MIT",

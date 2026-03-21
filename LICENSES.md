@@ -1,6 +1,6 @@
-# Agent-Kryptos Licensing Matrix
+# BlindPass Licensing Matrix
 
-Agent-Kryptos uses a mixed-license monorepo model. The applicable license depends on the package you are using.
+BlindPass uses a mixed-license monorepo model. The applicable license depends on the package you are using.
 
 ## Package Matrix
 

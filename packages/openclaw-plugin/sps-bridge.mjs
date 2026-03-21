@@ -40,7 +40,7 @@ async function loadModules(opts = {}) {
 }
 
 function resolveAgentId(agentId) {
-    return agentId ?? process.env.AGENT_KRYPTOS_AGENT_ID ?? process.env.OPENCLAW_AGENT_ID ?? "agent-kryptos-agent";
+    return agentId ?? process.env.BLINDPASS_AGENT_ID ?? process.env.OPENCLAW_AGENT_ID ?? "blindpass-agent";
 }
 
 /**
@@ -80,7 +80,7 @@ let _cachedApiTokenExpiresAt = 0;
  * Gets an SPS authentication token either by exchanging an API Key or signing a Gateway JWT.
  */
 async function getAgentAuthToken(modules, agentId, spsBaseUrl, identityOptions) {
-    const apiKey = process.env.AGENT_KRYPTOS_API_KEY?.trim() || process.env.SPS_AGENT_API_KEY?.trim();
+    const apiKey = process.env.BLINDPASS_API_KEY?.trim() || process.env.SPS_AGENT_API_KEY?.trim();
     if (apiKey) {
         const nowMs = Date.now();
         if (_cachedApiToken && nowMs < _cachedApiTokenExpiresAt - (60 * 1000)) {

@@ -65,7 +65,7 @@ function openBrowser(url) {
 async function run() {
     console.log();
     console.log(`${BOLD}═══════════════════════════════════════════════════════${RESET}`);
-    console.log(`${BOLD}  🔐 agent-kryptos — Interactive E2E Test${RESET}`);
+    console.log(`${BOLD}  🔐 blindpass — Interactive E2E Test${RESET}`);
     console.log(`${BOLD}═══════════════════════════════════════════════════════${RESET}`);
     console.log();
 

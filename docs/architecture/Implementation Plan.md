@@ -1,6 +1,6 @@
 # Implementation Plans
 
-Implementation plans for each phase of the Agent Kryptos secure secret provisioning system.
+Implementation plans for each phase of the Agent BlindPass secure secret provisioning system.
 
 ## Phases
 

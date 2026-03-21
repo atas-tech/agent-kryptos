@@ -1,9 +1,9 @@
 ---
-name: agent-kryptos
-description: Provides a mechanism for the agent to securely request secrets (API keys, credentials, PII) from human operators via an out-of-band delivery mechanism without storing secrets in chat context.
+name: blindpass
+description: Secure secret provisioning skill for BlindPass.
 ---
 
-# Secure Secret Provisioning
+# BlindPass Secret Provisioning
 
 When you need any kind of secret, credential, API key, password, token, SSH key, or other sensitive value, you **MUST** use the following tools:
 

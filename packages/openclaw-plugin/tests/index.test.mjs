@@ -217,9 +217,9 @@ async function testShutdownDisposesSecrets() {
 }
 
 async function testRequestSecretFlowPublishesJwksForJwtAuth() {
-    const originalApiKey = process.env.AGENT_KRYPTOS_API_KEY;
+    const originalApiKey = process.env.BLINDPASS_API_KEY;
     const originalFallbackApiKey = process.env.SPS_AGENT_API_KEY;
-    delete process.env.AGENT_KRYPTOS_API_KEY;
+    delete process.env.BLINDPASS_API_KEY;
     delete process.env.SPS_AGENT_API_KEY;
 
     const calls = {
@@ -302,9 +302,9 @@ async function testRequestSecretFlowPublishesJwksForJwtAuth() {
         await cleanupBridge();
 
         if (originalApiKey === undefined) {
-            delete process.env.AGENT_KRYPTOS_API_KEY;
+            delete process.env.BLINDPASS_API_KEY;
         } else {
-            process.env.AGENT_KRYPTOS_API_KEY = originalApiKey;
+            process.env.BLINDPASS_API_KEY = originalApiKey;
         }
 
         if (originalFallbackApiKey === undefined) {
@@ -399,7 +399,7 @@ async function testRequestSecretExchangeUsesOpenClawTransportAndStoresSecret() {
         cleanupFn: async () => { },
         requestExchangeFlowFn: async ({ secretName, purpose, fulfillerId, transport, agentId }) => {
             await transport.deliverFulfillmentToken({
-                kind: "agent-kryptos.exchange-fulfillment.v1",
+                kind: "blindpass.exchange-fulfillment.v1",
                 exchangeId: "ex-request-1",
                 requesterId: agentId,
                 fulfillerId,
@@ -444,7 +444,7 @@ async function testRequestSecretExchangeFailsClosedWhenTargetCannotBeResolved() 
             createOpenClawAgentTransport(apiArg, { ...options, directTargetFallback: false }),
         requestExchangeFlowFn: async ({ secretName, purpose, fulfillerId, transport, agentId }) => {
             await transport.deliverFulfillmentToken({
-                kind: "agent-kryptos.exchange-fulfillment.v1",
+                kind: "blindpass.exchange-fulfillment.v1",
                 exchangeId: "ex-request-fail",
                 requesterId: agentId,
                 fulfillerId,
@@ -490,7 +490,7 @@ async function testCreateOpenClawAgentTransportUsesRuntimeAgentChannel() {
 
     const transport = createOpenClawAgentTransport(api);
     await transport.deliverFulfillmentToken({
-        kind: "agent-kryptos.exchange-fulfillment.v1",
+        kind: "blindpass.exchange-fulfillment.v1",
         exchangeId: "ex-transport",
         requesterId: "agent:crm-bot",
         fulfillerId: "session:payments",
@@ -579,7 +579,7 @@ async function testCreateOpenClawAgentTransportUsesAgentTargetMapBeforeFallback(
 
     const transport = createOpenClawAgentTransport(api, { directTargetFallback: false });
     await transport.deliverFulfillmentToken({
-        kind: "agent-kryptos.exchange-fulfillment.v1",
+        kind: "blindpass.exchange-fulfillment.v1",
         exchangeId: "ex-transport-2",
         requesterId: "agent:crm-bot",
         fulfillerId: "agent:payment-bot",
@@ -602,7 +602,7 @@ async function testBuildExchangeDeliveryMessageIncludesToolCall() {
         fulfillmentToken: "token-42",
     });
 
-    assert.match(message, /Agent-Kryptos secret exchange request/);
+    assert.match(message, /BlindPass secret exchange request/);
     assert.match(message, /fulfill_secret_exchange/);
     assert.match(message, /token-42/);
 }

@@ -8,7 +8,7 @@ Phase 3B transitions the focus from building the underlying hosted SaaS primitiv
 
 **Frontend stack**: The Operator Dashboard is a new `packages/dashboard` package using **Vite + React** (TypeScript). The existing `packages/browser-ui` (vanilla JS zero-knowledge sandbox) remains a separate, isolated package — it must never share runtime code or session state with the dashboard.
 
-**Design workflow**: Dashboard screens are designed first using **Stitch** (via MCP), then implemented by extracting HTML/CSS from the generated designs and adapting them into React components. **Crucially, while Stitch provides the layout and UX patterns, all implementations must override colors and gradients to stay 100% consistent with the Kryptos Design System (Deep Navy, Cyan/Purple gradients).**
+**Design workflow**: Dashboard screens are designed first using **Stitch** (via MCP), then implemented by extracting HTML/CSS from the generated designs and adapting them into React components. **Crucially, while Stitch provides the layout and UX patterns, all implementations must override colors and gradients to stay 100% consistent with the BlindPass Design System (Deep Navy, Cyan/Purple gradients).**
 
 **Theming & Color Consistency**: To maintain visual identity, all dashboard components must exclusively use the CSS variables defined in `src/styles/index.css`. Ad-hoc color utilities or hardcoded hex values from Stitch exports must be replaced with theme variables (e.g., `--bg`, `--primary`, `--purple`) to ensure any future system-wide theme changes (like a Light Mode) can be applied automatically.
 
@@ -110,7 +110,7 @@ Design all dashboard screens using **Stitch via MCP** before writing any React c
 
 1. Create a Stitch project for the dashboard
 2. Design each screen with realistic sample data (not placeholder text)
-3. Use a consistent dark-mode-first aesthetic (Kryptos Design System): deep navy backgrounds (`#060a14`), cyan/purple gradients (`#00f5d4` to `#7b61ff`), glassmorphism cards, Inter typography
+3. Use a consistent dark-mode-first aesthetic (BlindPass Design System): deep navy backgrounds (`#060a14`), cyan/purple gradients (`#00f5d4` to `#7b61ff`), glassmorphism cards, Inter typography
 4. Review and iterate on designs before implementation, ensuring they match existing authenticated screens.
 5. Export finalized HTML/CSS from Stitch as the implementation reference, mapping all color hexes back to the `--primary`, `--bg`, and `--purple` CSS variables.
 
@@ -126,7 +126,7 @@ Design all dashboard screens using **Stitch via MCP** before writing any React c
 - **Components**: Glassmorphism cards with `backdrop-filter`, smooth `200ms` hover transitions, subtle micro-animations on state changes
 - **Spacing**: 4px base grid, consistent border-radius tokens (`4px`, `8px`, `12px`)
 - **Responsive**: Collapsible sidebar below 768px breakpoint
-- **Brand**: "agent-Kryptos" branding consistent with `kryptos.atas.tech` landing page. Layouts follow Stitch, but aesthetics follow the Kryptos Brand.
+- **Brand**: "agent-BlindPass" branding consistent with `blindpass.atas.tech` landing page. Layouts follow Stitch, but aesthetics follow the BlindPass Brand.
 
 **Acceptance**: All 14 screens designed in Stitch. Visual design reviewed and approved before Milestone 2 begins.
 
@@ -202,9 +202,9 @@ Milestone 3 must continue the same design workflow used in Milestone 2: extract 
   - `Desktop Members Management`
   - `Desktop Workspace Settings Overview`
 - Mobile parity references:
-  - `agent-Kryptos Agents Management`
+  - `agent-BlindPass Agents Management`
   - `Enroll Agent Modal Screen`
-  - `agent-Kryptos Members Management`
+  - `agent-BlindPass Members Management`
   - `Workspace Settings Overview`
 - Rule: keep Stitch spacing, panel hierarchy, modal composition, and responsive breakpoints; do not copy raw Stitch hex colors or one-off gradients into the React code.
 
@@ -335,10 +335,10 @@ Milestone 5 should keep the same workflow as Milestones 2-4: use Stitch screens 
   - `Desktop Dashboard Operator Variant`
   - `Desktop Billing Operator Variant`
 - Mobile parity references:
-  - `agent-Kryptos Billing Screen`
-  - `agent-Kryptos Dashboard Home`
-  - `agent-Kryptos Billing Variant`
-- Rule: preserve Stitch spacing, card hierarchy, responsive breakpoints, and information density; replace raw hex colors, gradients, and badges with Kryptos design tokens
+  - `agent-BlindPass Billing Screen`
+  - `agent-BlindPass Dashboard Home`
+  - `agent-BlindPass Billing Variant`
+- Rule: preserve Stitch spacing, card hierarchy, responsive breakpoints, and information density; replace raw hex colors, gradients, and badges with BlindPass design tokens
 - Rule: the billing surface must now show recurring workspace subscription state (`Free` / `Standard`, checkout, billing portal) without collapsing future non-subscription payment products into the same card. Agent x402 and hosted crypto checkout are tracked separately in Phase 3D.
 
 #### Recommended implementation order

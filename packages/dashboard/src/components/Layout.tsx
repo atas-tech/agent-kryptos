@@ -89,7 +89,7 @@ export function Layout() {
             <ShieldCheck size={18} />
           </div>
           <div>
-            <div className="workspace-heading">agent-Kryptos</div>
+            <div className="workspace-heading">BlindPass</div>
             <div className="workspace-meta">{workspace?.display_name ?? "Operations shell"}</div>
           </div>
         </div>

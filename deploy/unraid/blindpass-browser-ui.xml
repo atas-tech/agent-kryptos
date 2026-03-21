@@ -1,18 +1,18 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>Agent Kryptos Browser UI</Name>
-  <Repository>ghcr.io/tuthan/agent-kryptos-browser-ui:latest</Repository>
+  <Name>Agent BlindPass Browser UI</Name>
+  <Repository>ghcr.io/tuthan/blindpass-browser-ui:latest</Repository>
   <Registry>https://ghcr.io</Registry>
   <Network>bridge</Network>
   <MyIP />
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/tuthan/agent-kryptos</Support>
-  <Project>https://github.com/tuthan/agent-kryptos</Project>
-  <Overview>Static browser UI for Agent Kryptos. The API URL is baked into the image at GitHub Actions build time via VITE_SPS_API_URL.</Overview>
+  <Support>https://github.com/tuthan/blindpass</Support>
+  <Project>https://github.com/tuthan/blindpass</Project>
+  <Overview>Static browser UI for Agent BlindPass. The API URL is baked into the image at GitHub Actions build time via VITE_SPS_API_URL.</Overview>
   <Category>Network:Web</Category>
   <WebUI>http://[IP]:[PORT:8080]</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/tuthan/agent-kryptos/main/deploy/unraid/agent-kryptos-browser-ui.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/tuthan/blindpass/main/deploy/unraid/blindpass-browser-ui.xml</TemplateURL>
   <Icon />
   <ExtraParams />
   <PostArgs />

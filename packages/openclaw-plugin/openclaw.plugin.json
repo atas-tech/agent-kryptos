@@ -1,10 +1,10 @@
 {
-    "id": "agent-kryptos",
+    "id": "blindpass",
     "name": "Secure Secret Provisioning",
     "version": "0.1.0",
     "description": "Zero-knowledge secret provisioning via HPKE encryption. Registers a request_secret tool for the agent.",
     "skills": [
-        "skills/agent-kryptos"
+        "skills/blindpass"
     ],
     "configSchema": {
         "type": "object",
@@ -15,12 +15,12 @@
                 "description": "Base URL of the Secret Provisioning Service (e.g., http://localhost:3100)",
                 "default": "http://localhost:3100"
             },
-            "AGENT_KRYPTOS_AGENT_ID": {
+            "BLINDPASS_AGENT_ID": {
                 "type": "string",
-                "description": "Stable unique identity for this agent in the Kryptos system",
-                "default": "agent-kryptos-agent"
+                "description": "Stable unique identity for this agent in the BlindPass system",
+                "default": "blindpass-agent"
             },
-            "AGENT_KRYPTOS_API_KEY": {
+            "BLINDPASS_API_KEY": {
                 "type": "string",
                 "description": "Preferred auth for hosted/local installs: exchange the enrolled agent API key for short-lived SPS bearer tokens"
             },

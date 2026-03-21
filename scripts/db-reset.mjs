@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DEFAULT_DATABASE_URL = "postgresql://kryptos:localdev@127.0.0.1:5433/agent_kryptos";
+const DEFAULT_DATABASE_URL = "postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass";
 const databaseUrl = process.env.DATABASE_URL || DEFAULT_DATABASE_URL;
 
 async function resetDb() {

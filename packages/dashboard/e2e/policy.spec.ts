@@ -21,7 +21,7 @@ test.describe("Workspace Policy", () => {
     await expect(page).toHaveURL("/", { timeout: 15000 });
     
     // 2. Mark owner as verified in DB
-    const dbUrl = process.env.DATABASE_URL || "postgresql://kryptos:localdev@127.0.0.1:5433/agent_kryptos";
+    const dbUrl = process.env.DATABASE_URL || "postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass";
     const client = new pg.Client({ connectionString: dbUrl });
     try {
       await client.connect();

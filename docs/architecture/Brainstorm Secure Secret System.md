@@ -688,7 +688,7 @@ This keeps the wire contract stable while tightening the trust model later.
 - [ ] Self-hosted version: polished Docker Compose + build-from-source with monitoring, upgrade guides
 - [ ] Expand messaging platform support: WhatsApp, iMessage, Zalo, and other platforms OpenClaw supports
 - [ ] Human-to-human secure sharing as a separate product layer on top of SPS primitives, with dedicated UI/UX, policy, and abuse controls
-- [ ] CLI tool for quick secret operations without browser UI (`kryptos share` / `kryptos get`)
+- [ ] CLI tool for quick secret operations without browser UI (`blindpass share` / `blindpass get`)
 - [ ] SEO, landing page, and marketing strategy
 
 ### Phase 5: Enterprise, Federation & Compliance

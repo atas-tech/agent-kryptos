@@ -1,4 +1,4 @@
-# @agent-kryptos/browser-ui
+# @blindpass/browser-ui
 
 Secure, client-side encryption interface for sensitive secret input. This package ensures that plaintext secrets never leave the user's browser in an unencrypted state.
 
@@ -39,4 +39,4 @@ npm run dev
 ```
 
 ## Alignment
-The design and typography are aligned with the **Agent Kryptos Dashboard** (Inter font, glassmorphism, dark theme) to provide a consistent and premium user experience.
+The design and typography are aligned with the **Agent BlindPass Dashboard** (Inter font, glassmorphism, dark theme) to provide a consistent and premium user experience.

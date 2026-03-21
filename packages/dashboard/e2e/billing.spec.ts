@@ -8,7 +8,7 @@ test.describe("Billing & Quotas (Milestone 5)", () => {
 
   test.beforeAll(async () => {
     pool = new pg.Pool({
-      connectionString: process.env.DATABASE_URL || "postgresql://kryptos:localdev@127.0.0.1:5433/agent_kryptos",
+      connectionString: process.env.DATABASE_URL || "postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass",
     });
   });
 

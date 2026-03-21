@@ -1,20 +1,20 @@
 # Unraid Deployment
 
-This guide covers the current deployment path for running Agent Kryptos on Unraid using the Unraid Docker UI and images published to GitHub Container Registry.
+This guide covers the current deployment path for running Agent BlindPass on Unraid using the Unraid Docker UI and images published to GitHub Container Registry.
 
 This is the simplest deployment shape for the project: one SPS server, one browser UI, and Redis. Kubernetes is not required.
 
 ## What gets deployed
 
-- `ghcr.io/tuthan/agent-kryptos-sps-server`
-- `ghcr.io/tuthan/agent-kryptos-browser-ui`
+- `ghcr.io/tuthan/blindpass-sps-server`
+- `ghcr.io/tuthan/blindpass-browser-ui`
 - `redis:7-alpine`
 
 The Unraid templates for these containers are in:
 
-- [`deploy/unraid/agent-kryptos-redis.xml`](/home/hvo/Projects/agent-kryptos/deploy/unraid/agent-kryptos-redis.xml)
-- [`deploy/unraid/agent-kryptos-sps-server.xml`](/home/hvo/Projects/agent-kryptos/deploy/unraid/agent-kryptos-sps-server.xml)
-- [`deploy/unraid/agent-kryptos-browser-ui.xml`](/home/hvo/Projects/agent-kryptos/deploy/unraid/agent-kryptos-browser-ui.xml)
+- [`deploy/unraid/blindpass-redis.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-redis.xml)
+- [`deploy/unraid/blindpass-sps-server.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-sps-server.xml)
+- [`deploy/unraid/blindpass-browser-ui.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-browser-ui.xml)
 
 The template `Repository` fields currently point at `ghcr.io/tuthan/...`.
 If you publish the images under a different GitHub owner or organization, edit the `Repository` value in the Unraid UI before deploying.
@@ -22,7 +22,7 @@ If you publish the images under a different GitHub owner or organization, edit t
 ## Before you deploy
 
 1. Publish the images manually from GitHub Actions.
-   The workflow is manual-only in [`/.github/workflows/build-and-push-images.yml`](/home/hvo/Projects/agent-kryptos/.github/workflows/build-and-push-images.yml).
+   The workflow is manual-only in [`/.github/workflows/build-and-push-images.yml`](/home/hvo/Projects/blindpass/.github/workflows/build-and-push-images.yml).
 
 2. Set the repository variable `VITE_SPS_API_URL` in GitHub before building the UI image.
    Example: `https://sps.example.com`
@@ -51,20 +51,20 @@ Recommended values:
 ## Unraid Docker UI steps
 
 1. Create a custom Docker network in Unraid.
-   Use a name such as `agent-kryptos`.
+   Use a name such as `blindpass`.
 
 2. Add the Redis template.
-   Use [`deploy/unraid/agent-kryptos-redis.xml`](/home/hvo/Projects/agent-kryptos/deploy/unraid/agent-kryptos-redis.xml).
+   Use [`deploy/unraid/blindpass-redis.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-redis.xml).
    In the Unraid Docker UI, use the template URL or copy the XML into your templates directory.
 
 3. Add the SPS template.
-   Use [`deploy/unraid/agent-kryptos-sps-server.xml`](/home/hvo/Projects/agent-kryptos/deploy/unraid/agent-kryptos-sps-server.xml).
+   Use [`deploy/unraid/blindpass-sps-server.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-sps-server.xml).
 
 4. Add the Browser UI template.
-   Use [`deploy/unraid/agent-kryptos-browser-ui.xml`](/home/hvo/Projects/agent-kryptos/deploy/unraid/agent-kryptos-browser-ui.xml).
+   Use [`deploy/unraid/blindpass-browser-ui.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-browser-ui.xml).
 
 5. For Redis and SPS, set the network to the same custom network.
-   The default `REDIS_URL` in the template assumes the Redis container name is `agent-kryptos-redis`.
+   The default `REDIS_URL` in the template assumes the Redis container name is `blindpass-redis`.
 
 6. Fill in the SPS template values:
    - `SPS_HMAC_SECRET`: required, strong random value
@@ -75,7 +75,7 @@ Recommended values:
 
    Preferred auth path:
    - Hosted agents and local OpenClaw/plugin installs should use agent API keys and `POST /api/v2/agents/token`.
-   - Configure `AGENT_KRYPTOS_API_KEY` (or `SPS_AGENT_API_KEY`) on the agent/plugin side after enrollment.
+   - Configure `BLINDPASS_API_KEY` (or `SPS_AGENT_API_KEY`) on the agent/plugin side after enrollment.
    - Add `SPS_AGENT_AUTH_PROVIDERS_JSON` only if you also want SPS to accept self-hosted workload JWTs or enforce stronger workload identity controls such as SPIFFE-backed providers.
 
    Example `SPS_AGENT_AUTH_PROVIDERS_JSON`:
@@ -100,7 +100,7 @@ Recommended values:
 
 7. If you use `jwks_file` in your JSON config, place the file on Unraid first.
    Recommended host path:
-   - `/mnt/user/appdata/agent-kryptos/jwks.json`
+   - `/mnt/user/appdata/blindpass/jwks.json`
 
    Note: a bridge or helper may still write a local `jwks.json` for convenience, but SPS only reads it when that file is referenced from `SPS_AGENT_AUTH_PROVIDERS_JSON`.
 
@@ -161,4 +161,4 @@ If the SPS container cannot validate gateway tokens:
 If the SPS container cannot reach Redis:
 
 - make sure Redis and SPS are on the same custom Docker network
-- confirm `REDIS_URL=redis://agent-kryptos-redis:6379`
+- confirm `REDIS_URL=redis://blindpass-redis:6379`

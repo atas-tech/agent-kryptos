@@ -1,6 +1,6 @@
-# Licensing Strategy Proposal: Agent-Kryptos
+# Licensing Strategy Proposal: BlindPass
 
-This document proposes a default licensing strategy for the Agent-Kryptos monorepo. It is intended as a product and engineering recommendation, not legal advice. Final adoption should be reviewed by counsel before public release.
+This document proposes a default licensing strategy for the BlindPass monorepo. It is intended as a product and engineering recommendation, not legal advice. Final adoption should be reviewed by counsel before public release.
 
 ---
 

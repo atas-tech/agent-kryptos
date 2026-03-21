@@ -1,6 +1,6 @@
-# Agent-Kryptos (Agent Secrets)
+# BlindPass (Agent Secrets)
 
-Agent-Kryptos is a secure, zero-knowledge secret provisioning system designed to let humans and AI agents exchange sensitive credentials through one coordinating SPS server without exposing plaintext to the LLM or the server.
+BlindPass is a secure, zero-knowledge secret provisioning system designed to let humans and AI agents exchange sensitive credentials through one coordinating SPS server without exposing plaintext to the LLM or the server.
 
 This repository contains the architecture, implementation plans, and source code for the Secret Provisioning System (SPS), including gateway-level anti-phishing, in-memory-only secret storage, and HPKE (Hybrid Public Key Encryption) encryption.
 
@@ -17,12 +17,12 @@ This repository contains the architecture, implementation plans, and source code
 
 When an AI Agent needs a secret to complete a task (e.g., "Deploy my website to AWS"), it should **never ask for the secret in plain text over chat**, nor should the secret ever be visible to the LLM.
 
-Agent-Kryptos solves this by using SPS as the trust anchor and coordinator. For Human -> Agent flow, the gateway generates a secure, single-use, out-of-band link for the user. The user encrypts the secret in their browser, and only the agent's constrained execution environment can decrypt and hold it in memory. For Agent -> Agent flow, SPS coordinates a pull-based exchange between stable agent identities, enforcing policy, approvals, and one-time retrieval without requiring Kubernetes or a cluster control plane.
+BlindPass solves this by using SPS as the trust anchor and coordinator. For Human -> Agent flow, the gateway generates a secure, single-use, out-of-band link for the user. The user encrypts the secret in their browser, and only the agent's constrained execution environment can decrypt and hold it in memory. For Agent -> Agent flow, SPS coordinates a pull-based exchange between stable agent identities, enforcing policy, approvals, and one-time retrieval without requiring Kubernetes or a cluster control plane.
 
 ## Hosted Services
 
-Access the live Agent-Kryptos platform:
-- **Landing Page**: [kryptos.atas.tech](https://kryptos.atas.tech/)
+Access the live BlindPass platform:
+- **Landing Page**: [blindpass.atas.tech](https://blindpass.atas.tech/)
 - **Operator Dashboard**: [app.atas.tech](https://app.atas.tech/)
 - **SPS API Server**: [sps.atas.tech](https://sps.atas.tech/)
 - **Secure Secret Input**: [secret.atas.tech](https://secret.atas.tech/)
@@ -39,7 +39,7 @@ The system consists of 5 main components:
 ## Directory Structure
 
 ```text
-agent-kryptos/
+blindpass/
 ├── docs/                 # System architecture, security audits, and test plans
 │   ├── architecture/     # Implementation plans and system design docs
 │   ├── security/         # Security audit documentation
@@ -85,7 +85,7 @@ See `LICENSES.md` for the package licensing matrix and rollout notes.
 
 ## Auth Modes
 
-- **Hosted / local plugin default:** Prefer agent API keys. Enrolled agents exchange `AGENT_KRYPTOS_API_KEY` / `SPS_AGENT_API_KEY` for short-lived SPS bearer tokens, so plugin users do not need to manage JWKS files.
+- **Hosted / local plugin default:** Prefer agent API keys. Enrolled agents exchange `BLINDPASS_API_KEY` / `SPS_AGENT_API_KEY` for short-lived SPS bearer tokens, so plugin users do not need to manage JWKS files.
 - **Self-hosted / workload identity:** Use `SPS_AGENT_AUTH_PROVIDERS_JSON` to trust external workload JWT issuers via `jwks_url` or `jwks_file`.
 - **Legacy note:** `SPS_GATEWAY_JWKS_FILE` and `SPS_GATEWAY_JWKS_URL` are no longer direct SPS server config. If you keep a local `jwks.json`, reference it from `SPS_AGENT_AUTH_PROVIDERS_JSON`.
 

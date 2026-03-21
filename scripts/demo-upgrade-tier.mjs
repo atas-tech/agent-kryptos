@@ -2,7 +2,7 @@ import pkg from 'pg';
 const { Pool } = pkg;
 import { processWebhookResult } from "../packages/sps-server/dist/services/billing.js";
 
-const DEFAULT_DATABASE_URL = "postgresql://kryptos:localdev@127.0.0.1:5433/agent_kryptos";
+const DEFAULT_DATABASE_URL = "postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass";
 const databaseUrl = process.env.DATABASE_URL || DEFAULT_DATABASE_URL;
 
 async function upgradeTier() {

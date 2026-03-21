@@ -20,7 +20,7 @@ test.describe("Approvals Inbox", () => {
     await page.getByRole("button", { name: /Create my account/i }).click();
     await expect(page).toHaveURL("/");
     
-    const client = new pg.Client({ connectionString: process.env.DATABASE_URL || "postgresql://kryptos:localdev@127.0.0.1:5433/agent_kryptos" });
+    const client = new pg.Client({ connectionString: process.env.DATABASE_URL || "postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass" });
     await client.connect();
     let workspaceId: string;
     let userId: string;
@@ -45,7 +45,7 @@ test.describe("Approvals Inbox", () => {
     const { workspaceId } = await setupWorkspace(page);
     
     // Seed a pending approval event
-    const client = new pg.Client({ connectionString: process.env.DATABASE_URL || "postgresql://kryptos:localdev@127.0.0.1:5433/agent_kryptos" });
+    const client = new pg.Client({ connectionString: process.env.DATABASE_URL || "postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass" });
     await client.connect();
     const aprRef = `apr_${Date.now()}`;
     try {
@@ -94,7 +94,7 @@ test.describe("Approvals Inbox", () => {
     await expect(page.getByText(viewerEmail).first()).toBeVisible();
 
     // Verify in DB that viewer exists and reset fpc
-    const client = new pg.Client({ connectionString: process.env.DATABASE_URL || "postgresql://kryptos:localdev@127.0.0.1:5433/agent_kryptos" });
+    const client = new pg.Client({ connectionString: process.env.DATABASE_URL || "postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass" });
     await client.connect();
     try {
       await client.query("UPDATE users SET email_verified = true, force_password_change = false WHERE email = $1", [viewerEmail]);
@@ -118,7 +118,7 @@ test.describe("Approvals Inbox", () => {
     await expect(page.getByText("Viewer access is read-only")).toBeVisible();
     
     // Seed an approval to verify buttons are disabled
-    const client2 = new pg.Client({ connectionString: process.env.DATABASE_URL || "postgresql://kryptos:localdev@127.0.0.1:5433/agent_kryptos" });
+    const client2 = new pg.Client({ connectionString: process.env.DATABASE_URL || "postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass" });
     await client2.connect();
     const aprRef = `apr_viewer_${Date.now()}`;
     try {

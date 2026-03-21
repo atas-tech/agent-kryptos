@@ -1,4 +1,4 @@
-export const EXCHANGE_FULFILLMENT_ENVELOPE_KIND = "agent-kryptos.exchange-fulfillment.v1";
+export const EXCHANGE_FULFILLMENT_ENVELOPE_KIND = "blindpass.exchange-fulfillment.v1";
 
 export interface FulfillmentTransportEnvelope {
   kind: typeof EXCHANGE_FULFILLMENT_ENVELOPE_KIND;

@@ -68,14 +68,14 @@ packages/sps-server/
 
 Add PostgreSQL as a durable store for workspace, user, and agent records. Redis continues for ephemeral secret state.
 
-#### [NEW] [db/index.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/db/index.ts)
+#### [NEW] [db/index.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/db/index.ts)
 
 - PostgreSQL connection pool using `pg` (`Pool`)
-- Configured via `DATABASE_URL` env var (default: `postgresql://localhost:5432/agent_kryptos`)
+- Configured via `DATABASE_URL` env var (default: `postgresql://localhost:5432/agent_blindpass`)
 - Connection pool size from `DB_POOL_SIZE` (default: 10)
 - Graceful shutdown on `onClose` hook
 
-#### [NEW] [db/migrate.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/db/migrate.ts)
+#### [NEW] [db/migrate.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/db/migrate.ts)
 
 - Reads `*.sql` files from `migrations/` directory in order
 - Tracks applied migrations in a `_migrations` table
@@ -83,7 +83,7 @@ Add PostgreSQL as a durable store for workspace, user, and agent records. Redis 
 - Run via `npx tsx src/db/migrate.ts` or called on server startup in dev mode
 - Idempotent — safe to re-run
 
-#### [NEW] [db/migrations/001_workspaces.sql](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/db/migrations/001_workspaces.sql)
+#### [NEW] [db/migrations/001_workspaces.sql](file:///home/hvo/Projects/blindpass/packages/sps-server/src/db/migrations/001_workspaces.sql)
 
 ```sql
 CREATE TABLE workspaces (
@@ -102,7 +102,7 @@ CREATE TABLE workspaces (
 CREATE UNIQUE INDEX idx_workspaces_slug_unique ON workspaces(slug);
 ```
 
-#### [NEW] [services/workspace.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/services/workspace.ts)
+#### [NEW] [services/workspace.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/workspace.ts)
 
 - `createWorkspace(slug, displayName, ownerUserId)` → insert + return workspace
 - `getWorkspace(id)` → by UUID
@@ -113,7 +113,7 @@ CREATE UNIQUE INDEX idx_workspaces_slug_unique ON workspaces(slug);
 - Soft-deleted workspaces continue to reserve their slug in Phase 3A; slug reclamation is deferred to a future purge workflow, not normal soft-delete behavior
 - Enforce unique slug, validate format (`^[a-z0-9-]{3,40}$`)
 
-#### [NEW] [routes/workspace.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/routes/workspace.ts)
+#### [NEW] [routes/workspace.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/routes/workspace.ts)
 
 | Endpoint | Auth | Behavior |
 |----------|------|----------|
@@ -122,13 +122,13 @@ CREATE UNIQUE INDEX idx_workspaces_slug_unique ON workspaces(slug);
 
 **Workspace membership model**: In Phase 3A, each user belongs to exactly one workspace. There is no cross-workspace membership or workspace switching yet.
 
-#### [MODIFY] [docker-compose.yml](file:///home/hvo/Projects/agent-kryptos/docker-compose.yml)
+#### [MODIFY] [docker-compose.yml](file:///home/hvo/Projects/blindpass/docker-compose.yml)
 
 - Add `postgres` service (`postgres:16-alpine`)
-- Add `agent_kryptos` database with configurable credentials
+- Add `agent_blindpass` database with configurable credentials
 - Add volume mount for data persistence
 
-#### [MODIFY] [index.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/index.ts)
+#### [MODIFY] [index.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/index.ts)
 
 - Initialize PostgreSQL pool on startup
 - Run migrations in dev mode
@@ -145,7 +145,7 @@ CREATE UNIQUE INDEX idx_workspaces_slug_unique ON workspaces(slug);
 
 Simple email + password auth with JWT sessions. One user creates one workspace during signup.
 
-#### [NEW] [db/migrations/002_users.sql](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/db/migrations/002_users.sql)
+#### [NEW] [db/migrations/002_users.sql](file:///home/hvo/Projects/blindpass/packages/sps-server/src/db/migrations/002_users.sql)
 
 ```sql
 CREATE TABLE users (
@@ -177,7 +177,7 @@ ALTER TABLE workspaces
 
 Each user belongs to exactly one workspace in Phase 3A. Additional workspaces per user are deferred.
 
-#### [NEW] [db/migrations/003_user_sessions.sql](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/db/migrations/003_user_sessions.sql)
+#### [NEW] [db/migrations/003_user_sessions.sql](file:///home/hvo/Projects/blindpass/packages/sps-server/src/db/migrations/003_user_sessions.sql)
 
 ```sql
 CREATE TABLE user_sessions (
@@ -206,7 +206,7 @@ CREATE INDEX idx_user_sessions_workspace ON user_sessions(workspace_id, created_
 CREATE UNIQUE INDEX idx_user_sessions_refresh_token_hash_unique ON user_sessions(refresh_token_hash);
 ```
 
-#### [NEW] [services/user.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/services/user.ts)
+#### [NEW] [services/user.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/user.ts)
 
 - `registerUser(email, password, workspaceSlug, displayName)` — creates workspace + owner user in one transaction
 - `createWorkspaceUser(workspaceId, email, temporaryPassword, role)` — admin creates a same-workspace user with `force_password_change = true`
@@ -230,7 +230,7 @@ CREATE UNIQUE INDEX idx_user_sessions_refresh_token_hash_unique ON user_sessions
 - `email_verified = false` does not block login in Phase 3A, but it should block higher-risk actions such as agent enrollment, member creation, and billing changes until the workspace owner is verified
 - Provide a small internal admin script/CLI to mark early hosted accounts verified without requiring raw SQL during the pre-SMTP period
 
-#### [NEW] [routes/auth.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/routes/auth.ts)
+#### [NEW] [routes/auth.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/routes/auth.ts)
 
 | Endpoint | Auth | Behavior |
 |----------|------|----------|
@@ -246,7 +246,7 @@ CREATE UNIQUE INDEX idx_user_sessions_refresh_token_hash_unique ON user_sessions
 
 **Admin-created users**: For Phase 3A simplicity, workspace admins set a temporary password when creating a user. The new user must change it after first login (`force_password_change = true`). Invite-link onboarding is deferred.
 
-#### [MODIFY] [middleware/auth.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/middleware/auth.ts)
+#### [MODIFY] [middleware/auth.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/middleware/auth.ts)
 
 - Add `requireUserAuth(req, reply)` — validates user session JWT (separate signing key `SPS_USER_JWT_SECRET`)
 - Add `requireUserRole(minRole)` — factory for role-based middleware
@@ -265,34 +265,34 @@ CREATE UNIQUE INDEX idx_user_sessions_refresh_token_hash_unique ON user_sessions
 
 Make all SPS operations workspace-aware. Agent identity becomes `(workspace_id, sub)`. Policy and audit are evaluated within workspace scope.
 
-#### [MODIFY] [types.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/types.ts)
+#### [MODIFY] [types.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/types.ts)
 
 - Add optional `workspaceId` field to `StoredRequest`, `StoredExchange`, `StoredApprovalRequest`
 - Add `workspaceId` to `AuthenticatedAgentClaims`
 
-#### [MODIFY] [middleware/auth.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/middleware/auth.ts)
+#### [MODIFY] [middleware/auth.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/middleware/auth.ts)
 
 - Extract `workspace_id` from agent JWT claims when present
 - In hosted mode (`SPS_HOSTED_MODE=1`), require `workspace_id` on all agent JWTs
 - In local/dev mode, `workspace_id` remains optional (backward compatible)
 
-#### [MODIFY] [routes/secrets.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/routes/secrets.ts)
+#### [MODIFY] [routes/secrets.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/routes/secrets.ts)
 
 - Store `workspaceId` on request records when present in auth context
 - Scope retrieve/status/revoke ownership checks by `(workspaceId, agentId)` in hosted mode
 
-#### [MODIFY] [routes/exchange.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/routes/exchange.ts)
+#### [MODIFY] [routes/exchange.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/routes/exchange.ts)
 
 - Store `workspaceId` on exchange records
 - Enforce `workspace_id` match on fulfillment token validation
 - A2A restricted to same workspace in Phase 3A
 
-#### [MODIFY] [services/policy.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/services/policy.ts)
+#### [MODIFY] [services/policy.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/policy.ts)
 
 - Policy evaluation scoped by workspace when `workspaceId` is present
 - Trust rings evaluated inside workspace boundary, never cross-workspace
 
-#### [MODIFY] [services/audit.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/services/audit.ts)
+#### [MODIFY] [services/audit.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/audit.ts)
 
 - Include `workspaceId` in all audit log entries when present
 
@@ -304,7 +304,7 @@ Make all SPS operations workspace-aware. Agent identity becomes `(workspace_id, 
 
 Workspace admins register agent identities and manage workspace user roles. Agents receive bootstrap API keys (hashed, shown once at enrollment), then exchange them for short-lived hosted JWTs before calling normal SPS routes.
 
-#### [NEW] [db/migrations/004_agents.sql](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/db/migrations/004_agents.sql)
+#### [NEW] [db/migrations/004_agents.sql](file:///home/hvo/Projects/blindpass/packages/sps-server/src/db/migrations/004_agents.sql)
 
 ```sql
 CREATE TABLE enrolled_agents (
@@ -330,7 +330,7 @@ CREATE INDEX idx_enrolled_agents_workspace_status
   ON enrolled_agents(workspace_id, status, created_at DESC);
 ```
 
-#### [NEW] [routes/agents.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/routes/agents.ts)
+#### [NEW] [routes/agents.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/routes/agents.ts)
 
 | Endpoint | Auth | Behavior |
 |----------|------|----------|
@@ -342,7 +342,7 @@ CREATE INDEX idx_enrolled_agents_workspace_status
 
 User-facing agent management routes derive `workspace_id` from the authenticated user context instead of taking a `:wid` path parameter.
 
-#### [NEW] [routes/members.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/routes/members.ts)
+#### [NEW] [routes/members.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/routes/members.ts)
 
 | Endpoint | Auth | Behavior |
 |----------|------|----------|
@@ -356,7 +356,7 @@ Temporary password policy:
 - Reject obviously weak values used for temporary onboarding (for example exact matches like `password123`)
 - Encourage generated passwords/passphrases because delivery is out-of-band in Phase 3A
 
-#### [MODIFY] [middleware/auth.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/middleware/auth.ts)
+#### [MODIFY] [middleware/auth.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/middleware/auth.ts)
 
 - Add hosted agent JWT verification using `SPS_AGENT_JWT_SECRET` with `iss: "sps"` and `aud: "sps-agent"`
 - Keep existing external JWKS/JWT provider validation for backward compatibility and dedicated deployments
@@ -365,7 +365,7 @@ Temporary password policy:
 - Hosted agent JWT TTL: 15 minutes to match user access tokens and minimize blast radius; agents can mint replacements non-interactively with their bootstrap API key
 - Bootstrap API key format: prefixed string like `ak_<random>` so it is easy to distinguish from JWTs and easier to detect in leak scans
 
-#### [NEW] [services/rbac.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/services/rbac.ts)
+#### [NEW] [services/rbac.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/rbac.ts)
 
 - Role hierarchy: `workspace_admin > workspace_operator > workspace_viewer`
 - `workspace_admin`: full access — manage agents, approve exchanges, manage billing
@@ -392,7 +392,7 @@ Simple two-tier billing: **Free** and **Standard**.
 | A2A exchange | ❌ | ✅ |
 | Workspace members | 1 | 10 |
 
-#### [NEW] [db/migrations/005_billing.sql](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/db/migrations/005_billing.sql)
+#### [NEW] [db/migrations/005_billing.sql](file:///home/hvo/Projects/blindpass/packages/sps-server/src/db/migrations/005_billing.sql)
 
 ```sql
 ALTER TABLE workspaces
@@ -410,7 +410,7 @@ CREATE UNIQUE INDEX idx_workspaces_stripe_subscription_unique
   WHERE stripe_subscription_id IS NOT NULL;
 ```
 
-#### [NEW] [services/billing.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/services/billing.ts)
+#### [NEW] [services/billing.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/billing.ts)
 
 - `createCheckoutSession(workspaceId, priceId)` → Stripe Checkout session URL
 - `handleWebhook(event)` → process `checkout.session.completed`, `invoice.paid`, `customer.subscription.deleted`
@@ -418,7 +418,7 @@ CREATE UNIQUE INDEX idx_workspaces_stripe_subscription_unique
 - On cancellation: revert to `tier = 'free'`
 - Stripe customer/subscription IDs are unique across workspaces at the DB layer
 
-#### [NEW] [routes/billing.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/routes/billing.ts)
+#### [NEW] [routes/billing.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/routes/billing.ts)
 
 | Endpoint | Auth | Behavior |
 |----------|------|----------|
@@ -428,7 +428,7 @@ CREATE UNIQUE INDEX idx_workspaces_stripe_subscription_unique
 
 **Stripe webhook handling**: Fastify must preserve the raw request body for `/api/v2/webhook/stripe` so the Stripe SDK can verify `Stripe-Signature` before JSON parsing.
 
-#### [NEW] [services/quota.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/services/quota.ts)
+#### [NEW] [services/quota.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/quota.ts)
 
 - `checkQuota(workspaceId, action)` → enforce tier limits using Redis counters with daily TTL
 - Actions: `secret_request`, `agent_enroll`, `exchange_request`
@@ -443,7 +443,7 @@ CREATE UNIQUE INDEX idx_workspaces_stripe_subscription_unique
 
 Rate limiting, basic signup abuse controls, and durable workspace audit visibility.
 
-#### [NEW] [middleware/rate-limit.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/middleware/rate-limit.ts)
+#### [NEW] [middleware/rate-limit.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/middleware/rate-limit.ts)
 
 - Per-IP rate limiting for auth endpoints (10 req/min for login, 3 req/min for register)
 - Aggressive per-IP rate limiting for `POST /api/v2/agents/token` (for example 5 req/min) because it mints hosted JWTs from bootstrap credentials
@@ -451,7 +451,7 @@ Rate limiting, basic signup abuse controls, and durable workspace audit visibili
 - Uses Redis `INCR` with key TTL
 - Best-effort only in MVP; not a durable billing ledger
 
-#### [NEW] [db/migrations/006_audit_log.sql](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/db/migrations/006_audit_log.sql)
+#### [NEW] [db/migrations/006_audit_log.sql](file:///home/hvo/Projects/blindpass/packages/sps-server/src/db/migrations/006_audit_log.sql)
 
 ```sql
 CREATE TABLE audit_log (
@@ -470,7 +470,7 @@ CREATE INDEX idx_audit_workspace_time ON audit_log(workspace_id, created_at DESC
 CREATE INDEX idx_audit_event_time ON audit_log(event_type, created_at DESC);
 ```
 
-#### [MODIFY] [services/audit.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/services/audit.ts)
+#### [MODIFY] [services/audit.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/audit.ts)
 
 - Dual-write: structured JSON log (existing) + PostgreSQL `audit_log` table (new)
 - Workspace-scoped queries: an operator can only see their own workspace's audit history
@@ -482,7 +482,7 @@ CREATE INDEX idx_audit_event_time ON audit_log(event_type, created_at DESC);
 
 **Physical deletion model**: Phase 3A application behavior uses soft deletes, not hard deletes. Most foreign keys intentionally fail closed on physical deletion attempts so accidental `DELETE` operations do not silently cascade through tenant data. Any future purge/GDPR workflow should run as an explicit, transactional admin path with ordered cleanup/anonymization rules.
 
-#### [NEW] [routes/audit.ts](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/src/routes/audit.ts)
+#### [NEW] [routes/audit.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/routes/audit.ts)
 
 | Endpoint | Auth | Behavior |
 |----------|------|----------|
@@ -495,23 +495,23 @@ CREATE INDEX idx_audit_event_time ON audit_log(event_type, created_at DESC);
 
 ## Infrastructure Changes
 
-#### [MODIFY] [docker-compose.yml](file:///home/hvo/Projects/agent-kryptos/docker-compose.yml)
+#### [MODIFY] [docker-compose.yml](file:///home/hvo/Projects/blindpass/docker-compose.yml)
 
 ```yaml
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: agent-kryptos-postgres
+    container_name: blindpass-postgres
     environment:
-      POSTGRES_DB: agent_kryptos
-      POSTGRES_USER: kryptos
+      POSTGRES_DB: agent_blindpass
+      POSTGRES_USER: blindpass
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localdev}
     ports:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U kryptos -d agent_kryptos"]
+      test: ["CMD-SHELL", "pg_isready -U blindpass -d agent_blindpass"]
       interval: 1s
       timeout: 3s
       retries: 30
@@ -523,7 +523,7 @@ volumes:
   pgdata:
 ```
 
-#### [MODIFY] [packages/sps-server/package.json](file:///home/hvo/Projects/agent-kryptos/packages/sps-server/package.json)
+#### [MODIFY] [packages/sps-server/package.json](file:///home/hvo/Projects/blindpass/packages/sps-server/package.json)
 
 New dependencies: `pg`, `bcrypt`, `stripe`, `@types/pg`, `@types/bcrypt`
 
@@ -531,7 +531,7 @@ New dependencies: `pg`, `bcrypt`, `stripe`, `@types/pg`, `@types/bcrypt`
 
 - New Unraid template for PostgreSQL container
 - SPS server template gets `DATABASE_URL`, `SPS_USER_JWT_SECRET`, `SPS_AGENT_JWT_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` env vars
-- Update [Unraid.md](file:///home/hvo/Projects/agent-kryptos/docs/deployment/Unraid.md)
+- Update [Unraid.md](file:///home/hvo/Projects/blindpass/docs/deployment/Unraid.md)
 
 ---
 
