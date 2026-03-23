@@ -156,22 +156,22 @@ The test plan is intentionally separated from Phase 3D because the enrolled-agen
 
 ## Milestone 5: Guest -> Agent Delivery
 
-- [ ] **Integration 922: Paid guest agent-delivery intent creates an exchange**
+- [x] **Integration 922: Paid guest agent-delivery intent creates an exchange**
   - [ ] Create an offer with `delivery_mode=agent` and a pinned `secret_name`
   - [ ] Complete approval and payment
   - [ ] Assert SPS returns `guest_access_token`, `exchange_id`, and the expected fulfillment delivery reference
 
-- [ ] **Integration 923: Wrong fulfiller agent is denied**
+- [x] **Integration 923: Wrong fulfiller agent is denied**
   - [ ] Create an offer that pins `allowed_fulfiller_id`
   - [ ] Let a different workspace agent attempt fulfillment
   - [ ] Assert the fulfill call fails without changing exchange state
 
-- [ ] **Integration 924: Guest requester can poll and retrieve through the exchange lifecycle**
+- [x] **Integration 924: Guest requester can poll and retrieve through the exchange lifecycle**
   - [ ] Complete a guest-paid exchange end-to-end through the runtime path
   - [ ] Assert status progresses `pending -> reserved -> submitted -> retrieved`
   - [ ] Assert retrieval is one-time
 
-- [ ] **Integration 925: Approval-gated guest exchange becomes payable only after approval**
+- [x] **Integration 925: Approval-gated guest exchange becomes payable only after approval**
   - [ ] Create a guest exchange offer requiring approval
   - [ ] Assert the intent stays non-payable until approved
   - [ ] Approve, pay, and complete the exchange successfully

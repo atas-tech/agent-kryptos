@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyPluginOptions, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool } from "pg";
 import { requireUserRole } from "../middleware/auth.js";
+import { generateRequestId, signFulfillmentToken } from "../services/crypto.js";
 import { logAudit } from "../services/audit.js";
 import { getPublicOfferByToken } from "../services/guest-offer.js";
 import {
@@ -30,9 +31,14 @@ import {
   hashX402Request,
   x402ConfigFromEnv
 } from "../services/x402.js";
-import type { RequestStore } from "../types.js";
+import { hashPolicyDecision } from "../services/policy.js";
+import type { PolicyDecision, RequestStore } from "../types.js";
 
 const BASE64_PATTERN = "^[A-Za-z0-9+/]+={0,2}$";
+
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
 
 export interface PublicIntentRoutesOptions extends FastifyPluginOptions {
   db: Pool;
@@ -144,7 +150,8 @@ function buildHumanRequestDescription(intent: GuestIntentRecord): string {
 }
 
 function guestIntentAvailableForDelivery(intent: GuestIntentRecord, requestId: string): boolean {
-  if (intent.requestId !== requestId) {
+  const expectedDeliveryId = intent.deliveryMode === "agent" ? intent.exchangeId : intent.requestId;
+  if (expectedDeliveryId !== requestId) {
     return false;
   }
 
@@ -153,6 +160,23 @@ function guestIntentAvailableForDelivery(intent: GuestIntentRecord, requestId: s
   }
 
   return true;
+}
+
+function buildGuestExchangeDecision(
+  intent: GuestIntentRecord,
+  settledPolicySnapshot: Record<string, unknown>
+): PolicyDecision {
+  const approvalRequired = settledPolicySnapshot.require_approval === true;
+  return {
+    mode: "allow",
+    approvalRequired,
+    ruleId: `guest_offer:${intent.offerId}`,
+    reason: approvalRequired ? "Guest public offer approval satisfied" : "Guest public offer direct allow",
+    approvalReference: intent.approvalReference ?? null,
+    secretName: intent.resolvedSecretName,
+    requesterRing: null,
+    fulfillerRing: null
+  };
 }
 
 function guestPaymentRequestHash(body: {
@@ -253,6 +277,143 @@ async function issueGuestActivationArtifacts(
     intent: activatedIntent,
     requestId: activatedIntent.requestId!,
     fulfillUrl,
+    guestAccessToken
+  };
+}
+
+async function appendGuestExchangeLifecycle(
+  store: RequestStore,
+  record: {
+    eventType: "exchange_requested" | "exchange_retrieved";
+    exchangeId: string;
+    approvalReference: string | null;
+    requesterId: string;
+    workspaceId: string;
+    secretName: string;
+    purpose: string;
+    fulfillerHint: string | null;
+    actorId: string | null;
+    status: string;
+    priorStatus: string | null;
+    reason: string | null;
+    policyRuleId: string | null;
+    metadata: Record<string, unknown> | null;
+  }
+): Promise<void> {
+  await store.appendLifecycleRecord({
+    recordId: generateRequestId(),
+    eventType: record.eventType,
+    exchangeId: record.exchangeId,
+    approvalReference: record.approvalReference,
+    requesterId: record.requesterId,
+    workspaceId: record.workspaceId,
+    secretName: record.secretName,
+    purpose: record.purpose,
+    fulfillerHint: record.fulfillerHint,
+    actorId: record.actorId,
+    status: record.status,
+    priorStatus: record.priorStatus,
+    reason: record.reason,
+    policyRuleId: record.policyRuleId,
+    metadata: record.metadata,
+    createdAt: nowSeconds()
+  });
+}
+
+async function issueGuestExchangeArtifacts(
+  opts: PublicIntentRoutesOptions,
+  intent: GuestIntentRecord,
+  settledPolicySnapshot: Record<string, unknown>
+): Promise<{
+  intent: GuestIntentRecord;
+  exchangeId: string;
+  fulfillmentToken: string;
+  guestAccessToken: string;
+}> {
+  if (intent.deliveryMode !== "agent") {
+    throw new Error("Only agent delivery is supported by this helper");
+  }
+
+  if (!intent.allowedFulfillerId) {
+    const error = new Error("Agent-delivery guest offers must pin an allowed fulfiller");
+    Object.assign(error, { statusCode: 400, code: "unsupported_offer" });
+    throw error;
+  }
+
+  const createdAt = nowSeconds();
+  const exchangeExpiresAt = Math.min(
+    Math.floor(intent.expiresAt.getTime() / 1000),
+    createdAt + (opts.requestTtlSeconds ?? 180)
+  );
+  const exchangeTtlSeconds = Math.max(1, exchangeExpiresAt - createdAt);
+  const exchangeId = generateRequestId();
+  const requesterId = guestRequesterId(intent);
+  const policyDecision = buildGuestExchangeDecision(intent, settledPolicySnapshot);
+  const policyHash = hashPolicyDecision(policyDecision, intent.allowedFulfillerId, intent.workspaceId);
+  const fulfillmentToken = await signFulfillmentToken({
+    exchange_id: exchangeId,
+    requester_id: requesterId,
+    workspace_id: intent.workspaceId,
+    secret_name: intent.resolvedSecretName,
+    purpose: intent.purpose,
+    policy_hash: policyHash,
+    approval_reference: policyDecision.approvalReference ?? null
+  }, opts.hmacSecret, exchangeExpiresAt);
+
+  await opts.store.setExchange({
+    exchangeId,
+    requesterId,
+    workspaceId: intent.workspaceId,
+    requesterPublicKey: intent.requesterPublicKey,
+    secretName: intent.resolvedSecretName,
+    purpose: intent.purpose,
+    fulfillerHint: intent.allowedFulfillerId,
+    allowedFulfillerId: intent.allowedFulfillerId,
+    priorExchangeId: null,
+    supersedesExchangeId: null,
+    policyDecision,
+    policyHash,
+    status: "pending",
+    createdAt,
+    expiresAt: exchangeExpiresAt
+  }, exchangeTtlSeconds);
+
+  await appendGuestExchangeLifecycle(opts.store, {
+    eventType: "exchange_requested",
+    exchangeId,
+    approvalReference: policyDecision.approvalReference ?? null,
+    requesterId,
+    workspaceId: intent.workspaceId,
+    secretName: intent.resolvedSecretName,
+    purpose: intent.purpose,
+    fulfillerHint: intent.allowedFulfillerId,
+    actorId: guestActorId(intent),
+    status: "pending",
+    priorStatus: null,
+    reason: null,
+    policyRuleId: policyDecision.ruleId,
+    metadata: {
+      guest_intent_id: intent.id
+    }
+  });
+
+  const activatedIntent = await activateGuestIntent(opts.db, {
+    intentId: intent.id,
+    exchangeId,
+    settledPolicySnapshot
+  });
+  const guestAccessToken = await signGuestAccessToken({
+    intent_id: activatedIntent.id,
+    request_id: exchangeId,
+    requester_id: requesterId,
+    workspace_id: activatedIntent.workspaceId,
+    actor_type: activatedIntent.actorType
+  }, opts.hmacSecret, Math.floor(activatedIntent.expiresAt.getTime() / 1000));
+
+  return {
+    intent: activatedIntent,
+    exchangeId,
+    fulfillmentToken,
     guestAccessToken
   };
 }
@@ -510,23 +671,36 @@ export async function registerPublicIntentRoutes(app: FastifyInstance, opts: Pub
             return reply.code(201).send(paymentOutcome.cachedResponse);
           }
 
-          const activated = await issueGuestActivationArtifacts(opts, result.intent, {
+          const settledSnapshot = {
             ...result.intent.policySnapshot,
             settled_at: new Date().toISOString(),
             payment_id: paymentId
-          });
-
-          const responsePayload = {
-            intent: toIntentResponse(activated.intent),
-            request_id: activated.requestId,
-            fulfill_url: activated.fulfillUrl,
-            guest_access_token: activated.guestAccessToken
           };
+          let responsePayload: Record<string, unknown>;
+          if (result.intent.deliveryMode === "human") {
+            const activated = await issueGuestActivationArtifacts(opts, result.intent, settledSnapshot);
+            responsePayload = {
+              intent: toIntentResponse(activated.intent),
+              request_id: activated.requestId,
+              fulfill_url: activated.fulfillUrl,
+              guest_access_token: activated.guestAccessToken
+            };
+          } else if (result.intent.deliveryMode === "agent") {
+            const activated = await issueGuestExchangeArtifacts(opts, result.intent, settledSnapshot);
+            responsePayload = {
+              intent: toIntentResponse(activated.intent),
+              exchange_id: activated.exchangeId,
+              fulfillment_token: activated.fulfillmentToken,
+              guest_access_token: activated.guestAccessToken
+            };
+          } else {
+            return reply.code(501).send({ error: "Delivery mode is not implemented yet", code: "delivery_mode_not_implemented" });
+          }
           await markGuestPaymentSettled(opts.db, {
             workspaceId: result.intent.workspaceId,
             paymentId,
             txHash: paymentOutcome.txHash,
-            responseCache: responsePayload as unknown as Record<string, unknown>
+            responseCache: responsePayload
           });
 
           await logAudit(opts.db, {
@@ -548,37 +722,65 @@ export async function registerPublicIntentRoutes(app: FastifyInstance, opts: Pub
           return reply.code(201).send(responsePayload);
         }
 
-        if (result.intent.deliveryMode !== "human") {
-          return reply.code(501).send({ error: "Agent delivery is not implemented yet", code: "delivery_mode_not_implemented" });
-        }
-
-        const activated = await issueGuestActivationArtifacts(opts, result.intent, {
+        const settledSnapshot = {
           ...result.intent.policySnapshot,
           settled_at: new Date().toISOString(),
           settlement_mode: "free"
-        });
+        };
 
-        await logAudit(opts.db, {
-          event: "guest_intent_activated",
-          workspaceId: activated.intent.workspaceId,
-          actorId: guestActorId(activated.intent),
-          actorType: activated.intent.actorType,
-          resourceId: activated.intent.id,
-          metadata: {
-            offer_id: activated.intent.offerId,
-            payment_policy: activated.intent.paymentPolicy,
-            request_id: activated.requestId
-          },
-          action: "guest_intent_activate",
-          ip: req.ip
-        });
+        if (result.intent.deliveryMode === "human") {
+          const activated = await issueGuestActivationArtifacts(opts, result.intent, settledSnapshot);
 
-        return reply.code(result.httpStatus).send({
-          intent: toIntentResponse(activated.intent),
-          request_id: activated.requestId,
-          fulfill_url: activated.fulfillUrl,
-          guest_access_token: activated.guestAccessToken
-        });
+          await logAudit(opts.db, {
+            event: "guest_intent_activated",
+            workspaceId: activated.intent.workspaceId,
+            actorId: guestActorId(activated.intent),
+            actorType: activated.intent.actorType,
+            resourceId: activated.intent.id,
+            metadata: {
+              offer_id: activated.intent.offerId,
+              payment_policy: activated.intent.paymentPolicy,
+              request_id: activated.requestId
+            },
+            action: "guest_intent_activate",
+            ip: req.ip
+          });
+
+          return reply.code(result.httpStatus).send({
+            intent: toIntentResponse(activated.intent),
+            request_id: activated.requestId,
+            fulfill_url: activated.fulfillUrl,
+            guest_access_token: activated.guestAccessToken
+          });
+        }
+
+        if (result.intent.deliveryMode === "agent") {
+          const activated = await issueGuestExchangeArtifacts(opts, result.intent, settledSnapshot);
+
+          await logAudit(opts.db, {
+            event: "guest_intent_activated",
+            workspaceId: activated.intent.workspaceId,
+            actorId: guestActorId(activated.intent),
+            actorType: activated.intent.actorType,
+            resourceId: activated.intent.id,
+            metadata: {
+              offer_id: activated.intent.offerId,
+              payment_policy: activated.intent.paymentPolicy,
+              exchange_id: activated.exchangeId
+            },
+            action: "guest_intent_activate",
+            ip: req.ip
+          });
+
+          return reply.code(result.httpStatus).send({
+            intent: toIntentResponse(activated.intent),
+            exchange_id: activated.exchangeId,
+            fulfillment_token: activated.fulfillmentToken,
+            guest_access_token: activated.guestAccessToken
+          });
+        }
+
+        return reply.code(501).send({ error: "Delivery mode is not implemented yet", code: "delivery_mode_not_implemented" });
       } catch (error) {
         return sendServiceError(reply, error);
       }
@@ -628,6 +830,33 @@ export async function registerPublicIntentRoutes(app: FastifyInstance, opts: Pub
       return reply.code(410).send({ error: "Not available" });
     }
 
+    if (intent.deliveryMode === "agent") {
+      const exchange = await opts.store.getExchange(claims.request_id);
+      if (exchange) {
+        return reply.send({
+          intent_id: intent.id,
+          exchange_id: exchange.exchangeId,
+          status: exchange.status,
+          fulfilled_by: exchange.fulfilledBy ?? null,
+          expires_at: new Date(exchange.expiresAt * 1000).toISOString()
+        });
+      }
+
+      const lifecycle = await opts.store.listLifecycleRecordsByExchange(claims.request_id);
+      const lastRecord = lifecycle.at(-1);
+      if (!lastRecord) {
+        return reply.code(410).send({ status: "expired" });
+      }
+
+      return reply.send({
+        intent_id: intent.id,
+        exchange_id: claims.request_id,
+        status: lastRecord.status ?? (lastRecord.eventType === "exchange_retrieved" ? "retrieved" : "expired"),
+        fulfilled_by: typeof lastRecord.metadata?.fulfilled_by === "string" ? lastRecord.metadata.fulfilled_by : null,
+        expires_at: intent.expiresAt.toISOString()
+      });
+    }
+
     const request = await opts.store.getRequest(claims.request_id);
     if (!request) {
       return reply.code(410).send({ status: "expired" });
@@ -650,6 +879,58 @@ export async function registerPublicIntentRoutes(app: FastifyInstance, opts: Pub
     const intent = await getGuestIntentById(opts.db, req.params.id);
     if (!intent || intent.workspaceId !== claims.workspace_id || !guestIntentAvailableForDelivery(intent, claims.request_id)) {
       return reply.code(410).send({ error: "Not available" });
+    }
+
+    if (intent.deliveryMode === "agent") {
+      const exchange = await opts.store.getExchange(claims.request_id);
+      if (!exchange || exchange.status !== "submitted") {
+        return reply.code(410).send({ error: "Not available" });
+      }
+
+      const retrieved = await opts.store.atomicRetrieveExchange(claims.request_id, claims.requester_id, claims.workspace_id);
+      if (!retrieved || !retrieved.enc || !retrieved.ciphertext) {
+        return reply.code(410).send({ error: "Not available" });
+      }
+
+      await appendGuestExchangeLifecycle(opts.store, {
+        eventType: "exchange_retrieved",
+        exchangeId: retrieved.exchangeId,
+        approvalReference: retrieved.policyDecision.approvalReference ?? null,
+        requesterId: retrieved.requesterId,
+        workspaceId: retrieved.workspaceId ?? claims.workspace_id,
+        secretName: retrieved.secretName,
+        purpose: retrieved.purpose,
+        fulfillerHint: retrieved.fulfillerHint,
+        actorId: guestActorId(intent),
+        status: "retrieved",
+        priorStatus: exchange.status,
+        reason: null,
+        policyRuleId: retrieved.policyDecision.ruleId,
+        metadata: {
+          fulfilled_by: retrieved.fulfilledBy ?? null
+        }
+      });
+
+      await logAudit(opts.db, {
+        event: "exchange_retrieved",
+        workspaceId: claims.workspace_id,
+        actorId: guestActorId(intent),
+        actorType: intent.actorType,
+        exchangeId: retrieved.exchangeId,
+        requesterId: claims.requester_id,
+        fulfilledBy: retrieved.fulfilledBy ?? undefined,
+        secretName: retrieved.secretName,
+        policyRuleId: retrieved.policyDecision.ruleId,
+        approvalReference: retrieved.policyDecision.approvalReference ?? null,
+        resourceId: intent.id,
+        action: "guest_exchange_retrieve",
+        ip: req.ip
+      });
+
+      return reply.send({
+        enc: retrieved.enc,
+        ciphertext: retrieved.ciphertext
+      });
     }
 
     const retrieved = await opts.store.atomicRetrieveAndDelete(claims.request_id, claims.requester_id, claims.workspace_id);

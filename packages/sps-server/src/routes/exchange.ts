@@ -65,6 +65,10 @@ function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
 }
 
+function isGuestBackedExchange(requesterId: string): boolean {
+  return requesterId.startsWith("guest-intent:");
+}
+
 function isHostedModeEnabled(): boolean {
   const raw = process.env.SPS_HOSTED_MODE?.trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes";
@@ -997,69 +1001,79 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         return notAvailable(reply);
       }
 
-      let currentResolvedPolicy;
-      let currentPolicy;
-      try {
-        currentResolvedPolicy = await opts.policyResolver.resolve(exchange.workspaceId);
-        currentPolicy = currentResolvedPolicy.engine.evaluate({
-          requesterId: exchange.requesterId,
-          requesterWorkspaceId: exchange.workspaceId,
-          secretName: exchange.secretName,
-          purpose: exchange.purpose,
-          fulfillerHint: agent.sub,
-          fulfillerWorkspaceId: agent.workspaceId ?? undefined
-        });
-      } catch (error) {
-        return sendWorkspacePolicyError(reply, error);
-      }
-      if (!currentPolicy) {
-        return reply.code(409).send({ error: "Exchange policy no longer allows fulfillment" });
-      }
-
-      let resolvedCurrentPolicy;
-      try {
-        resolvedCurrentPolicy = await resolveDecision(
-          exchange.requesterId,
-          exchange.workspaceId,
-          exchange.secretName,
-          exchange.purpose,
-          agent.sub,
-          agent.workspaceId ?? undefined
-        );
-      } catch (error) {
-        return sendWorkspacePolicyError(reply, error);
-      }
-      if (!resolvedCurrentPolicy) {
-        return reply.code(409).send({ error: "Exchange policy no longer allows fulfillment" });
-      }
-
-      const currentDecision = resolvedCurrentPolicy.decision;
-      if (currentDecision.mode !== "allow") {
-        return reply.code(409).send({
-          error:
-            resolvedCurrentPolicy.approvalRecordStatus === "rejected"
-              ? "Exchange approval was rejected"
-              : currentDecision.mode === "pending_approval"
-                ? "Exchange policy now requires approval before fulfillment"
-                : "Exchange policy no longer allows fulfillment"
-        });
-      }
-
-      const currentPolicyHash = hashPolicyDecision(
-        currentDecision,
-        resolvedCurrentPolicy.allowedFulfillerId,
-        exchange.workspaceId
-      );
-      if (currentPolicyHash !== claims.policy_hash || currentPolicyHash !== exchange.policyHash) {
-        return reply.code(409).send({ error: "Exchange policy changed; requester must create a new exchange" });
-      }
-
       if (exchange.status !== "pending") {
         return reply.code(409).send({ error: "Exchange is no longer pending" });
       }
 
-      if (exchange.allowedFulfillerId !== agent.sub || resolvedCurrentPolicy.allowedFulfillerId !== agent.sub) {
-        return reply.code(409).send({ error: "Exchange is reserved for a different fulfiller" });
+      if (isGuestBackedExchange(exchange.requesterId)) {
+        if (claims.policy_hash !== exchange.policyHash) {
+          return reply.code(409).send({ error: "Exchange policy changed; requester must create a new exchange" });
+        }
+
+        if (exchange.allowedFulfillerId !== agent.sub) {
+          return reply.code(409).send({ error: "Exchange is reserved for a different fulfiller" });
+        }
+      } else {
+        let currentResolvedPolicy;
+        let currentPolicy;
+        try {
+          currentResolvedPolicy = await opts.policyResolver.resolve(exchange.workspaceId);
+          currentPolicy = currentResolvedPolicy.engine.evaluate({
+            requesterId: exchange.requesterId,
+            requesterWorkspaceId: exchange.workspaceId,
+            secretName: exchange.secretName,
+            purpose: exchange.purpose,
+            fulfillerHint: agent.sub,
+            fulfillerWorkspaceId: agent.workspaceId ?? undefined
+          });
+        } catch (error) {
+          return sendWorkspacePolicyError(reply, error);
+        }
+        if (!currentPolicy) {
+          return reply.code(409).send({ error: "Exchange policy no longer allows fulfillment" });
+        }
+
+        let resolvedCurrentPolicy;
+        try {
+          resolvedCurrentPolicy = await resolveDecision(
+            exchange.requesterId,
+            exchange.workspaceId,
+            exchange.secretName,
+            exchange.purpose,
+            agent.sub,
+            agent.workspaceId ?? undefined
+          );
+        } catch (error) {
+          return sendWorkspacePolicyError(reply, error);
+        }
+        if (!resolvedCurrentPolicy) {
+          return reply.code(409).send({ error: "Exchange policy no longer allows fulfillment" });
+        }
+
+        const currentDecision = resolvedCurrentPolicy.decision;
+        if (currentDecision.mode !== "allow") {
+          return reply.code(409).send({
+            error:
+              resolvedCurrentPolicy.approvalRecordStatus === "rejected"
+                ? "Exchange approval was rejected"
+                : currentDecision.mode === "pending_approval"
+                  ? "Exchange policy now requires approval before fulfillment"
+                  : "Exchange policy no longer allows fulfillment"
+          });
+        }
+
+        const currentPolicyHash = hashPolicyDecision(
+          currentDecision,
+          resolvedCurrentPolicy.allowedFulfillerId,
+          exchange.workspaceId
+        );
+        if (currentPolicyHash !== claims.policy_hash || currentPolicyHash !== exchange.policyHash) {
+          return reply.code(409).send({ error: "Exchange policy changed; requester must create a new exchange" });
+        }
+
+        if (exchange.allowedFulfillerId !== agent.sub || resolvedCurrentPolicy.allowedFulfillerId !== agent.sub) {
+          return reply.code(409).send({ error: "Exchange is reserved for a different fulfiller" });
+        }
       }
 
       const reserved = await opts.store.reserveExchange(exchange.exchangeId, agent.sub);

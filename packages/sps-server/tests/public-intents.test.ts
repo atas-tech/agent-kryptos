@@ -141,6 +141,46 @@ async function createMemberAndLogin(
   return { access_token: accessToken };
 }
 
+async function enrollAgent(
+  app: Awaited<ReturnType<typeof buildApp>>,
+  accessToken: string,
+  agentId: string,
+  displayName?: string
+) {
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v2/agents",
+    headers: {
+      authorization: `Bearer ${accessToken}`
+    },
+    payload: displayName ? { agent_id: agentId, display_name: displayName } : { agent_id: agentId }
+  });
+
+  expect(response.statusCode).toBe(201);
+  return response.json() as {
+    bootstrap_api_key: string;
+    agent: { agent_id: string; status: string };
+  };
+}
+
+async function mintAgentToken(
+  app: Awaited<ReturnType<typeof buildApp>>,
+  apiKey: string,
+  ipAddress: string
+) {
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v2/agents/token",
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "x-forwarded-for": ipAddress
+    }
+  });
+
+  expect(response.statusCode).toBe(200);
+  return response.json() as { access_token: string };
+}
+
 async function createOffer(
   app: Awaited<ReturnType<typeof buildApp>>,
   accessToken: string,
@@ -335,6 +375,34 @@ async function activatePaidHumanIntent(
     };
     request_id: string;
     fulfill_url: string;
+    guest_access_token: string;
+  };
+}
+
+async function activatePaidAgentIntent(
+  app: Awaited<ReturnType<typeof buildApp>>,
+  payload: {
+    offer_token: string;
+    public_key: string;
+    purpose: string;
+    actor_type?: "guest_agent" | "guest_human";
+    requester_label?: string;
+  },
+  paymentId: string,
+  ip = "198.51.100.44"
+) {
+  const { paymentRequired } = await createPaymentChallenge(app, payload, ip);
+  const activationResponse = await submitPaidIntent(app, payload, paymentRequired, paymentId, ip);
+  expect(activationResponse.statusCode).toBe(201);
+  return activationResponse.json() as {
+    intent: {
+      intent_id: string;
+      status: string;
+      status_token: string;
+      exchange_id: string | null;
+    };
+    exchange_id: string;
+    fulfillment_token: string;
     guest_access_token: string;
   };
 }
@@ -1666,6 +1734,336 @@ describePg("Phase 3C public offers and guest intents", () => {
         }
       });
       expect(secondRetrieve.statusCode).toBe(410);
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("creates a paid guest agent-delivery intent and returns exchange artifacts", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const x402Provider = new TestX402Provider();
+      const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
+      const owner = await registerOwner(app, "guest-agent-exchange");
+      await verifyOwner(app, pool, "guest-agent-exchange@example.com");
+      await enrollAgent(app, owner.access_token, "agent-alpha", "Agent Alpha");
+      const created = await createOffer(app, owner.access_token, {
+        delivery_mode: "agent",
+        allowed_fulfiller_id: "agent-alpha",
+        payment_policy: "always_x402",
+        price_usd_cents: 5,
+        secret_name: "restricted.secret"
+      });
+
+      const activated = await activatePaidAgentIntent(app, {
+        offer_token: created.offer_token,
+        public_key: "QUJDRA==",
+        purpose: "agent delivery"
+      }, "agent-exchange-pay-1", "198.51.100.71");
+
+      expect(activated.intent).toMatchObject({
+        status: "activated",
+        exchange_id: activated.exchange_id
+      });
+      expect(activated.fulfillment_token).toEqual(expect.any(String));
+      expect(activated.guest_access_token).toEqual(expect.any(String));
+
+      const guestStatus = await app.inject({
+        method: "GET",
+        url: `/api/v2/public/intents/${activated.intent.intent_id}/delivery-status`,
+        headers: {
+          authorization: `Bearer ${activated.guest_access_token}`
+        }
+      });
+      expect(guestStatus.statusCode).toBe(200);
+      expect(guestStatus.json()).toMatchObject({
+        intent_id: activated.intent.intent_id,
+        exchange_id: activated.exchange_id,
+        status: "pending"
+      });
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("denies a different workspace agent from fulfilling a guest-created exchange", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const x402Provider = new TestX402Provider();
+      const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
+      const owner = await registerOwner(app, "guest-agent-deny");
+      await verifyOwner(app, pool, "guest-agent-deny@example.com");
+      const allowedAgent = await enrollAgent(app, owner.access_token, "agent-allowed", "Allowed Agent");
+      const wrongAgent = await enrollAgent(app, owner.access_token, "agent-wrong", "Wrong Agent");
+      const wrongAgentAuth = await mintAgentToken(app, wrongAgent.bootstrap_api_key, "203.0.113.20");
+
+      const created = await createOffer(app, owner.access_token, {
+        delivery_mode: "agent",
+        allowed_fulfiller_id: "agent-allowed",
+        payment_policy: "always_x402",
+        price_usd_cents: 5,
+        secret_name: "restricted.secret"
+      });
+
+      const activated = await activatePaidAgentIntent(app, {
+        offer_token: created.offer_token,
+        public_key: "QkJCQg==",
+        purpose: "wrong fulfiller"
+      }, "agent-wrong-pay-1", "198.51.100.72");
+
+      const wrongReserve = await app.inject({
+        method: "POST",
+        url: "/api/v2/secret/exchange/fulfill",
+        headers: {
+          authorization: `Bearer ${wrongAgentAuth.access_token}`
+        },
+        payload: {
+          fulfillment_token: activated.fulfillment_token
+        }
+      });
+      expect(wrongReserve.statusCode).toBe(409);
+      expect(wrongReserve.json()).toMatchObject({
+        error: "Exchange is reserved for a different fulfiller"
+      });
+
+      const guestStatus = await app.inject({
+        method: "GET",
+        url: `/api/v2/public/intents/${activated.intent.intent_id}/delivery-status`,
+        headers: {
+          authorization: `Bearer ${activated.guest_access_token}`
+        }
+      });
+      expect(guestStatus.statusCode).toBe(200);
+      expect(guestStatus.json()).toMatchObject({
+        status: "pending"
+      });
+
+      expect(allowedAgent.agent.agent_id).toBe("agent-allowed");
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("lets a guest poll and retrieve through the guest-created exchange lifecycle exactly once", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const x402Provider = new TestX402Provider();
+      const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
+      const owner = await registerOwner(app, "guest-agent-lifecycle");
+      await verifyOwner(app, pool, "guest-agent-lifecycle@example.com");
+      const agent = await enrollAgent(app, owner.access_token, "agent-runner", "Agent Runner");
+      const agentAuth = await mintAgentToken(app, agent.bootstrap_api_key, "203.0.113.21");
+      const created = await createOffer(app, owner.access_token, {
+        delivery_mode: "agent",
+        allowed_fulfiller_id: "agent-runner",
+        payment_policy: "always_x402",
+        price_usd_cents: 5,
+        secret_name: "restricted.secret"
+      });
+
+      const activated = await activatePaidAgentIntent(app, {
+        offer_token: created.offer_token,
+        public_key: "Q0NDQw==",
+        purpose: "agent lifecycle"
+      }, "agent-lifecycle-pay-1", "198.51.100.73");
+
+      const pendingStatus = await app.inject({
+        method: "GET",
+        url: `/api/v2/public/intents/${activated.intent.intent_id}/delivery-status`,
+        headers: {
+          authorization: `Bearer ${activated.guest_access_token}`
+        }
+      });
+      expect(pendingStatus.statusCode).toBe(200);
+      expect(pendingStatus.json()).toMatchObject({ status: "pending" });
+
+      const reserveResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/secret/exchange/fulfill",
+        headers: {
+          authorization: `Bearer ${agentAuth.access_token}`
+        },
+        payload: {
+          fulfillment_token: activated.fulfillment_token
+        }
+      });
+      expect(reserveResponse.statusCode).toBe(200);
+      expect(reserveResponse.json()).toMatchObject({
+        exchange_id: activated.exchange_id,
+        status: "reserved",
+        fulfilled_by: "agent-runner"
+      });
+
+      const reservedStatus = await app.inject({
+        method: "GET",
+        url: `/api/v2/public/intents/${activated.intent.intent_id}/delivery-status`,
+        headers: {
+          authorization: `Bearer ${activated.guest_access_token}`
+        }
+      });
+      expect(reservedStatus.statusCode).toBe(200);
+      expect(reservedStatus.json()).toMatchObject({
+        status: "reserved",
+        fulfilled_by: "agent-runner"
+      });
+
+      const submitResponse = await app.inject({
+        method: "POST",
+        url: `/api/v2/secret/exchange/submit/${activated.exchange_id}`,
+        headers: {
+          authorization: `Bearer ${agentAuth.access_token}`
+        },
+        payload: {
+          enc: "QUJDRA==",
+          ciphertext: "RUZHSA=="
+        }
+      });
+      expect(submitResponse.statusCode).toBe(201);
+      expect(submitResponse.json()).toMatchObject({
+        status: "submitted",
+        fulfilled_by: "agent-runner"
+      });
+
+      const submittedStatus = await app.inject({
+        method: "GET",
+        url: `/api/v2/public/intents/${activated.intent.intent_id}/delivery-status`,
+        headers: {
+          authorization: `Bearer ${activated.guest_access_token}`
+        }
+      });
+      expect(submittedStatus.statusCode).toBe(200);
+      expect(submittedStatus.json()).toMatchObject({
+        status: "submitted",
+        fulfilled_by: "agent-runner"
+      });
+
+      const retrieveResponse = await app.inject({
+        method: "GET",
+        url: `/api/v2/public/intents/${activated.intent.intent_id}/retrieve`,
+        headers: {
+          authorization: `Bearer ${activated.guest_access_token}`
+        }
+      });
+      expect(retrieveResponse.statusCode).toBe(200);
+      expect(retrieveResponse.json()).toMatchObject({
+        enc: "QUJDRA==",
+        ciphertext: "RUZHSA=="
+      });
+
+      const retrievedStatus = await app.inject({
+        method: "GET",
+        url: `/api/v2/public/intents/${activated.intent.intent_id}/delivery-status`,
+        headers: {
+          authorization: `Bearer ${activated.guest_access_token}`
+        }
+      });
+      expect(retrievedStatus.statusCode).toBe(200);
+      expect(retrievedStatus.json()).toMatchObject({
+        status: "retrieved",
+        fulfilled_by: "agent-runner"
+      });
+
+      const secondRetrieve = await app.inject({
+        method: "GET",
+        url: `/api/v2/public/intents/${activated.intent.intent_id}/retrieve`,
+        headers: {
+          authorization: `Bearer ${activated.guest_access_token}`
+        }
+      });
+      expect(secondRetrieve.statusCode).toBe(410);
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("keeps approval-gated guest exchanges non-payable until approved and then completes them", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const x402Provider = new TestX402Provider();
+      const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
+      const owner = await registerOwner(app, "guest-agent-approval");
+      await verifyOwner(app, pool, "guest-agent-approval@example.com");
+      const agent = await enrollAgent(app, owner.access_token, "agent-gated", "Agent Gated");
+      const agentAuth = await mintAgentToken(app, agent.bootstrap_api_key, "203.0.113.22");
+      const created = await createOffer(app, owner.access_token, {
+        delivery_mode: "agent",
+        allowed_fulfiller_id: "agent-gated",
+        payment_policy: "always_x402",
+        price_usd_cents: 5,
+        secret_name: "restricted.secret",
+        require_approval: true
+      });
+
+      const payload = {
+        offer_token: created.offer_token,
+        public_key: "RERERA==",
+        purpose: "approved exchange"
+      };
+
+      const pendingResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/public/intents",
+        headers: {
+          "x-forwarded-for": "198.51.100.74"
+        },
+        payload
+      });
+      expect(pendingResponse.statusCode).toBe(202);
+      const pending = pendingResponse.json() as {
+        intent: { intent_id: string; status: string; approval_status: string | null };
+      };
+      expect(pending.intent).toMatchObject({
+        status: "pending_approval",
+        approval_status: "pending"
+      });
+
+      const approveResponse = await app.inject({
+        method: "POST",
+        url: `/api/v2/public/intents/${pending.intent.intent_id}/approve`,
+        headers: {
+          authorization: `Bearer ${owner.access_token}`
+        }
+      });
+      expect(approveResponse.statusCode).toBe(200);
+
+      const { paymentRequired } = await createPaymentChallenge(app, payload, "198.51.100.74");
+      const activationResponse = await submitPaidIntent(app, payload, paymentRequired, "agent-approval-pay-1", "198.51.100.74");
+      expect(activationResponse.statusCode).toBe(201);
+      const activated = activationResponse.json() as {
+        intent: { intent_id: string; exchange_id: string | null };
+        exchange_id: string;
+        fulfillment_token: string;
+        guest_access_token: string;
+      };
+      expect(activated.intent.exchange_id).toBe(activated.exchange_id);
+
+      const reserveResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/secret/exchange/fulfill",
+        headers: {
+          authorization: `Bearer ${agentAuth.access_token}`
+        },
+        payload: {
+          fulfillment_token: activated.fulfillment_token
+        }
+      });
+      expect(reserveResponse.statusCode).toBe(200);
 
       await app.close();
     } finally {
