@@ -7,13 +7,17 @@ import {
   activateGuestIntent,
   createOrResumeGuestIntent,
   decideGuestIntentApproval,
+  getGuestIntentAdminById,
   getGuestIntentById,
   getGuestIntentByStatusToken,
+  listGuestIntentsForWorkspace,
   revokeGuestIntent,
   toGuestIntentPublicStatus,
+  type GuestIntentAdminRecord,
   type GuestIntentRecord
 } from "../services/guest-intent.js";
 import {
+  findGuestPaymentByPaymentId,
   markGuestPaymentSettled,
   verifyAndSettleGuestPayment
 } from "../services/guest-payment.js";
@@ -58,6 +62,60 @@ function toIntentResponse(intent: GuestIntentRecord) {
   };
 }
 
+async function toAdminIntentResponse(
+  intent: GuestIntentAdminRecord,
+  store: RequestStore
+): Promise<Record<string, unknown>> {
+  const request = intent.requestId ? await store.getRequest(intent.requestId) : null;
+  const requestState = request
+    ? {
+        status: request.status,
+        expires_at: new Date(request.expiresAt * 1000).toISOString()
+      }
+    : null;
+
+  return {
+    id: intent.id,
+    workspace_id: intent.workspaceId,
+    offer_id: intent.offerId,
+    offer_label: intent.offerLabel,
+    offer_status: intent.offerStatus,
+    offer_used_count: intent.offerUsedCount,
+    offer_max_uses: intent.offerMaxUses,
+    offer_expires_at: intent.offerExpiresAt.toISOString(),
+    actor_type: intent.actorType,
+    status: intent.status,
+    effective_status: intent.effectiveStatus,
+    approval_status: intent.approvalStatus,
+    approval_reference: intent.approvalReference,
+    requester_label: intent.requesterLabel,
+    purpose: intent.purpose,
+    delivery_mode: intent.deliveryMode,
+    payment_policy: intent.paymentPolicy,
+    price_usd_cents: intent.priceUsdCents,
+    included_free_uses: intent.includedFreeUses,
+    resolved_secret_name: intent.resolvedSecretName,
+    allowed_fulfiller_id: intent.allowedFulfillerId,
+    request_id: intent.requestId,
+    request_state: requestState,
+    exchange_id: intent.exchangeId,
+    activated_at: intent.activatedAt?.toISOString() ?? null,
+    revoked_at: intent.revokedAt?.toISOString() ?? null,
+    expires_at: intent.expiresAt.toISOString(),
+    created_at: intent.createdAt.toISOString(),
+    updated_at: intent.updatedAt.toISOString(),
+    latest_payment: intent.latestPaymentId
+      ? {
+          payment_id: intent.latestPaymentId,
+          status: intent.latestPaymentStatus,
+          tx_hash: intent.latestPaymentTxHash,
+          settled_at: intent.latestPaymentSettledAt?.toISOString() ?? null,
+          created_at: intent.latestPaymentCreatedAt?.toISOString() ?? null
+        }
+      : null
+  };
+}
+
 function guestActorId(intent: GuestIntentRecord): string {
   return intent.requesterLabel ? `${intent.actorType}:${intent.requesterLabel}` : `${intent.actorType}:${intent.id}`;
 }
@@ -83,6 +141,33 @@ function guestRequesterId(intent: GuestIntentRecord): string {
 function buildHumanRequestDescription(intent: GuestIntentRecord): string {
   const requester = intent.requesterLabel?.trim() || "External requester";
   return `${requester} requested a one-time secret handoff. Purpose: ${intent.purpose}`;
+}
+
+function guestIntentAvailableForDelivery(intent: GuestIntentRecord, requestId: string): boolean {
+  if (intent.requestId !== requestId) {
+    return false;
+  }
+
+  if (intent.status !== "activated" || intent.revokedAt || intent.expiresAt.getTime() <= Date.now()) {
+    return false;
+  }
+
+  return true;
+}
+
+function guestPaymentRequestHash(body: {
+  actor_type?: "guest_agent" | "guest_human";
+  public_key: string;
+  purpose: string;
+  requester_label?: string;
+}, offerId: string): string {
+  return hashX402Request({
+    offer_id: offerId,
+    actor_type: body.actor_type ?? "guest_agent",
+    requester_public_key: body.public_key,
+    purpose: body.purpose,
+    requester_label: body.requester_label?.trim() || null
+  });
 }
 
 async function issueGuestActivationArtifacts(
@@ -207,6 +292,82 @@ function sendServiceError(reply: FastifyReply, error: unknown) {
 }
 
 export async function registerPublicIntentRoutes(app: FastifyInstance, opts: PublicIntentRoutesOptions): Promise<void> {
+  app.get<{
+    Querystring: {
+      offer_id?: string;
+      status?: "pending_approval" | "payment_required" | "activated" | "rejected" | "revoked" | "expired";
+      approval_status?: "pending" | "approved" | "rejected";
+      limit?: number;
+    };
+  }>(
+    "/admin",
+    {
+      schema: {
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            offer_id: { type: "string", minLength: 36, maxLength: 36 },
+            status: {
+              type: "string",
+              enum: ["pending_approval", "payment_required", "activated", "rejected", "revoked", "expired"]
+            },
+            approval_status: { type: "string", enum: ["pending", "approved", "rejected"] },
+            limit: { type: "integer", minimum: 1, maximum: 200 }
+          }
+        }
+      }
+    },
+    async (req, reply) => {
+      const user = await requireUserRole("workspace_viewer")(req, reply);
+      if (!user) {
+        return;
+      }
+
+      const intents = await listGuestIntentsForWorkspace(opts.db, user.workspaceId, {
+        offerId: req.query.offer_id,
+        status: req.query.status,
+        approvalStatus: req.query.approval_status,
+        limit: req.query.limit
+      });
+
+      return reply.send({
+        intents: await Promise.all(intents.map((intent) => toAdminIntentResponse(intent, opts.store)))
+      });
+    }
+  );
+
+  app.get<{ Params: { id: string } }>(
+    "/admin/:id",
+    {
+      schema: {
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["id"],
+          properties: {
+            id: { type: "string", minLength: 36, maxLength: 36 }
+          }
+        }
+      }
+    },
+    async (req, reply) => {
+      const user = await requireUserRole("workspace_viewer")(req, reply);
+      if (!user) {
+        return;
+      }
+
+      const intent = await getGuestIntentAdminById(opts.db, user.workspaceId, req.params.id);
+      if (!intent) {
+        return reply.code(404).send({ error: "Guest intent not found", code: "guest_intent_not_found" });
+      }
+
+      return reply.send({
+        intent: await toAdminIntentResponse(intent, opts.store)
+      });
+    }
+  );
+
   app.post<{
     Body: {
       offer_token: string;
@@ -238,6 +399,33 @@ export async function registerPublicIntentRoutes(app: FastifyInstance, opts: Pub
         const offer = await getPublicOfferByToken(opts.db, req.body.offer_token);
         if (!offer) {
           return reply.code(404).send({ error: "Offer not found", code: "public_offer_not_found" });
+        }
+
+        const paymentSignature = typeof req.headers["payment-signature"] === "string" ? req.headers["payment-signature"].trim() : "";
+        const paymentId = typeof req.headers["payment-identifier"] === "string" ? req.headers["payment-identifier"].trim() : "";
+        const requestHash = guestPaymentRequestHash(req.body, offer.id);
+
+        if (paymentId) {
+          const existingPayment = await findGuestPaymentByPaymentId(opts.db, offer.workspaceId, paymentId);
+          if (existingPayment) {
+            if (existingPayment.requestHash !== requestHash) {
+              return reply.code(409).send({
+                error: "payment-identifier reuse does not match the original request",
+                code: "payment_identifier_conflict"
+              });
+            }
+
+            if (existingPayment.status === "settled" && existingPayment.responseCache) {
+              return reply.code(201).send(existingPayment.responseCache);
+            }
+
+            return reply.code(409).send({
+              error: existingPayment.status === "failed"
+                ? "Payment already failed for this request"
+                : "Payment is already being processed for this request",
+              code: existingPayment.status === "failed" ? "payment_failed" : "payment_in_progress"
+            });
+          }
         }
 
         const x402Config = x402ConfigFromEnv();
@@ -276,9 +464,6 @@ export async function registerPublicIntentRoutes(app: FastifyInstance, opts: Pub
         }
 
         if (result.kind === "payment_required") {
-          const paymentSignature = typeof req.headers["payment-signature"] === "string" ? req.headers["payment-signature"].trim() : "";
-          const paymentId = typeof req.headers["payment-identifier"] === "string" ? req.headers["payment-identifier"].trim() : "";
-
           if (!paymentSignature) {
             reply.header("PAYMENT-REQUIRED", encodePaymentRequiredHeader(buildPaymentRequiredPayload(result.quote)));
             await logAudit(opts.db, {
@@ -315,12 +500,7 @@ export async function registerPublicIntentRoutes(app: FastifyInstance, opts: Pub
           const paymentOutcome = await verifyAndSettleGuestPayment(opts.db, opts.x402Provider, x402Config, {
             workspaceId: result.intent.workspaceId,
             intentId: result.intent.id,
-            requestHash: hashX402Request({
-              intent_id: result.intent.id,
-              requester_public_key: req.body.public_key,
-              purpose: req.body.purpose,
-              offer_id: result.intent.offerId
-            }),
+            requestHash,
             paymentId,
             paymentSignature,
             quote: result.quote
@@ -444,7 +624,7 @@ export async function registerPublicIntentRoutes(app: FastifyInstance, opts: Pub
     }
 
     const intent = await getGuestIntentById(opts.db, req.params.id);
-    if (!intent || intent.workspaceId !== claims.workspace_id || intent.requestId !== claims.request_id) {
+    if (!intent || intent.workspaceId !== claims.workspace_id || !guestIntentAvailableForDelivery(intent, claims.request_id)) {
       return reply.code(410).send({ error: "Not available" });
     }
 
@@ -468,7 +648,7 @@ export async function registerPublicIntentRoutes(app: FastifyInstance, opts: Pub
     }
 
     const intent = await getGuestIntentById(opts.db, req.params.id);
-    if (!intent || intent.workspaceId !== claims.workspace_id || intent.requestId !== claims.request_id) {
+    if (!intent || intent.workspaceId !== claims.workspace_id || !guestIntentAvailableForDelivery(intent, claims.request_id)) {
       return reply.code(410).send({ error: "Not available" });
     }
 
@@ -600,6 +780,9 @@ export async function registerPublicIntentRoutes(app: FastifyInstance, opts: Pub
 
       try {
         const intent = await revokeGuestIntent(opts.db, user.workspaceId, req.params.id);
+        if (intent.requestId) {
+          await opts.store.deleteRequest(intent.requestId).catch(() => undefined);
+        }
         await logAudit(opts.db, {
           event: "guest_intent_revoked",
           workspaceId: user.workspaceId,

@@ -1013,6 +1013,36 @@
     @apply lg:grid-cols-2;
   }
 
+  .support-layout {
+    @apply grid gap-6 xl:grid-cols-2;
+  }
+
+  .support-column {
+    @apply flex flex-col gap-5;
+  }
+
+  .support-summary,
+  .support-detail-stack {
+    @apply flex flex-col gap-4;
+  }
+
+  .support-actions {
+    @apply flex flex-wrap gap-3;
+  }
+
+  .support-detail-grid {
+    @apply grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)];
+  }
+
+  .support-payment-row {
+    @apply mt-3 flex flex-wrap items-center gap-3;
+  }
+
+  .support-timestamp-list {
+    @apply mt-3 grid gap-2 text-sm;
+    color: rgba(240, 244, 255, 0.78);
+  }
+
   .approval-card {
     @apply flex flex-col gap-4;
   }

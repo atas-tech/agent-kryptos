@@ -13,6 +13,7 @@ import { AgentsPage } from "./pages/Agents.js";
 import { LoginPage } from "./pages/Login.js";
 import { MembersPage } from "./pages/Members.js";
 import { PolicyPage } from "./pages/Policy.js";
+import { PublicOffersPage } from "./pages/PublicOffers.js";
 import { RegisterPage } from "./pages/Register.js";
 import { SettingsPage } from "./pages/Settings.js";
 
@@ -104,6 +105,14 @@ export function App() {
           element={
             <ProtectedRoute allowedRoles={["workspace_admin", "workspace_operator", "workspace_viewer"]}>
               <ApprovalsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/public-offers"
+          element={
+            <ProtectedRoute allowedRoles={["workspace_admin", "workspace_operator", "workspace_viewer"]}>
+              <PublicOffersPage />
             </ProtectedRoute>
           }
         />

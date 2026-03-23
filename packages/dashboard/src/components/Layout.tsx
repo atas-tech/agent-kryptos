@@ -5,6 +5,7 @@ import {
   BarChart3,
   Bot,
   ChevronRight,
+  KeyRound,
   LogOut,
   Menu,
   PanelLeftClose,
@@ -33,6 +34,12 @@ const NAV_ITEMS: NavItem[] = [
     label: "Audit",
     path: "/audit",
     icon: ScanSearch,
+    roles: ["workspace_admin", "workspace_operator", "workspace_viewer"]
+  },
+  {
+    label: "Public Offers",
+    path: "/public-offers",
+    icon: KeyRound,
     roles: ["workspace_admin", "workspace_operator", "workspace_viewer"]
   },
   {

@@ -228,24 +228,115 @@ class TestX402Provider implements X402Provider {
   readonly name = "test-x402";
   readonly verifyCalls: X402VerifyInput[] = [];
   readonly settleCalls: X402SettleInput[] = [];
+  verifyResult: { valid: boolean; payer?: string | null } = { valid: true, payer: "guest-agent" };
+  settleError: Error | null = null;
 
   async verifyPayment(input: X402VerifyInput) {
     this.verifyCalls.push(input);
     return {
-      valid: true,
+      valid: this.verifyResult.valid,
       scheme: input.paymentPayload.scheme,
       networkId: input.paymentPayload.network,
-      payer: input.paymentPayload.payer ?? "guest-agent"
+      payer: this.verifyResult.payer ?? input.paymentPayload.payer ?? "guest-agent",
+      failureReason: this.verifyResult.valid ? null : "forced_test_failure"
     };
   }
 
   async settlePayment(input: X402SettleInput) {
     this.settleCalls.push(input);
+    if (this.settleError) {
+      throw this.settleError;
+    }
     return {
       status: "settled" as const,
       txHash: "0xguestpayment"
     };
   }
+}
+
+async function createPaymentChallenge(
+  app: Awaited<ReturnType<typeof buildApp>>,
+  payload: {
+    offer_token: string;
+    public_key: string;
+    purpose: string;
+    actor_type?: "guest_agent" | "guest_human";
+    requester_label?: string;
+  },
+  ip = "198.51.100.44"
+) {
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v2/public/intents",
+    headers: {
+      "x-forwarded-for": ip
+    },
+    payload
+  });
+
+  expect(response.statusCode).toBe(402);
+  const paymentRequiredHeader = response.headers["payment-required"];
+  expect(paymentRequiredHeader).toEqual(expect.any(String));
+  return {
+    response,
+    paymentRequired: decodePaymentRequired(paymentRequiredHeader as string)
+  };
+}
+
+async function submitPaidIntent(
+  app: Awaited<ReturnType<typeof buildApp>>,
+  payload: {
+    offer_token: string;
+    public_key: string;
+    purpose: string;
+    actor_type?: "guest_agent" | "guest_human";
+    requester_label?: string;
+  },
+  paymentRequired: X402PaymentRequired,
+  paymentId: string,
+  ip = "198.51.100.44"
+) {
+  return app.inject({
+    method: "POST",
+    url: "/api/v2/public/intents",
+    headers: {
+      "x-forwarded-for": ip,
+      "payment-identifier": paymentId,
+      "payment-signature": encodePaymentSignature({
+        paymentId,
+        paymentRequired
+      })
+    },
+    payload
+  });
+}
+
+async function activatePaidHumanIntent(
+  app: Awaited<ReturnType<typeof buildApp>>,
+  payload: {
+    offer_token: string;
+    public_key: string;
+    purpose: string;
+    actor_type?: "guest_agent" | "guest_human";
+    requester_label?: string;
+  },
+  paymentId: string,
+  ip = "198.51.100.44"
+) {
+  const { paymentRequired } = await createPaymentChallenge(app, payload, ip);
+  const activationResponse = await submitPaidIntent(app, payload, paymentRequired, paymentId, ip);
+  expect(activationResponse.statusCode).toBe(201);
+  return activationResponse.json() as {
+    intent: {
+      intent_id: string;
+      status: string;
+      status_token: string;
+      request_id: string | null;
+    };
+    request_id: string;
+    fulfill_url: string;
+    guest_access_token: string;
+  };
 }
 
 describePg("Phase 3C public offers and guest intents", () => {
@@ -405,7 +496,7 @@ describePg("Phase 3C public offers and guest intents", () => {
           authorization: `Bearer ${viewer.access_token}`
         }
       });
-      expect(listResponse.statusCode).toBe(403);
+      expect(listResponse.statusCode).toBe(200);
 
       const createResponse = await app.inject({
         method: "POST",
@@ -432,6 +523,104 @@ describePg("Phase 3C public offers and guest intents", () => {
         }
       });
       expect(revokeResponse.statusCode).toBe(403);
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("lets viewers inspect guest offers and guest intent support details without token leakage", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const x402Provider = new TestX402Provider();
+      const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
+      const owner = await registerOwner(app, "guest-support-viewer");
+      await verifyOwner(app, pool, "guest-support-viewer@example.com");
+      const viewer = await createMemberAndLogin(
+        app,
+        owner.access_token,
+        "support-viewer@example.com",
+        "workspace_viewer",
+        "ViewerTemp123!",
+        "ViewerNew123!"
+      );
+      const created = await createOffer(app, owner.access_token, {
+        payment_policy: "always_x402",
+        price_usd_cents: 5
+      });
+
+      const activated = await activatePaidHumanIntent(app, {
+        offer_token: created.offer_token,
+        public_key: "QUJDRA==",
+        purpose: "viewer support"
+      }, "viewer-support-pay-1", "198.51.100.68");
+
+      const offersResponse = await app.inject({
+        method: "GET",
+        url: "/api/v2/public/offers",
+        headers: {
+          authorization: `Bearer ${viewer.access_token}`
+        }
+      });
+      expect(offersResponse.statusCode).toBe(200);
+      expect(offersResponse.json()).toMatchObject({
+        offers: [
+          expect.objectContaining({
+            id: created.offer.id,
+            payment_policy: "always_x402"
+          })
+        ]
+      });
+
+      const intentsResponse = await app.inject({
+        method: "GET",
+        url: `/api/v2/public/intents/admin?offer_id=${encodeURIComponent(created.offer.id)}`,
+        headers: {
+          authorization: `Bearer ${viewer.access_token}`
+        }
+      });
+      expect(intentsResponse.statusCode).toBe(200);
+      const listPayload = intentsResponse.json() as {
+        intents: Array<Record<string, unknown>>;
+      };
+      expect(listPayload.intents).toHaveLength(1);
+      expect(listPayload.intents[0]).toMatchObject({
+        id: activated.intent.intent_id,
+        offer_id: created.offer.id,
+        effective_status: "activated",
+        latest_payment: expect.objectContaining({
+          status: "settled"
+        }),
+        request_state: expect.objectContaining({
+          status: "pending"
+        })
+      });
+      expect(listPayload.intents[0]).not.toHaveProperty("guest_access_token");
+      expect(listPayload.intents[0]).not.toHaveProperty("status_token");
+      expect(listPayload.intents[0]).not.toHaveProperty("fulfill_url");
+
+      const detailResponse = await app.inject({
+        method: "GET",
+        url: `/api/v2/public/intents/admin/${activated.intent.intent_id}`,
+        headers: {
+          authorization: `Bearer ${viewer.access_token}`
+        }
+      });
+      expect(detailResponse.statusCode).toBe(200);
+      const detailPayload = detailResponse.json() as {
+        intent: Record<string, unknown>;
+      };
+      expect(detailPayload.intent).toMatchObject({
+        id: activated.intent.intent_id,
+        purpose: "viewer support",
+        resolved_secret_name: "stripe.api_key.prod"
+      });
+      expect(detailPayload.intent).not.toHaveProperty("guest_access_token");
+      expect(detailPayload.intent).not.toHaveProperty("status_token");
+      expect(detailPayload.intent).not.toHaveProperty("fulfill_url");
 
       await app.close();
     } finally {
@@ -797,6 +986,504 @@ describePg("Phase 3C public offers and guest intents", () => {
       expect(resumed.json()).toMatchObject({
         code: "guest_intent_rejected"
       });
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("returns a payable x402 challenge with the expected quote details", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true });
+      const owner = await registerOwner(app, "guest-payment-quote");
+      await verifyOwner(app, pool, "guest-payment-quote@example.com");
+      const created = await createOffer(app, owner.access_token, {
+        payment_policy: "always_x402",
+        price_usd_cents: 5
+      });
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/v2/public/intents",
+        headers: {
+          "x-forwarded-for": "198.51.100.60"
+        },
+        payload: {
+          offer_token: created.offer_token,
+          public_key: "QUJDRA==",
+          purpose: "quote details"
+        }
+      });
+
+      expect(response.statusCode).toBe(402);
+      const paymentRequired = decodePaymentRequired(response.headers["payment-required"] as string);
+      expect(paymentRequired).toMatchObject({
+        x402Version: 2,
+        metadata: {
+          quoted_amount_cents: 5,
+          quoted_currency: "USD",
+          quoted_asset_symbol: "USDC",
+          quoted_asset_amount: "0.05"
+        }
+      });
+      expect(paymentRequired.accepts[0]).toMatchObject({
+        scheme: "exact",
+        network: "eip155:84532"
+      });
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("returns cached success on an idempotent paid retry with the same payment identifier", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const x402Provider = new TestX402Provider();
+      const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
+      const owner = await registerOwner(app, "guest-payment-idempotent");
+      await verifyOwner(app, pool, "guest-payment-idempotent@example.com");
+      const created = await createOffer(app, owner.access_token, {
+        payment_policy: "always_x402",
+        price_usd_cents: 5
+      });
+
+      const payload = {
+        offer_token: created.offer_token,
+        public_key: "QUJDRA==",
+        purpose: "idempotent retry"
+      };
+      const { paymentRequired } = await createPaymentChallenge(app, payload, "198.51.100.61");
+
+      const firstResponse = await submitPaidIntent(app, payload, paymentRequired, "idempotent-pay-1", "198.51.100.61");
+      expect(firstResponse.statusCode).toBe(201);
+      const firstBody = firstResponse.json();
+
+      const secondResponse = await submitPaidIntent(app, payload, paymentRequired, "idempotent-pay-1", "198.51.100.61");
+      expect(secondResponse.statusCode).toBe(201);
+      expect(secondResponse.json()).toEqual(firstBody);
+      expect(x402Provider.verifyCalls).toHaveLength(1);
+      expect(x402Provider.settleCalls).toHaveLength(1);
+
+      const paymentRows = await pool.query<{ status: string }>(
+        "SELECT status FROM guest_payments WHERE payment_id = $1",
+        ["idempotent-pay-1"]
+      );
+      expect(paymentRows.rows).toHaveLength(1);
+      expect(paymentRows.rows[0]?.status).toBe("settled");
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("rejects payment identifier reuse when the request body changes", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const x402Provider = new TestX402Provider();
+      const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
+      const owner = await registerOwner(app, "guest-payment-conflict");
+      await verifyOwner(app, pool, "guest-payment-conflict@example.com");
+      const created = await createOffer(app, owner.access_token, {
+        payment_policy: "always_x402",
+        price_usd_cents: 5
+      });
+
+      const firstPayload = {
+        offer_token: created.offer_token,
+        public_key: "QUJDRA==",
+        purpose: "original body"
+      };
+      const { paymentRequired } = await createPaymentChallenge(app, firstPayload, "198.51.100.62");
+
+      const firstResponse = await submitPaidIntent(app, firstPayload, paymentRequired, "conflict-pay-1", "198.51.100.62");
+      expect(firstResponse.statusCode).toBe(201);
+
+      const conflictResponse = await submitPaidIntent(app, {
+        ...firstPayload,
+        purpose: "different body"
+      }, paymentRequired, "conflict-pay-1", "198.51.100.62");
+      expect(conflictResponse.statusCode).toBe(409);
+      expect(conflictResponse.json()).toMatchObject({
+        code: "payment_identifier_conflict"
+      });
+      expect(x402Provider.verifyCalls).toHaveLength(1);
+      expect(x402Provider.settleCalls).toHaveLength(1);
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("records a failed payment and does not create downstream request artifacts", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const x402Provider = new TestX402Provider();
+      x402Provider.settleError = new Error("forced settlement failure");
+      const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
+      const owner = await registerOwner(app, "guest-payment-failed");
+      await verifyOwner(app, pool, "guest-payment-failed@example.com");
+      const created = await createOffer(app, owner.access_token, {
+        payment_policy: "always_x402",
+        price_usd_cents: 5
+      });
+
+      const payload = {
+        offer_token: created.offer_token,
+        public_key: "QUJDRA==",
+        purpose: "failed payment"
+      };
+      const { paymentRequired } = await createPaymentChallenge(app, payload, "198.51.100.63");
+
+      const response = await submitPaidIntent(app, payload, paymentRequired, "failed-pay-1", "198.51.100.63");
+      expect(response.statusCode).toBe(502);
+      expect(response.json()).toMatchObject({
+        code: "x402_provider_error"
+      });
+
+      const paymentRows = await pool.query<{ status: string; tx_hash: string | null }>(
+        `
+          SELECT status, tx_hash
+          FROM guest_payments
+          WHERE payment_id = $1
+        `,
+        ["failed-pay-1"]
+      );
+      expect(paymentRows.rows).toHaveLength(1);
+      expect(paymentRows.rows[0]).toMatchObject({
+        status: "failed",
+        tx_hash: null
+      });
+
+      const intentRows = await pool.query<{ status: string; request_id: string | null; exchange_id: string | null }>(
+        `
+          SELECT status, request_id, exchange_id
+          FROM guest_intents
+          WHERE offer_id = $1
+            AND purpose = $2
+          ORDER BY created_at DESC
+          LIMIT 1
+        `,
+        [created.offer.id, payload.purpose]
+      );
+      expect(intentRows.rows).toHaveLength(1);
+      expect(intentRows.rows[0]).toMatchObject({
+        status: "payment_required",
+        request_id: null,
+        exchange_id: null
+      });
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("rejects stale quotes without creating paid activation artifacts", async () => {
+    const { pool, schema } = await createIsolatedPool();
+    const previousQuoteTtl = process.env.SPS_X402_QUOTE_TTL_SECONDS;
+
+    try {
+      process.env.SPS_X402_QUOTE_TTL_SECONDS = "1";
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const x402Provider = new TestX402Provider();
+      const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
+      const owner = await registerOwner(app, "guest-payment-expired");
+      await verifyOwner(app, pool, "guest-payment-expired@example.com");
+      const created = await createOffer(app, owner.access_token, {
+        payment_policy: "always_x402",
+        price_usd_cents: 5
+      });
+
+      const payload = {
+        offer_token: created.offer_token,
+        public_key: "QUJDRA==",
+        purpose: "expired quote"
+      };
+      const { paymentRequired } = await createPaymentChallenge(app, payload, "198.51.100.64");
+
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+
+      const response = await submitPaidIntent(app, payload, paymentRequired, "expired-pay-1", "198.51.100.64");
+      expect(response.statusCode).toBe(402);
+      expect(response.json()).toMatchObject({
+        code: "quote_expired"
+      });
+      expect(x402Provider.verifyCalls).toHaveLength(0);
+      expect(x402Provider.settleCalls).toHaveLength(0);
+
+      const paymentRows = await pool.query<{ status: string }>(
+        "SELECT status FROM guest_payments WHERE payment_id = $1",
+        ["expired-pay-1"]
+      );
+      expect(paymentRows.rows).toHaveLength(0);
+
+      const intentRows = await pool.query<{ request_id: string | null; exchange_id: string | null }>(
+        `
+          SELECT request_id, exchange_id
+          FROM guest_intents
+          WHERE offer_id = $1
+            AND purpose = $2
+          ORDER BY created_at DESC
+          LIMIT 1
+        `,
+        [created.offer.id, payload.purpose]
+      );
+      expect(intentRows.rows).toHaveLength(1);
+      expect(intentRows.rows[0]).toMatchObject({
+        request_id: null,
+        exchange_id: null
+      });
+
+      await app.close();
+    } finally {
+      if (previousQuoteTtl === undefined) {
+        delete process.env.SPS_X402_QUOTE_TTL_SECONDS;
+      } else {
+        process.env.SPS_X402_QUOTE_TTL_SECONDS = previousQuoteTtl;
+      }
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("revokes a paid guest human intent so fulfill and retrieve fail closed", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const x402Provider = new TestX402Provider();
+      const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
+      const owner = await registerOwner(app, "guest-revoke");
+      await verifyOwner(app, pool, "guest-revoke@example.com");
+      const created = await createOffer(app, owner.access_token, {
+        payment_policy: "always_x402",
+        price_usd_cents: 5
+      });
+
+      const activated = await activatePaidHumanIntent(app, {
+        offer_token: created.offer_token,
+        public_key: "QUJDRA==",
+        purpose: "revoke before fulfill"
+      }, "revoke-pay-1", "198.51.100.65");
+
+      const revokeResponse = await app.inject({
+        method: "POST",
+        url: `/api/v2/public/intents/${activated.intent.intent_id}/revoke`,
+        headers: {
+          authorization: `Bearer ${owner.access_token}`
+        }
+      });
+      expect(revokeResponse.statusCode).toBe(200);
+      expect(revokeResponse.json()).toMatchObject({
+        intent: {
+          intent_id: activated.intent.intent_id,
+          status: "revoked"
+        }
+      });
+
+      const { requestId, metadataSig, submitSig } = parseFulfillUrl(activated.fulfill_url);
+      const metadataResponse = await app.inject({
+        method: "GET",
+        url: `/api/v2/secret/metadata/${requestId}?sig=${encodeURIComponent(metadataSig)}`,
+        headers: {
+          authorization: `Bearer ${owner.access_token}`
+        }
+      });
+      expect(metadataResponse.statusCode).toBe(410);
+
+      const submitResponse = await app.inject({
+        method: "POST",
+        url: `/api/v2/secret/submit/${requestId}?sig=${encodeURIComponent(submitSig)}`,
+        headers: {
+          authorization: `Bearer ${owner.access_token}`
+        },
+        payload: {
+          enc: "QUJDRA==",
+          ciphertext: "RUZHSA=="
+        }
+      });
+      expect(submitResponse.statusCode).toBe(410);
+
+      const deliveryStatus = await app.inject({
+        method: "GET",
+        url: `/api/v2/public/intents/${activated.intent.intent_id}/delivery-status`,
+        headers: {
+          authorization: `Bearer ${activated.guest_access_token}`
+        }
+      });
+      expect(deliveryStatus.statusCode).toBe(410);
+
+      const retrieveResponse = await app.inject({
+        method: "GET",
+        url: `/api/v2/public/intents/${activated.intent.intent_id}/retrieve`,
+        headers: {
+          authorization: `Bearer ${activated.guest_access_token}`
+        }
+      });
+      expect(retrieveResponse.statusCode).toBe(410);
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("expires a paid but unfulfilled guest intent even if the request record still exists", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const x402Provider = new TestX402Provider();
+      const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
+      const owner = await registerOwner(app, "guest-expired-unfulfilled");
+      await verifyOwner(app, pool, "guest-expired-unfulfilled@example.com");
+      const created = await createOffer(app, owner.access_token, {
+        payment_policy: "always_x402",
+        price_usd_cents: 5,
+        ttl_seconds: 1
+      });
+
+      const activated = await activatePaidHumanIntent(app, {
+        offer_token: created.offer_token,
+        public_key: "QUJDRA==",
+        purpose: "expire before fulfill"
+      }, "expire-pay-1", "198.51.100.66");
+
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+
+      const { requestId, metadataSig } = parseFulfillUrl(activated.fulfill_url);
+      const metadataResponse = await app.inject({
+        method: "GET",
+        url: `/api/v2/secret/metadata/${requestId}?sig=${encodeURIComponent(metadataSig)}`,
+        headers: {
+          authorization: `Bearer ${owner.access_token}`
+        }
+      });
+      expect(metadataResponse.statusCode).toBe(410);
+
+      const statusResponse = await app.inject({
+        method: "GET",
+        url: `/api/v2/public/intents/${activated.intent.intent_id}/status?status_token=${encodeURIComponent(activated.intent.status_token)}`
+      });
+      expect(statusResponse.statusCode).toBe(200);
+      expect(statusResponse.json()).toMatchObject({
+        intent_id: activated.intent.intent_id,
+        status: "expired",
+        payment_required: false
+      });
+
+      const retrieveResponse = await app.inject({
+        method: "GET",
+        url: `/api/v2/public/intents/${activated.intent.intent_id}/retrieve`,
+        headers: {
+          authorization: `Bearer ${activated.guest_access_token}`
+        }
+      });
+      expect(retrieveResponse.statusCode).toBe(401);
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("records guest audit events without leaking secret payloads or raw tokens", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const x402Provider = new TestX402Provider();
+      const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
+      const owner = await registerOwner(app, "guest-audit");
+      await verifyOwner(app, pool, "guest-audit@example.com");
+      const created = await createOffer(app, owner.access_token, {
+        payment_policy: "always_x402",
+        price_usd_cents: 5
+      });
+
+      const activated = await activatePaidHumanIntent(app, {
+        offer_token: created.offer_token,
+        public_key: "QUJDRA==",
+        purpose: "audit handoff"
+      }, "audit-pay-1", "198.51.100.67");
+
+      const { requestId, metadataSig, submitSig } = parseFulfillUrl(activated.fulfill_url);
+      const metadataResponse = await app.inject({
+        method: "GET",
+        url: `/api/v2/secret/metadata/${requestId}?sig=${encodeURIComponent(metadataSig)}`,
+        headers: {
+          authorization: `Bearer ${owner.access_token}`
+        }
+      });
+      expect(metadataResponse.statusCode).toBe(200);
+
+      const submitResponse = await app.inject({
+        method: "POST",
+        url: `/api/v2/secret/submit/${requestId}?sig=${encodeURIComponent(submitSig)}`,
+        headers: {
+          authorization: `Bearer ${owner.access_token}`
+        },
+        payload: {
+          enc: "QUJDRA==",
+          ciphertext: "RUZHSA=="
+        }
+      });
+      expect(submitResponse.statusCode).toBe(201);
+
+      const retrieveResponse = await app.inject({
+        method: "GET",
+        url: `/api/v2/public/intents/${activated.intent.intent_id}/retrieve`,
+        headers: {
+          authorization: `Bearer ${activated.guest_access_token}`
+        }
+      });
+      expect(retrieveResponse.statusCode).toBe(200);
+
+      const auditResponse = await app.inject({
+        method: "GET",
+        url: `/api/v2/audit?resource_id=${encodeURIComponent(activated.intent.intent_id)}`,
+        headers: {
+          authorization: `Bearer ${owner.access_token}`
+        }
+      });
+      expect(auditResponse.statusCode).toBe(200);
+      const auditPayload = auditResponse.json() as {
+        records: Array<{
+          event_type: string;
+          actor_type: string | null;
+          metadata: Record<string, unknown> | null;
+        }>;
+      };
+
+      expect(auditPayload.records.some((record) => record.actor_type === "guest_agent")).toBe(true);
+      const serialized = JSON.stringify(auditPayload.records);
+      expect(serialized).not.toContain("RUZHSA==");
+      expect(serialized).not.toContain("QUJDRA==");
+      expect(serialized).not.toContain("guest-test-signature");
+      expect(serialized).not.toContain("guest_access_token");
+      expect(serialized).not.toContain("fulfill_url");
+
+      for (const record of auditPayload.records) {
+        const metadata = record.metadata ?? {};
+        expect(metadata).not.toHaveProperty("ciphertext");
+        expect(metadata).not.toHaveProperty("enc");
+        expect(metadata).not.toHaveProperty("payment_signature");
+        expect(metadata).not.toHaveProperty("guest_access_token");
+        expect(metadata).not.toHaveProperty("fulfill_url");
+      }
 
       await app.close();
     } finally {

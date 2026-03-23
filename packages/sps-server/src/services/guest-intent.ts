@@ -83,6 +83,77 @@ export interface CreateGuestIntentInput {
   sourceIp: string;
 }
 
+interface GuestIntentAdminRow {
+  id: string;
+  workspace_id: string;
+  offer_id: string;
+  offer_label: string | null;
+  offer_status: PublicOfferRecord["status"];
+  offer_used_count: number;
+  offer_max_uses: number | null;
+  offer_expires_at: Date;
+  actor_type: GuestActorType;
+  status: GuestIntentStatus;
+  approval_status: GuestApprovalStatus | null;
+  approval_reference: string | null;
+  requester_label: string | null;
+  purpose: string;
+  delivery_mode: PublicOfferRecord["deliveryMode"];
+  payment_policy: PublicOfferRecord["paymentPolicy"];
+  price_usd_cents: string | number;
+  included_free_uses: number;
+  resolved_secret_name: string;
+  allowed_fulfiller_id: string | null;
+  request_id: string | null;
+  exchange_id: string | null;
+  activated_at: Date | null;
+  revoked_at: Date | null;
+  expires_at: Date;
+  created_at: Date;
+  updated_at: Date;
+  latest_payment_id: string | null;
+  latest_payment_status: "pending" | "verified" | "settled" | "failed" | null;
+  latest_payment_tx_hash: string | null;
+  latest_payment_settled_at: Date | null;
+  latest_payment_created_at: Date | null;
+}
+
+export interface GuestIntentAdminRecord {
+  id: string;
+  workspaceId: string;
+  offerId: string;
+  offerLabel: string | null;
+  offerStatus: PublicOfferRecord["status"];
+  offerUsedCount: number;
+  offerMaxUses: number | null;
+  offerExpiresAt: Date;
+  actorType: GuestActorType;
+  status: GuestIntentStatus;
+  effectiveStatus: Exclude<GuestIntentStatus, "expired"> | "expired";
+  approvalStatus: GuestApprovalStatus | null;
+  approvalReference: string | null;
+  requesterLabel: string | null;
+  purpose: string;
+  deliveryMode: PublicOfferRecord["deliveryMode"];
+  paymentPolicy: PublicOfferRecord["paymentPolicy"];
+  priceUsdCents: number;
+  includedFreeUses: number;
+  resolvedSecretName: string;
+  allowedFulfillerId: string | null;
+  requestId: string | null;
+  exchangeId: string | null;
+  activatedAt: Date | null;
+  revokedAt: Date | null;
+  expiresAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  latestPaymentId: string | null;
+  latestPaymentStatus: "pending" | "verified" | "settled" | "failed" | null;
+  latestPaymentTxHash: string | null;
+  latestPaymentSettledAt: Date | null;
+  latestPaymentCreatedAt: Date | null;
+}
+
 export type CreateGuestIntentResult =
   | { kind: "pending_approval"; intent: GuestIntentRecord; httpStatus: 202 }
   | { kind: "rejected"; intent: GuestIntentRecord; httpStatus: 403 }
@@ -137,6 +208,56 @@ function toGuestIntentRecord(row: GuestIntentRow): GuestIntentRecord {
     expiresAt: row.expires_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  };
+}
+
+function effectiveGuestIntentStatus(status: GuestIntentStatus, revokedAt: Date | null, expiresAt: Date): Exclude<GuestIntentStatus, "expired"> | "expired" {
+  if (revokedAt) {
+    return "revoked";
+  }
+
+  if (expiresAt.getTime() <= Date.now()) {
+    return "expired";
+  }
+
+  return status;
+}
+
+function toGuestIntentAdminRecord(row: GuestIntentAdminRow): GuestIntentAdminRecord {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    offerId: row.offer_id,
+    offerLabel: row.offer_label,
+    offerStatus: row.offer_status,
+    offerUsedCount: toNumber(row.offer_used_count),
+    offerMaxUses: row.offer_max_uses === null ? null : toNumber(row.offer_max_uses),
+    offerExpiresAt: row.offer_expires_at,
+    actorType: row.actor_type,
+    status: row.status,
+    effectiveStatus: effectiveGuestIntentStatus(row.status, row.revoked_at, row.expires_at),
+    approvalStatus: row.approval_status,
+    approvalReference: row.approval_reference,
+    requesterLabel: row.requester_label,
+    purpose: row.purpose,
+    deliveryMode: row.delivery_mode,
+    paymentPolicy: row.payment_policy,
+    priceUsdCents: toNumber(row.price_usd_cents),
+    includedFreeUses: toNumber(row.included_free_uses),
+    resolvedSecretName: row.resolved_secret_name,
+    allowedFulfillerId: row.allowed_fulfiller_id,
+    requestId: row.request_id,
+    exchangeId: row.exchange_id,
+    activatedAt: row.activated_at,
+    revokedAt: row.revoked_at,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    latestPaymentId: row.latest_payment_id,
+    latestPaymentStatus: row.latest_payment_status,
+    latestPaymentTxHash: row.latest_payment_tx_hash,
+    latestPaymentSettledAt: row.latest_payment_settled_at,
+    latestPaymentCreatedAt: row.latest_payment_created_at
   };
 }
 
@@ -220,6 +341,171 @@ export async function getGuestIntentById(db: Pool, intentId: string): Promise<Gu
   );
 
   return result.rows[0] ? toGuestIntentRecord(result.rows[0]) : null;
+}
+
+export async function listGuestIntentsForWorkspace(
+  db: Pool,
+  workspaceId: string,
+  filters: {
+    offerId?: string;
+    status?: GuestIntentStatus | "expired";
+    approvalStatus?: GuestApprovalStatus;
+    limit?: number;
+  } = {}
+): Promise<GuestIntentAdminRecord[]> {
+  const values: Array<string | number> = [workspaceId];
+  const clauses = ["gi.workspace_id = $1"];
+
+  if (filters.offerId) {
+    values.push(filters.offerId);
+    clauses.push(`gi.offer_id = $${values.length}`);
+  }
+
+  if (filters.approvalStatus) {
+    values.push(filters.approvalStatus);
+    clauses.push(`gi.approval_status = $${values.length}`);
+  }
+
+  if (filters.status && filters.status !== "expired") {
+    values.push(filters.status);
+    clauses.push(`gi.status = $${values.length}`);
+  }
+
+  if (filters.status === "expired") {
+    clauses.push("gi.revoked_at IS NULL");
+    clauses.push("gi.expires_at <= now()");
+  }
+
+  const limit = Math.min(200, Math.max(1, Math.floor(filters.limit ?? 100)));
+  values.push(limit);
+
+  const result = await db.query<GuestIntentAdminRow>(
+    `
+      SELECT
+        gi.id,
+        gi.workspace_id,
+        gi.offer_id,
+        po.offer_label,
+        po.status AS offer_status,
+        po.used_count AS offer_used_count,
+        po.max_uses AS offer_max_uses,
+        po.expires_at AS offer_expires_at,
+        gi.actor_type,
+        gi.status,
+        gi.approval_status,
+        gi.approval_reference,
+        gi.requester_label,
+        gi.purpose,
+        gi.delivery_mode,
+        gi.payment_policy,
+        gi.price_usd_cents,
+        gi.included_free_uses,
+        gi.resolved_secret_name,
+        gi.allowed_fulfiller_id,
+        gi.request_id,
+        gi.exchange_id,
+        gi.activated_at,
+        gi.revoked_at,
+        gi.expires_at,
+        gi.created_at,
+        gi.updated_at,
+        gp.payment_id AS latest_payment_id,
+        gp.status AS latest_payment_status,
+        gp.tx_hash AS latest_payment_tx_hash,
+        gp.settled_at AS latest_payment_settled_at,
+        gp.created_at AS latest_payment_created_at
+      FROM guest_intents gi
+      INNER JOIN public_offers po
+        ON po.id = gi.offer_id
+      LEFT JOIN LATERAL (
+        SELECT
+          payment_id,
+          status,
+          tx_hash,
+          settled_at,
+          created_at
+        FROM guest_payments
+        WHERE workspace_id = gi.workspace_id
+          AND intent_id = gi.id
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) gp
+        ON TRUE
+      WHERE ${clauses.join("\n        AND ")}
+      ORDER BY gi.created_at DESC
+      LIMIT $${values.length}
+    `,
+    values
+  );
+
+  return result.rows.map(toGuestIntentAdminRecord);
+}
+
+export async function getGuestIntentAdminById(
+  db: Pool,
+  workspaceId: string,
+  intentId: string
+): Promise<GuestIntentAdminRecord | null> {
+  const result = await db.query<GuestIntentAdminRow>(
+    `
+      SELECT
+        gi.id,
+        gi.workspace_id,
+        gi.offer_id,
+        po.offer_label,
+        po.status AS offer_status,
+        po.used_count AS offer_used_count,
+        po.max_uses AS offer_max_uses,
+        po.expires_at AS offer_expires_at,
+        gi.actor_type,
+        gi.status,
+        gi.approval_status,
+        gi.approval_reference,
+        gi.requester_label,
+        gi.purpose,
+        gi.delivery_mode,
+        gi.payment_policy,
+        gi.price_usd_cents,
+        gi.included_free_uses,
+        gi.resolved_secret_name,
+        gi.allowed_fulfiller_id,
+        gi.request_id,
+        gi.exchange_id,
+        gi.activated_at,
+        gi.revoked_at,
+        gi.expires_at,
+        gi.created_at,
+        gi.updated_at,
+        gp.payment_id AS latest_payment_id,
+        gp.status AS latest_payment_status,
+        gp.tx_hash AS latest_payment_tx_hash,
+        gp.settled_at AS latest_payment_settled_at,
+        gp.created_at AS latest_payment_created_at
+      FROM guest_intents gi
+      INNER JOIN public_offers po
+        ON po.id = gi.offer_id
+      LEFT JOIN LATERAL (
+        SELECT
+          payment_id,
+          status,
+          tx_hash,
+          settled_at,
+          created_at
+        FROM guest_payments
+        WHERE workspace_id = gi.workspace_id
+          AND intent_id = gi.id
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) gp
+        ON TRUE
+      WHERE gi.workspace_id = $1
+        AND gi.id = $2
+      LIMIT 1
+    `,
+    [workspaceId, intentId]
+  );
+
+  return result.rows[0] ? toGuestIntentAdminRecord(result.rows[0]) : null;
 }
 
 async function activateFreeIntent(

@@ -53,7 +53,7 @@ function sendServiceError(reply: FastifyReply, error: unknown) {
 
 export async function registerPublicOfferRoutes(app: FastifyInstance, opts: PublicOfferRoutesOptions): Promise<void> {
   app.get("/", async (req, reply) => {
-    const user = await requireUserRole("workspace_operator")(req, reply);
+    const user = await requireUserRole("workspace_viewer")(req, reply);
     if (!user) {
       return;
     }

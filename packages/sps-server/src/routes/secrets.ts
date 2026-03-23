@@ -2,10 +2,11 @@ import type { FastifyInstance, FastifyPluginOptions } from "fastify";
 import type { Pool } from "pg";
 import { requireBrowserSig, requireGatewayAuth, requireUserAuth } from "../middleware/auth.js";
 import { logAudit } from "../services/audit.js";
+import { getGuestIntentById } from "../services/guest-intent.js";
 import type { QuotaService } from "../services/quota.js";
 import { createSecretRequest } from "../services/secret-request.js";
 import { getWorkspace } from "../services/workspace.js";
-import type { RequestStore } from "../types.js";
+import type { RequestStore, StoredRequest } from "../types.js";
 
 const REQUEST_ID_PATTERN = "^[a-f0-9]{64}$";
 const SIG_PATTERN = "^[0-9]{10,13}\\.[A-Za-z0-9_-]{43}$";
@@ -61,6 +62,30 @@ function requestOwnedByAgent(
   }
 
   if (request.workspaceId && agent.workspaceId && request.workspaceId !== agent.workspaceId) {
+    return false;
+  }
+
+  return true;
+}
+
+async function guestBackedRequestAvailable(
+  db: Pool | null | undefined,
+  record: StoredRequest
+): Promise<boolean> {
+  if (!db || !record.guestIntentId) {
+    return true;
+  }
+
+  const intent = await getGuestIntentById(db, record.guestIntentId);
+  if (!intent) {
+    return false;
+  }
+
+  if (intent.requestId !== record.requestId) {
+    return false;
+  }
+
+  if (intent.status !== "activated" || intent.revokedAt || intent.expiresAt.getTime() <= Date.now()) {
     return false;
   }
 
@@ -162,6 +187,10 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
         return reply.code(410).send({ error: "Request expired" });
       }
 
+      if (!await guestBackedRequestAvailable(opts.db, record)) {
+        return reply.code(410).send({ error: "Request expired" });
+      }
+
       if (record.requireUserAuth) {
         const user = await requireUserAuth(req, reply);
         if (!user) {
@@ -207,6 +236,10 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
 
       const record = await opts.store.getRequest(req.params.id);
       if (!record) {
+        return reply.code(410).send({ error: "Request expired" });
+      }
+
+      if (!await guestBackedRequestAvailable(opts.db, record)) {
         return reply.code(410).send({ error: "Request expired" });
       }
 

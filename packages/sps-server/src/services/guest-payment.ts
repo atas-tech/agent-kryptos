@@ -254,7 +254,13 @@ export async function verifyAndSettleGuestPayment(
   });
 
   try {
-    const paymentPayload = parsePaymentSignatureHeader(input.paymentSignature);
+    let paymentPayload: ReturnType<typeof parsePaymentSignatureHeader>;
+    try {
+      paymentPayload = parsePaymentSignatureHeader(input.paymentSignature);
+    } catch {
+      throw new X402ServiceError(400, "invalid_payment_signature", "Invalid PAYMENT-SIGNATURE header");
+    }
+
     if (paymentPayload.paymentId !== input.paymentId) {
       throw new X402ServiceError(400, "payment_identifier_mismatch", "payment-identifier does not match PAYMENT-SIGNATURE");
     }
@@ -283,7 +289,10 @@ export async function verifyAndSettleGuestPayment(
       txHash: settlement.txHash
     };
   } catch (error) {
+    const normalizedError = error instanceof X402ServiceError
+      ? error
+      : new X402ServiceError(502, "x402_provider_error", "Payment facilitator request failed");
     await markGuestPaymentFailed(db, input.workspaceId, input.paymentId).catch(() => undefined);
-    throw error;
+    throw normalizedError;
   }
 }
