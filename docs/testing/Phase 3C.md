@@ -76,7 +76,7 @@ The test plan is intentionally separated from Phase 3D because the enrolled-agen
   - [ ] Retry or resume from the guest side
   - [ ] Assert SPS returns the rejected state and never returns a payment challenge
 
-- [ ] **E2E 910: Approvals inbox surfaces guest intents correctly**
+- [x] **E2E 910: Approvals inbox surfaces guest intents correctly**
   - [ ] Create a guest intent requiring approval
   - [ ] Open the dashboard approvals page
   - [ ] Assert the card or dedicated guest-intent view distinguishes guest actors from enrolled agents
