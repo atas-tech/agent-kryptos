@@ -17,41 +17,41 @@ The test plan is intentionally separated from Phase 3D because the enrolled-agen
 
 ## Milestone 1: Offer Lifecycle And Guest Intent Core
 
-- [ ] **Integration 901: Admin creates a human-delivery public offer**
+- [x] **Integration 901: Admin creates a human-delivery public offer**
   - [ ] Log in as `workspace_admin`
   - [ ] Call `POST /api/v2/public/offers` with `delivery_mode=human`, `payment_policy=quota_then_x402`, `included_free_uses=1`, and `price_usd_cents=5`
   - [ ] Assert the response returns the offer record plus a one-time plaintext offer token
   - [ ] Assert only the token hash is stored durably
 
-- [ ] **Integration 902: Operator can create and revoke an offer**
+- [x] **Integration 902: Operator can create and revoke an offer**
   - [ ] Log in as `workspace_operator`
   - [ ] Create an offer successfully
   - [ ] Revoke it via `POST /api/v2/public/offers/:id/revoke`
   - [ ] Assert later guest intent creation fails with `410` or the chosen revoked-offer response
 
-- [ ] **Integration 903: Viewer is denied offer management**
+- [x] **Integration 903: Viewer is denied offer management**
   - [ ] Log in as `workspace_viewer`
   - [ ] Attempt create/list/revoke calls
   - [ ] Assert `403 Forbidden`
 
-- [ ] **Integration 904: Offer expiry is enforced before payment**
+- [x] **Integration 904: Offer expiry is enforced before payment**
   - [ ] Create an offer with a short TTL
   - [ ] Wait until expiry
   - [ ] Attempt guest intent creation
   - [ ] Assert SPS rejects before returning a payment challenge
 
-- [ ] **Integration 905: Guest intent status is minimally revealing**
+- [x] **Integration 905: Guest intent status is minimally revealing**
   - [ ] Create a valid offer
   - [ ] Start an intent and capture its public status handle
   - [ ] Query status as an unauthenticated caller
   - [ ] Assert the response reveals only coarse lifecycle state and no workspace/member/internal secret identifiers
 
-- [ ] **Integration 906: One active unpaid intent per guest subject is enforced**
+- [x] **Integration 906: One active unpaid intent per guest subject is enforced**
   - [ ] Start an unpaid guest intent from one IP / external subject
   - [ ] Attempt to create a second unpaid intent against the same offer before the first expires
   - [ ] Assert the server rejects or resumes the existing intent instead of creating a second parallel record
 
-- [ ] **Integration 906B: `quota_then_x402` switches from free activation to paid activation**
+- [x] **Integration 906B: `quota_then_x402` switches from free activation to paid activation**
   - [ ] Create a human-delivery offer with `payment_policy=quota_then_x402` and `included_free_uses=1`
   - [ ] Complete the first allowed guest intent and assert no `402` challenge is returned
   - [ ] Start a second guest intent against the same offer
@@ -59,19 +59,19 @@ The test plan is intentionally separated from Phase 3D because the enrolled-agen
 
 ## Milestone 2: Approval Before Payment
 
-- [ ] **Integration 907: Approval-gated intent does not return a payable x402 challenge until approved**
+- [x] **Integration 907: Approval-gated intent does not return a payable x402 challenge until approved**
   - [ ] Create an offer with `require_approval=true`
   - [ ] Start a guest intent
   - [ ] Assert the response is `pending_approval`
   - [ ] Assert no payment record is created and no `PAYMENT-REQUIRED` header is returned
 
-- [ ] **Integration 908: Approved intent becomes payable**
+- [x] **Integration 908: Approved intent becomes payable**
   - [ ] Approve the pending intent as `workspace_operator`
   - [ ] Retry or resume the same intent
   - [ ] Assert SPS now returns `402 Payment Required`
   - [ ] Use the dedicated guest-intent approve route rather than the enrolled-agent exchange approval route
 
-- [ ] **Integration 909: Rejected intent never becomes payable**
+- [x] **Integration 909: Rejected intent never becomes payable**
   - [ ] Reject a pending intent
   - [ ] Retry or resume from the guest side
   - [ ] Assert SPS returns the rejected state and never returns a payment challenge
@@ -84,46 +84,46 @@ The test plan is intentionally separated from Phase 3D because the enrolled-agen
 
 ## Milestone 3: Guest x402 Payment
 
-- [ ] **Integration 911: Allowed guest intent returns `402 Payment Required`**
+- [x] **Integration 911: Allowed guest intent returns `402 Payment Required`**
   - [ ] Create a direct-allow offer
   - [ ] Start a guest intent as a machine requester
   - [ ] Assert the response is `402`
   - [ ] Assert the quote includes the configured USD cents, `exact` scheme, and the expected network metadata
 
-- [ ] **Integration 912: Valid payment settles exactly once**
+- [x] **Integration 912: Valid payment settles exactly once**
   - [ ] Retry the same intent with a valid `PAYMENT-SIGNATURE` and `payment-identifier`
   - [ ] Assert SPS verifies and settles payment
   - [ ] Assert exactly one guest payment ledger row is marked `settled`
   - [ ] Assert the request/exchange resource is created only after settlement
 
-- [ ] **Integration 913: Idempotent retry returns cached success**
+- [x] **Integration 913: Idempotent retry returns cached success**
   - [ ] Repeat the same successful paid request with the same `payment-identifier`
   - [ ] Assert SPS returns the cached success result without charging twice
 
-- [ ] **Integration 914: Payment identifier reuse with different body is rejected**
+- [x] **Integration 914: Payment identifier reuse with different body is rejected**
   - [ ] Submit a successful paid request
   - [ ] Retry with the same `payment-identifier` and a different public key or purpose
   - [ ] Assert `409`
 
-- [ ] **Integration 915: Failed payment does not create a secret request or exchange**
+- [x] **Integration 915: Failed payment does not create a secret request or exchange**
   - [ ] Force facilitator verify or settle failure
   - [ ] Assert SPS records the payment as failed
   - [ ] Assert no downstream request/exchange record is created
 
-- [ ] **Integration 916: Expired quote is rejected**
+- [x] **Integration 916: Expired quote is rejected**
   - [ ] Start an intent and let the quote expire
   - [ ] Retry with a stale payment
   - [ ] Assert SPS fails closed without creating the paid resource
 
 ## Milestone 4: Guest Agent -> Human Delivery
 
-- [ ] **E2E 917: Paid guest human-delivery intent produces a browser secret URL**
+- [x] **E2E 917: Paid guest human-delivery intent produces a browser secret URL**
   - [ ] Start a direct-allow guest-agent intent in `delivery_mode=human`
   - [ ] Complete payment
   - [ ] Assert SPS returns `guest_access_token`, `intent_id`, `request_id`, and `fulfill_url`
   - [ ] Assert the guest response does not expose a general-purpose submit token beyond the scoped `fulfill_url`
 
-- [ ] **E2E 918: Human fulfills and guest retrieves exactly once**
+- [x] **E2E 918: Human fulfills and guest retrieves exactly once**
   - [ ] Have the guest agent forward only the returned `fulfill_url` to the human
   - [ ] Open the returned `fulfill_url` while logged out
   - [ ] Assert the hosted flow requires workspace authentication before rendering submit controls
@@ -134,22 +134,22 @@ The test plan is intentionally separated from Phase 3D because the enrolled-agen
   - [ ] Retrieve successfully once
   - [ ] Attempt a second retrieval and assert not available
 
-- [ ] **Integration 918B: Wrong-workspace or non-member user cannot consume the fulfill flow**
+- [x] **Integration 918B: Wrong-workspace or non-member user cannot consume the fulfill flow**
   - [ ] Create a paid human-delivery guest request
   - [ ] Open the `fulfill_url` as a user outside the target workspace or without a valid hosted session
   - [ ] Assert metadata display and submit are denied
 
-- [ ] **Integration 919: Wrong guest token cannot retrieve**
+- [x] **Integration 919: Wrong guest token cannot retrieve**
   - [ ] Create and fulfill a paid guest request
   - [ ] Attempt retrieval with a token minted for a different guest intent
   - [ ] Assert denial without leaking whether the request exists
 
-- [ ] **Integration 920: Revoked guest intent cannot be fulfilled or retrieved**
+- [x] **Integration 920: Revoked guest intent cannot be fulfilled or retrieved**
   - [ ] Create a paid guest request
   - [ ] Revoke it via `POST /api/v2/public/intents/:id/revoke` before human submit
   - [ ] Assert browser submit and guest retrieve both fail closed
 
-- [ ] **Integration 921: Guest request audit records use guest actor metadata without secret leakage**
+- [x] **Integration 921: Guest request audit records use guest actor metadata without secret leakage**
   - [ ] Complete a human-delivery guest request
   - [ ] Query audit
   - [ ] Assert the actor is marked as a guest actor and no plaintext secret values, ciphertext, raw tokens, or payment signatures are present
