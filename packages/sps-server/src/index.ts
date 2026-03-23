@@ -10,6 +10,8 @@ import { registerAuthRoutes } from "./routes/auth.js";
 import { registerBillingRoutes } from "./routes/billing.js";
 import { registerExchangeRoutes } from "./routes/exchange.js";
 import { registerMemberRoutes } from "./routes/members.js";
+import { registerPublicIntentRoutes } from "./routes/public-intents.js";
+import { registerPublicOfferRoutes } from "./routes/public-offers.js";
 import { registerSecretRoutes } from "./routes/secrets.js";
 import { registerWorkspacePolicyRoutes } from "./routes/workspace-policy.js";
 import { registerWorkspaceRoutes } from "./routes/workspace.js";
@@ -208,6 +210,29 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     await app.register(async (workspacePolicyRoutesApp) => {
       await registerWorkspacePolicyRoutes(workspacePolicyRoutesApp, { db: options.db! });
     }, { prefix: "/api/v2/workspace/policy" });
+
+    await app.register(async (publicOfferRoutesApp) => {
+      await registerPublicOfferRoutes(publicOfferRoutesApp, {
+        db: options.db!,
+        policyResolver
+      });
+    }, { prefix: "/api/v2/public/offers" });
+
+    await app.register(async (publicIntentRoutesApp) => {
+      const x402Config = x402ConfigFromEnv();
+      await registerPublicIntentRoutes(publicIntentRoutesApp, {
+        db: options.db!,
+        store,
+        hmacSecret,
+        uiBaseUrl: options.uiBaseUrl ?? options.baseUrl ?? process.env.SPS_UI_BASE_URL ?? "http://localhost:5173",
+        requestTtlSeconds: 180,
+        x402Provider: options.x402Provider ?? (
+          x402Config.enabled && x402Config.facilitatorUrl
+            ? new HttpX402Provider(x402Config.facilitatorUrl, x402Config.providerTimeoutMs)
+            : undefined
+        )
+      });
+    }, { prefix: "/api/v2/public/intents" });
 
     await app.register(async (agentRoutesApp) => {
       await registerAgentRoutes(agentRoutesApp, {

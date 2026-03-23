@@ -12,7 +12,7 @@ interface AuditRecord {
   workspace_id: string | null;
   event_type: string;
   actor_id: string | null;
-  actor_type: "user" | "agent" | "system" | null;
+  actor_type: "user" | "agent" | "system" | "guest_agent" | "guest_human" | null;
   resource_id: string | null;
   metadata: Record<string, unknown> | null;
   ip_address: string | null;
@@ -31,7 +31,7 @@ interface ExchangeAuditResponse {
 
 interface AuditFilters {
   eventType: string;
-  actorType: "" | "user" | "agent" | "system";
+  actorType: "" | "user" | "agent" | "system" | "guest_agent" | "guest_human";
   resourceId: string;
   from: string;
   to: string;

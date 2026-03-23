@@ -1,9 +1,9 @@
 import type { FastifyInstance, FastifyPluginOptions } from "fastify";
 import type { Pool } from "pg";
-import { generateConfirmationCode, generateRequestId, generateScopedSigs } from "../services/crypto.js";
-import { requireBrowserSig, requireGatewayAuth } from "../middleware/auth.js";
+import { requireBrowserSig, requireGatewayAuth, requireUserAuth } from "../middleware/auth.js";
 import { logAudit } from "../services/audit.js";
 import type { QuotaService } from "../services/quota.js";
+import { createSecretRequest } from "../services/secret-request.js";
 import { getWorkspace } from "../services/workspace.js";
 import type { RequestStore } from "../types.js";
 
@@ -115,32 +115,20 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
         }
       }
 
-      const requestId = generateRequestId();
-      const confirmationCode = generateConfirmationCode();
-      const createdAt = nowSeconds();
-      const expiresAt = createdAt + requestTtl;
-
-      await opts.store.setRequest(
-        {
-          requestId,
-          requesterId: payload.sub,
-          workspaceId: payload.workspaceId ?? undefined,
-          publicKey: req.body.public_key,
-          description: req.body.description,
-          confirmationCode,
-          status: "pending",
-          createdAt,
-          expiresAt
-        },
-        requestTtl
-      );
-
-      const sigs = generateScopedSigs(requestId, expiresAt, opts.hmacSecret);
-      const secretUrl = `${uiBaseUrl}/?id=${requestId}&metadata_sig=${encodeURIComponent(sigs.metadataSig)}&submit_sig=${encodeURIComponent(sigs.submitSig)}`;
+      const created = await createSecretRequest(opts.store, {
+        publicKey: req.body.public_key,
+        description: req.body.description,
+        requesterId: payload.sub,
+        workspaceId: payload.workspaceId ?? undefined,
+        requestTtlSeconds: requestTtl,
+        hmacSecret: opts.hmacSecret,
+        uiBaseUrl,
+        requestedByActorType: "agent"
+      });
 
       await logAudit(opts.db, {
         event: "request_created",
-        requestId,
+        requestId: created.record.requestId,
         agentId: payload.sub,
         workspaceId: payload.workspaceId ?? null,
         action: "request",
@@ -148,9 +136,9 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
       });
 
       return reply.code(201).send({
-        request_id: requestId,
-        confirmation_code: confirmationCode,
-        secret_url: secretUrl
+        request_id: created.record.requestId,
+        confirmation_code: created.record.confirmationCode,
+        secret_url: created.secretUrl
       });
     }
   );
@@ -172,6 +160,17 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
       const record = await opts.store.getRequest(req.params.id);
       if (!record) {
         return reply.code(410).send({ error: "Request expired" });
+      }
+
+      if (record.requireUserAuth) {
+        const user = await requireUserAuth(req, reply);
+        if (!user) {
+          return;
+        }
+
+        if (record.requiredUserWorkspaceId && user.workspaceId !== record.requiredUserWorkspaceId) {
+          return reply.code(403).send({ error: "Request is not available in this workspace", code: "workspace_mismatch" });
+        }
       }
 
       return reply.send({
@@ -211,6 +210,22 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
         return reply.code(410).send({ error: "Request expired" });
       }
 
+      let submitterUserId: string | null = null;
+      let submitterWorkspaceId: string | null = null;
+      if (record.requireUserAuth) {
+        const user = await requireUserAuth(req, reply);
+        if (!user) {
+          return;
+        }
+
+        if (record.requiredUserWorkspaceId && user.workspaceId !== record.requiredUserWorkspaceId) {
+          return reply.code(403).send({ error: "Request is not available in this workspace", code: "workspace_mismatch" });
+        }
+
+        submitterUserId = user.sub;
+        submitterWorkspaceId = user.workspaceId;
+      }
+
       if (record.status === "submitted") {
         return reply.code(409).send({ error: "Already submitted" });
       }
@@ -233,6 +248,9 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
       await logAudit(opts.db, {
         event: "secret_submitted",
         requestId: req.params.id,
+        actorId: submitterUserId,
+        actorType: submitterUserId ? "user" : undefined,
+        workspaceId: submitterWorkspaceId,
         action: "submit",
         ip: req.ip
       });

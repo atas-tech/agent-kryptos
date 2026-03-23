@@ -242,6 +242,25 @@ export function buildExchangeQuote(config: X402Config, params: {
   };
 }
 
+export function buildGuestIntentQuote(config: X402Config, params: {
+  workspaceId: string;
+  intentId: string;
+  secretName: string;
+  amountUsdCents: number;
+}): X402Quote {
+  const quoteExpiresAt = Math.floor(Date.now() / 1000) + config.quoteTtlSeconds;
+  return {
+    amountUsdCents: params.amountUsdCents,
+    amountAssetUnits: toMinorUnitsFromCents(params.amountUsdCents),
+    amountAssetDisplay: toDisplayAmount(params.amountUsdCents),
+    networkId: config.networkId,
+    resource: `guest_secret_intent:${params.workspaceId}:${params.intentId}:${params.secretName}`,
+    description: "Guest secret request activation",
+    payTo: config.payToAddress,
+    quoteExpiresAt
+  };
+}
+
 export function buildPaymentRequiredPayload(quote: X402Quote): X402PaymentRequired {
   return {
     accepts: [{

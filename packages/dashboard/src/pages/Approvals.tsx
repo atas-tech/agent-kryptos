@@ -10,7 +10,7 @@ interface AuditRecord {
   id: string;
   event_type: string;
   actor_id: string | null;
-  actor_type: "user" | "agent" | "system" | null;
+  actor_type: "user" | "agent" | "system" | "guest_agent" | "guest_human" | null;
   resource_id: string | null;
   metadata: Record<string, unknown> | null;
   created_at: string;

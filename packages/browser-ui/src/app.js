@@ -10,6 +10,82 @@ const STATUS_COLORS = {
   success: "var(--success)",
   warning: "var(--warning)"
 };
+const REFRESH_TOKEN_KEY = "sps_refresh_token";
+
+function getStoredRefreshToken() {
+  try {
+    return window.localStorage.getItem(REFRESH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setStoredRefreshToken(refreshToken) {
+  try {
+    if (typeof refreshToken === "string" && refreshToken) {
+      window.localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+    }
+  } catch {
+    // Ignore storage failures and continue with the in-memory access token.
+  }
+}
+
+async function refreshHostedSession(apiUrl) {
+  const refreshToken = getStoredRefreshToken();
+  if (!refreshToken) {
+    return null;
+  }
+
+  const response = await fetch(`${apiUrl}/api/v2/auth/refresh`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      refresh_token: refreshToken
+    })
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = await response.json();
+  if (typeof payload?.refresh_token === "string") {
+    setStoredRefreshToken(payload.refresh_token);
+  }
+  return typeof payload?.access_token === "string" ? payload.access_token : null;
+}
+
+async function fetchSignedRequest(url, apiUrl, authTokenRef, init = {}) {
+  const headers = new Headers(init.headers);
+  if (authTokenRef.current) {
+    headers.set("authorization", `Bearer ${authTokenRef.current}`);
+  }
+
+  let response = await fetch(url, {
+    ...init,
+    headers
+  });
+
+  if (response.status !== 401) {
+    return response;
+  }
+
+  const refreshedToken = await refreshHostedSession(apiUrl);
+  if (!refreshedToken) {
+    return response;
+  }
+
+  authTokenRef.current = refreshedToken;
+  const retryHeaders = new Headers(init.headers);
+  retryHeaders.set("authorization", `Bearer ${refreshedToken}`);
+  response = await fetch(url, {
+    ...init,
+    headers: retryHeaders
+  });
+  return response;
+}
 
 function setEntryEnabled(enabled, ui) {
   ui.secretSingle.disabled = !enabled;
@@ -46,6 +122,7 @@ async function init() {
   const multilineToggle = document.getElementById("multiline-toggle");
   const clearSecret = document.getElementById("clear-secret");
   const previewNotice = document.getElementById("preview-notice");
+  const requestDetails = document.getElementById("request-details");
   const securityFootnote = document.getElementById("security-footnote");
   const topbarMode = document.getElementById("mode-badge");
   const sessionState = document.getElementById("session-state");
@@ -69,6 +146,7 @@ async function init() {
   let isSuccess = false;
   let activeMode = "invalid";
   let activeMetadata = null;
+  const authTokenRef = { current: null };
 
   function clearAutoHideTimer() {
     if (autoHideTimer) {
@@ -137,6 +215,17 @@ async function init() {
       codeBox.hidden = true;
     }
 
+    if (metadata.description) {
+      const expiresAt = metadata.expiry ? new Date(metadata.expiry * 1000).toLocaleString() : null;
+      requestDetails.textContent = expiresAt
+        ? `${metadata.description} Expires: ${expiresAt}.`
+        : metadata.description;
+      requestDetails.hidden = false;
+    } else {
+      requestDetails.textContent = "";
+      requestDetails.hidden = true;
+    }
+
     if (mode === "preview") {
       previewNotice.hidden = false;
       sessionCaption.textContent = "Local QA session code";
@@ -203,8 +292,10 @@ async function init() {
 
     try {
       const payload = await sealBase64(activeMetadata.public_key, secretValue);
-      const submitRes = await fetch(
+      const submitRes = await fetchSignedRequest(
         `${activeMetadata.apiUrl}/api/v2/secret/submit/${activeMetadata.requestId}?sig=${encodeURIComponent(activeMetadata.submitSig)}`,
+        activeMetadata.apiUrl,
+        authTokenRef,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -222,7 +313,9 @@ async function init() {
         return;
       }
 
-      if (submitRes.status === 403) {
+      if (submitRes.status === 401) {
+        setStatus(status, "Workspace login is required before this secret can be submitted.", "danger");
+      } else if (submitRes.status === 403) {
         setStatus(status, "Link signature is invalid.", "danger");
       } else if (submitRes.status === 409) {
         setStatus(status, "This request already has a submitted secret.", "danger");
@@ -262,12 +355,20 @@ async function init() {
   }
 
   try {
-    const metadataRes = await fetch(
-      `${resolvedApiUrl}/api/v2/secret/metadata/${ctx.requestId}?sig=${encodeURIComponent(ctx.metadataSig)}`
+    const metadataRes = await fetchSignedRequest(
+      `${resolvedApiUrl}/api/v2/secret/metadata/${ctx.requestId}?sig=${encodeURIComponent(ctx.metadataSig)}`,
+      resolvedApiUrl,
+      authTokenRef
     );
 
     if (!metadataRes.ok) {
-      showPreviewAssist("Request expired or invalid.", "danger");
+      if (metadataRes.status === 401) {
+        showPreviewAssist("Workspace login is required before this request can be opened.", "danger");
+      } else if (metadataRes.status === 403) {
+        showPreviewAssist("This request is not available in your current workspace session.", "danger");
+      } else {
+        showPreviewAssist("Request expired or invalid.", "danger");
+      }
       setEntryEnabled(false, ui);
       return;
     }

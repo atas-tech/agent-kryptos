@@ -1,7 +1,7 @@
 import type { Pool } from "pg";
 import { decodePageCursor, encodePageCursor } from "./pagination.js";
 
-export type AuditActorType = "user" | "agent" | "system";
+export type AuditActorType = "user" | "agent" | "system" | "guest_agent" | "guest_human";
 
 export interface AuditEvent {
   event:
@@ -31,7 +31,15 @@ export interface AuditEvent {
     | "member_created"
     | "member_updated"
     | "workspace_policy_validated"
-    | "workspace_policy_updated";
+    | "workspace_policy_updated"
+    | "public_offer_created"
+    | "public_offer_revoked"
+    | "guest_intent_pending_approval"
+    | "guest_payment_required"
+    | "guest_intent_activated"
+    | "guest_intent_approved"
+    | "guest_intent_rejected"
+    | "guest_intent_revoked";
   requestId?: string;
   exchangeId?: string;
   approvalReference?: string | null;

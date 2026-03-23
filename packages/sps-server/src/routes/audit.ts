@@ -34,7 +34,7 @@ export async function registerAuditRoutes(app: FastifyInstance, opts: AuditRoute
   app.get<{
     Querystring: {
       event_type?: string;
-      actor_type?: "user" | "agent" | "system";
+      actor_type?: "user" | "agent" | "system" | "guest_agent" | "guest_human";
       resource_id?: string;
       from?: string;
       to?: string;
@@ -50,7 +50,7 @@ export async function registerAuditRoutes(app: FastifyInstance, opts: AuditRoute
           additionalProperties: false,
           properties: {
             event_type: { type: "string", minLength: 1, maxLength: 120 },
-            actor_type: { type: "string", enum: ["user", "agent", "system"] },
+            actor_type: { type: "string", enum: ["user", "agent", "system", "guest_agent", "guest_human"] },
             resource_id: { type: "string", minLength: 1, maxLength: 256 },
             from: { type: "string", format: "date-time" },
             to: { type: "string", format: "date-time" },

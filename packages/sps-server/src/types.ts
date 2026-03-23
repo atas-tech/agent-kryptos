@@ -25,6 +25,10 @@ export interface StoredRequest {
   status: RequestStatus;
   createdAt: number;
   expiresAt: number;
+  requireUserAuth?: boolean;
+  requiredUserWorkspaceId?: string;
+  requestedByActorType?: "user" | "agent" | "guest_agent" | "guest_human";
+  guestIntentId?: string;
   enc?: string;
   ciphertext?: string;
 }
