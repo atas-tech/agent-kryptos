@@ -391,11 +391,13 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         decidedAt,
         decidedBy: params.actorId
       },
-      approvalTtl
+      approvalTtl,
+      "pending"
     );
 
     if (!nextApproval) {
-      return { kind: "not_available" };
+      const currentApproval = await opts.store.getApprovalRequest(approval.approvalReference);
+      return currentApproval ? { kind: "conflict" } : { kind: "not_available" };
     }
 
     await appendLifecycleRecord(opts.store, {

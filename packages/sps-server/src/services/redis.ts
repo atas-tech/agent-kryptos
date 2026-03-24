@@ -37,25 +37,60 @@ export class RedisRequestStore implements RequestStore {
     return raw ? (JSON.parse(raw) as StoredRequest) : null;
   }
 
-  async updateRequest(requestId: string, patch: Partial<StoredRequest>, ttlSeconds?: number): Promise<StoredRequest | null> {
-    const current = await this.getRequest(requestId);
-    if (!current) {
+  async updateRequest(
+    requestId: string,
+    patch: Partial<StoredRequest>,
+    ttlSeconds?: number,
+    expectedStatus?: StoredRequest["status"]
+  ): Promise<StoredRequest | null> {
+    const script = `
+      local key = KEYS[1]
+      local patch = cjson.decode(ARGV[1])
+      local ttl_ms = ARGV[2]
+      local expected_status = ARGV[3]
+
+      local raw = redis.call('GET', key)
+      if not raw then
+        return nil
+      end
+
+      local data = cjson.decode(raw)
+      if expected_status ~= '' and data["status"] ~= expected_status then
+        return nil
+      end
+
+      for field, value in pairs(patch) do
+        data[field] = value
+      end
+
+      local encoded = cjson.encode(data)
+      if ttl_ms ~= '' then
+        redis.call('SET', key, encoded, 'PX', tonumber(ttl_ms))
+      else
+        local pttl = redis.call('PTTL', key)
+        if pttl > 0 then
+          redis.call('SET', key, encoded, 'PX', pttl)
+        else
+          redis.call('SET', key, encoded)
+        end
+      end
+
+      return encoded
+    `;
+
+    const raw = await this.redis.eval(
+      script,
+      1,
+      keyForRequest(requestId),
+      JSON.stringify(patch),
+      typeof ttlSeconds === "number" ? String(ttlSeconds * 1000) : "",
+      expectedStatus ?? ""
+    );
+    if (typeof raw !== "string") {
       return null;
     }
 
-    const next = { ...current, ...patch };
-    if (typeof ttlSeconds === "number") {
-      await this.redis.set(keyForRequest(requestId), JSON.stringify(next), "EX", ttlSeconds);
-    } else {
-      const pttl = await this.redis.pttl(keyForRequest(requestId));
-      if (pttl > 0) {
-        await this.redis.set(keyForRequest(requestId), JSON.stringify(next), "PX", pttl);
-      } else {
-        await this.redis.set(keyForRequest(requestId), JSON.stringify(next));
-      }
-    }
-
-    return next;
+    return JSON.parse(raw) as StoredRequest;
   }
 
   async atomicRetrieveAndDelete(requestId: string, requesterId?: string, workspaceId?: string): Promise<StoredRequest | null> {
@@ -272,26 +307,57 @@ export class RedisRequestStore implements RequestStore {
   async updateApprovalRequest(
     approvalReference: string,
     patch: Partial<StoredApprovalRequest>,
-    ttlSeconds?: number
+    ttlSeconds?: number,
+    expectedStatus?: StoredApprovalRequest["status"]
   ): Promise<StoredApprovalRequest | null> {
-    const current = await this.getApprovalRequest(approvalReference);
-    if (!current) {
+    const script = `
+      local key = KEYS[1]
+      local patch = cjson.decode(ARGV[1])
+      local ttl_ms = ARGV[2]
+      local expected_status = ARGV[3]
+
+      local raw = redis.call('GET', key)
+      if not raw then
+        return nil
+      end
+
+      local data = cjson.decode(raw)
+      if expected_status ~= '' and data["status"] ~= expected_status then
+        return nil
+      end
+
+      for field, value in pairs(patch) do
+        data[field] = value
+      end
+
+      local encoded = cjson.encode(data)
+      if ttl_ms ~= '' then
+        redis.call('SET', key, encoded, 'PX', tonumber(ttl_ms))
+      else
+        local pttl = redis.call('PTTL', key)
+        if pttl > 0 then
+          redis.call('SET', key, encoded, 'PX', pttl)
+        else
+          redis.call('SET', key, encoded)
+        end
+      end
+
+      return encoded
+    `;
+
+    const raw = await this.redis.eval(
+      script,
+      1,
+      keyForApproval(approvalReference),
+      JSON.stringify(patch),
+      typeof ttlSeconds === "number" ? String(ttlSeconds * 1000) : "",
+      expectedStatus ?? ""
+    );
+    if (typeof raw !== "string") {
       return null;
     }
 
-    const next = { ...current, ...patch };
-    if (typeof ttlSeconds === "number") {
-      await this.redis.set(keyForApproval(approvalReference), JSON.stringify(next), "EX", ttlSeconds);
-    } else {
-      const pttl = await this.redis.pttl(keyForApproval(approvalReference));
-      if (pttl > 0) {
-        await this.redis.set(keyForApproval(approvalReference), JSON.stringify(next), "PX", pttl);
-      } else {
-        await this.redis.set(keyForApproval(approvalReference), JSON.stringify(next));
-      }
-    }
-
-    return next;
+    return JSON.parse(raw) as StoredApprovalRequest;
   }
 
   async appendLifecycleRecord(record: ExchangeLifecycleRecord): Promise<void> {
@@ -334,9 +400,14 @@ export class InMemoryRequestStore implements RequestStore {
     return this.data.get(requestId) ?? null;
   }
 
-  async updateRequest(requestId: string, patch: Partial<StoredRequest>, ttlSeconds?: number): Promise<StoredRequest | null> {
+  async updateRequest(
+    requestId: string,
+    patch: Partial<StoredRequest>,
+    ttlSeconds?: number,
+    expectedStatus?: StoredRequest["status"]
+  ): Promise<StoredRequest | null> {
     const current = this.data.get(requestId);
-    if (!current) {
+    if (!current || (expectedStatus && current.status !== expectedStatus)) {
       return null;
     }
 
@@ -490,10 +561,11 @@ export class InMemoryRequestStore implements RequestStore {
   async updateApprovalRequest(
     approvalReference: string,
     patch: Partial<StoredApprovalRequest>,
-    ttlSeconds?: number
+    ttlSeconds?: number,
+    expectedStatus?: StoredApprovalRequest["status"]
   ): Promise<StoredApprovalRequest | null> {
     const current = this.approvals.get(approvalReference);
-    if (!current) {
+    if (!current || (expectedStatus && current.status !== expectedStatus)) {
       return null;
     }
 

@@ -109,7 +109,12 @@ export interface ExchangeLifecycleRecord {
 export interface RequestStore {
   setRequest(data: StoredRequest, ttlSeconds: number): Promise<void>;
   getRequest(requestId: string): Promise<StoredRequest | null>;
-  updateRequest(requestId: string, patch: Partial<StoredRequest>, ttlSeconds?: number): Promise<StoredRequest | null>;
+  updateRequest(
+    requestId: string,
+    patch: Partial<StoredRequest>,
+    ttlSeconds?: number,
+    expectedStatus?: RequestStatus
+  ): Promise<StoredRequest | null>;
   atomicRetrieveAndDelete(requestId: string, requesterId?: string, workspaceId?: string): Promise<StoredRequest | null>;
   deleteRequest(requestId: string, requesterId?: string, workspaceId?: string): Promise<boolean>;
   setExchange(data: StoredExchange, ttlSeconds: number): Promise<void>;
@@ -130,7 +135,8 @@ export interface RequestStore {
   updateApprovalRequest(
     approvalReference: string,
     patch: Partial<StoredApprovalRequest>,
-    ttlSeconds?: number
+    ttlSeconds?: number,
+    expectedStatus?: ApprovalStatus
   ): Promise<StoredApprovalRequest | null>;
   appendLifecycleRecord(record: ExchangeLifecycleRecord): Promise<void>;
   listLifecycleRecordsByExchange(exchangeId: string): Promise<ExchangeLifecycleRecord[]>;

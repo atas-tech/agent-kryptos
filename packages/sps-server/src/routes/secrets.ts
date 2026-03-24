@@ -271,10 +271,15 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
           ciphertext: req.body.ciphertext,
           expiresAt: nowSeconds() + submittedTtl
         },
-        submittedTtl
+        submittedTtl,
+        "pending"
       );
 
       if (!next) {
+        const current = await opts.store.getRequest(req.params.id);
+        if (current?.status === "submitted") {
+          return reply.code(409).send({ error: "Already submitted" });
+        }
         return reply.code(410).send({ error: "Request expired" });
       }
 

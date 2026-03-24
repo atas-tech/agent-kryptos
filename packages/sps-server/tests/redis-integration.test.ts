@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/index.js";
 import { __resetJwksCacheForTests } from "../src/middleware/auth.js";
+import { createRedisClient, RedisRequestStore } from "../src/services/redis.js";
 import { createGatewayAuthFixture, type GatewayAuthFixture } from "./gateway-auth.fixture.js";
 
 const runIntegration = process.env.SPS_REDIS_INTEGRATION === "1";
@@ -95,5 +96,74 @@ describeIntegration("redis integration", () => {
     expect(secondRetrieve.statusCode).toBe(410);
 
     await app.close();
+  });
+
+  it("atomically rejects stale request and approval transitions in Redis", async () => {
+    const redis = createRedisClient();
+    await redis.connect();
+
+    try {
+      const store = new RedisRequestStore(redis);
+      const requestId = `redis-request-${Date.now()}`;
+      const approvalReference = `redis-approval-${Date.now()}`;
+
+      await store.setRequest({
+        requestId,
+        requesterId: "agent-1",
+        workspaceId: "ws-1",
+        publicKey: "cHVi",
+        description: "Atomic request transition",
+        confirmationCode: "123456",
+        status: "pending",
+        createdAt: Math.floor(Date.now() / 1000),
+        expiresAt: Math.floor(Date.now() / 1000) + 60
+      }, 60);
+
+      const firstRequestUpdate = await store.updateRequest(requestId, {
+        status: "submitted",
+        enc: "ZW5j",
+        ciphertext: "Y2lwaGVy"
+      }, 60, "pending");
+      expect(firstRequestUpdate?.status).toBe("submitted");
+
+      const staleRequestUpdate = await store.updateRequest(requestId, {
+        ciphertext: "bGF0ZXI="
+      }, 60, "pending");
+      expect(staleRequestUpdate).toBeNull();
+      expect((await store.getRequest(requestId))?.ciphertext).toBe("Y2lwaGVy");
+
+      await store.setApprovalRequest({
+        approvalReference,
+        requesterId: "agent-1",
+        workspaceId: "ws-1",
+        secretName: "stripe.api_key.prod",
+        purpose: "Atomic approval transition",
+        fulfillerHint: "agent:approver",
+        ruleId: "rule-1",
+        reason: "policy",
+        approverIds: ["approver-1"],
+        approverRings: ["ops"],
+        status: "pending",
+        createdAt: Math.floor(Date.now() / 1000),
+        expiresAt: Math.floor(Date.now() / 1000) + 60
+      }, 60);
+
+      const firstApprovalUpdate = await store.updateApprovalRequest(approvalReference, {
+        status: "approved",
+        decidedAt: Math.floor(Date.now() / 1000),
+        decidedBy: "approver-1"
+      }, 60, "pending");
+      expect(firstApprovalUpdate?.status).toBe("approved");
+
+      const staleApprovalUpdate = await store.updateApprovalRequest(approvalReference, {
+        status: "rejected",
+        decidedAt: Math.floor(Date.now() / 1000),
+        decidedBy: "approver-2"
+      }, 60, "pending");
+      expect(staleApprovalUpdate).toBeNull();
+      expect((await store.getApprovalRequest(approvalReference))?.status).toBe("approved");
+    } finally {
+      await redis.quit();
+    }
   });
 });

@@ -33,7 +33,7 @@ Since the March 4 audit (v1), the BlindPass codebase has grown approximately 4×
 |---|---|
 | C-1: Non-constant-time HMAC comparison | ✅ **Fixed** — HMAC verification now uses constant-time comparison |
 | C-2: Hardcoded HMAC fallback in prod | ✅ **Fixed** — runtime secret fallbacks removed; startup now fails closed |
-| H-1: Redis `updateRequest` TOCTOU race | ❌ Still open, now also affects `updateApprovalRequest` |
+| H-1: Redis `updateRequest` TOCTOU race | ✅ Fixed — Redis-backed request and approval updates now enforce expected-status transitions atomically |
 | H-2: No rate limiting | ✅ **Fixed** — `RateLimitService` added for auth + public intents |
 | H-3: Confirmation code low entropy | ❌ Still open (6,400 combinations) |
 | H-4: CORS `origin: true` | ✅ Fixed — SPS now enforces an explicit browser-origin allowlist |
@@ -59,7 +59,7 @@ Since the March 4 audit (v1), the BlindPass codebase has grown approximately 4×
 | H-1: Restrict CORS origins | ✅ Done | SPS now allows only configured first-party origins, with loopback-only dev fallback |
 | H-2: Move refresh token to httpOnly cookie | ⚠️ Partial | Moved from `localStorage` to `sessionStorage`; still JS-readable |
 | H-3: Session count limit + invalidate on password change | ✅ Done | New sessions enforce a cap and password changes revoke other refresh sessions |
-| H-4: Atomic Redis `updateRequest` + `updateApproval` | ❌ Open | Non-atomic read/modify/write remains |
+| H-4: Atomic Redis `updateRequest` + `updateApproval` | ✅ Done | Redis-backed updates now use atomic expected-status Lua transitions |
 | H-5: Rate limit agent API key auth | ✅ Done | Agent token minting is IP-rate-limited and covered by existing regression tests |
 | H-6: Guest payment TOCTOU | ✅ Done | Guest payment settlement now gates provider calls on atomic insert ownership |
 | M-1: Add CSP headers to both UIs | ⚠️ Partial | Browser-ui runtime nginx covered; dashboard has meta/dev-preview coverage, but edge headers still need confirmation |
@@ -257,11 +257,25 @@ The session issuer now revokes overflow refresh sessions before inserting a new 
 
 ### H-4: Redis `updateRequest` / `updateApprovalRequest` TOCTOU (v1 — EXPANDED)
 
-**File**: [redis.ts L40-59, L272-295](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/redis.ts#L40-L59)
+**Status (2026-03-24)**: ✅ Resolved.
 
-The v1 `updateRequest` TOCTOU issue remains unfixed and now also applies to `updateApprovalRequest`. Both perform GET → modify → SET without atomicity. While exchange operations correctly use Lua scripts, the approval workflow is vulnerable to race conditions where two concurrent approval decisions could corrupt state.
+**Files**:
+- [redis.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/redis.ts)
+- [secrets.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/routes/secrets.ts)
+- [exchange.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/routes/exchange.ts)
+- [redis-integration.test.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/tests/redis-integration.test.ts)
 
-**Recommendation**: Wrap in Lua scripts (as done for `reserveExchange`, `submitExchange`, etc.).
+Redis-backed request submission and approval decision updates now use Lua scripts that:
+1. load the current record
+2. enforce an expected current `status`
+3. merge the patch
+4. preserve/reset TTL in the same atomic operation
+
+The affected routes now also distinguish stale-state conflicts from true expiration/not-found cases when the conditional update fails.
+
+**Residual note**:
+1. This closes the Redis read-modify-write race for these two state transitions
+2. Other Redis-backed transitions should continue to use explicit state preconditions when new mutating paths are added
 
 ---
 
@@ -556,7 +570,7 @@ quadrantChart
 | **P1** | H-5: Rate limit agent API key auth | Low | Prevents key brute-force | ✅ Done |
 | **P1** | H-6: Guest payment TOCTOU | Medium | Prevents duplicate settlements | ✅ Done |
 | **P2** | H-3: Session count limit + invalidate on password change | Medium | Account takeover mitigation | ✅ Done |
-| **P2** | H-4: Atomic Redis `updateRequest` + `updateApproval` | Medium | Race condition fix | ❌ Open |
+| **P2** | H-4: Atomic Redis `updateRequest` + `updateApproval` | Medium | Race condition fix | ✅ Done |
 | **P2** | M-2: Hash verification tokens in DB | Low | Defense-in-depth | ❌ Open |
 | **P2** | M-3: Add verification token expiry | Low | Limits token lifetime | ❌ Open |
 | **P2** | M-5: Stronger password validation | Low | Credential strength | ❌ Open |
@@ -590,7 +604,7 @@ quadrantChart
 2. **First-party origin compromise → API abuse from an allowed frontend (Residual H-1/H-2)**: Arbitrary-origin reflection is gone, but a compromised allowed frontend origin can still abuse API reach while refresh tokens remain JS-readable.
 3. **Facilitator MITM → Free paid exchanges (M-4)**: Hijacking the x402 facilitator URL lets an attacker claim payments are valid without actual payment.
 4. **Facilitator trust failure → Fraudulent payment acceptance (M-4)**: Guest payment settlement no longer races locally, but a compromised or spoofed facilitator can still misrepresent payment validity if TLS trust is subverted.
-5. **Race condition → Policy bypass (H-4)**: TOCTOU in `updateApprovalRequest` could let an already-rejected approval be re-approved under concurrent load.
+5. **Allowed-frontend compromise → Approval abuse (Residual H-2/H-4 follow-on)**: The Redis TOCTOU path is closed, but first-party-origin compromise still exposes any approval action the compromised operator can legitimately invoke.
 6. **Root HMAC compromise → Derived-key compromise blast radius (Residual C-3 note)**: Direct token-class key reuse has been removed, but compromise of the configured root secret would still affect all derived signing domains until per-domain rotation is introduced.
 
 ---
