@@ -60,8 +60,8 @@ Since the March 4 audit (v1), the BlindPass codebase has grown approximately 4×
 | H-2: Move refresh token to httpOnly cookie | ⚠️ Partial | Moved from `localStorage` to `sessionStorage`; still JS-readable |
 | H-3: Session count limit + invalidate on password change | ❌ Open | No global session cap or password-change-wide revocation |
 | H-4: Atomic Redis `updateRequest` + `updateApproval` | ❌ Open | Non-atomic read/modify/write remains |
-| H-5: Rate limit agent API key auth | ❌ Open | No repo-visible rate limiter on agent token minting path |
-| H-6: Guest payment TOCTOU | ❌ Open | GET-then-INSERT race still present |
+| H-5: Rate limit agent API key auth | ✅ Done | Agent token minting is IP-rate-limited and covered by existing regression tests |
+| H-6: Guest payment TOCTOU | ✅ Done | Guest payment settlement now gates provider calls on atomic insert ownership |
 | M-1: Add CSP headers to both UIs | ⚠️ Partial | Browser-ui runtime nginx covered; dashboard has meta/dev-preview coverage, but edge headers still need confirmation |
 | M-2: Hash verification tokens in DB | ❌ Open | Verification tokens still stored plaintext |
 | M-3: Add verification token expiry | ❌ Open | No expiry field/check yet |
@@ -264,27 +264,34 @@ The v1 `updateRequest` TOCTOU issue remains unfixed and now also applies to `upd
 
 ### H-5: Agent API Key Authentication Not Rate-Limited (NEW)
 
-**File**: [agents.ts route](file:///home/hvo/Projects/blindpass/packages/sps-server/src/routes/agents.ts)
+**Status (2026-03-24)**: ✅ Resolved.
 
-The `POST /api/v2/agents/authenticate` endpoint accepts an API key and returns a JWT. While bcrypt's cost factor provides some inherent resistance to brute force, there is no rate limiting on API key authentication attempts. The API key format (`ak_{uuid}_{random}`) reveals the agent row ID, enabling targeted offline enumeration.
+**Files**:
+- [agents.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/routes/agents.ts)
+- [rate-limit.test.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/tests/rate-limit.test.ts)
+- [e2e.test.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/tests/e2e.test.ts)
 
-**Recommendation**: Add rate limiting per IP on the `/authenticate` endpoint. Avoid exposing the agent row ID in the API key prefix if possible.
+The current route is `POST /api/v2/agents/token`, and it already enforces per-IP rate limiting before API-key authentication. Existing integration coverage also asserts `429` responses and `Retry-After` headers on repeated token mint attempts.
+
+**Residual note**:
+1. The current control is per-IP, not per-agent-key fingerprint
+2. The API key prefix structure is still worth revisiting separately if identifier exposure becomes a concern
 
 ---
 
 ### H-6: `verifyAndSettleGuestPayment` TOCTOU Race Condition (NEW)
 
-**File**: [guest-payment.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/guest-payment.ts#L230-L248)
+**Status (2026-03-24)**: ✅ Resolved.
 
-The `verifyAndSettleGuestPayment` function checks for an existing payment outside of a transaction:
-```typescript
-const existing = await findGuestPaymentByPaymentId(db, input.workspaceId, input.paymentId);
-// ...
-await insertPendingGuestPayment(db, { ... });
-```
-This GET-then-INSERT pattern is not atomic. While `insertPendingGuestPayment` uses `ON CONFLICT DO NOTHING`, two concurrent requests can both see `existing = null`, one inserts successfully, the other does nothing, but **both** proceed to execute `provider.verifyPayment` and `provider.settlePayment`. This could lead to duplicate settlement requests to the facilitator.
+**Files**:
+- [guest-payment.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/guest-payment.ts)
+- [guest-payment.test.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/tests/guest-payment.test.ts)
 
-**Recommendation**: Use a database transaction and rely on the result of a conditional `INSERT ... RETURNING *` or an atomic locking mechanism to ensure only one request proceeds to the provider.
+The settlement path no longer performs a standalone pre-read to claim ownership of provider work. Instead, the pending-row insert now returns the inserted row only for the winner, and any conflicting caller re-reads the existing payment row and exits with `payment_in_progress`, `payment_failed`, or cached settled output as appropriate.
+
+**Residual note**:
+1. This closes the duplicate provider-call race for guest payments
+2. Facilitator authenticity and settlement trust are still separate concerns under M-4
 
 ---
 
@@ -543,8 +550,8 @@ quadrantChart
 | **P1** | H-1: Restrict CORS origins | Low | Prevents cross-origin API abuse | ✅ Done |
 | **P1** | H-2: Move refresh token to httpOnly cookie | Medium | Prevents XSS-based token theft | ⚠️ Partial |
 | **P1** | M-1: Add CSP headers to both UIs | Low | XSS mitigation | ⚠️ Partial |
-| **P1** | H-5: Rate limit agent API key auth | Low | Prevents key brute-force | ❌ Open |
-| **P1** | H-6: Guest payment TOCTOU | Medium | Prevents duplicate settlements | ❌ Open |
+| **P1** | H-5: Rate limit agent API key auth | Low | Prevents key brute-force | ✅ Done |
+| **P1** | H-6: Guest payment TOCTOU | Medium | Prevents duplicate settlements | ✅ Done |
 | **P2** | H-3: Session count limit + invalidate on password change | Medium | Account takeover mitigation | ❌ Open |
 | **P2** | H-4: Atomic Redis `updateRequest` + `updateApproval` | Medium | Race condition fix | ❌ Open |
 | **P2** | M-2: Hash verification tokens in DB | Low | Defense-in-depth | ❌ Open |
@@ -579,7 +586,7 @@ quadrantChart
 1. **XSS → Session token theft → Account takeover (H-2 + M-1 + H-1)**: Refresh tokens are still JS-readable in `sessionStorage`; a dashboard-origin XSS can still steal them even though persistence is reduced.
 2. **First-party origin compromise → API abuse from an allowed frontend (Residual H-1/H-2)**: Arbitrary-origin reflection is gone, but a compromised allowed frontend origin can still abuse API reach while refresh tokens remain JS-readable.
 3. **Facilitator MITM → Free paid exchanges (M-4)**: Hijacking the x402 facilitator URL lets an attacker claim payments are valid without actual payment.
-4. **Race condition → Duplicate settlement (H-6)**: Concurrent guest payment requests both pass the existence check and both call `provider.settlePayment`, causing double-spend on the facilitator.
+4. **Facilitator trust failure → Fraudulent payment acceptance (M-4)**: Guest payment settlement no longer races locally, but a compromised or spoofed facilitator can still misrepresent payment validity if TLS trust is subverted.
 5. **Race condition → Policy bypass (H-4)**: TOCTOU in `updateApprovalRequest` could let an already-rejected approval be re-approved under concurrent load.
 6. **Root HMAC compromise → Derived-key compromise blast radius (Residual C-3 note)**: Direct token-class key reuse has been removed, but compromise of the configured root secret would still affect all derived signing domains until per-domain rotation is introduced.
 

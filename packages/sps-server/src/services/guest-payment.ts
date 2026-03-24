@@ -115,8 +115,8 @@ export async function insertPendingGuestPayment(
     quote: X402Quote;
     facilitatorUrl: string | null;
   }
-): Promise<void> {
-  await db.query(
+): Promise<GuestPaymentRecord | null> {
+  const result = await db.query<GuestPaymentRow>(
     `
       INSERT INTO guest_payments (
         workspace_id,
@@ -136,6 +136,7 @@ export async function insertPendingGuestPayment(
       VALUES ($1, $2, $3, $4, $5, 'USD', 'USDC', $6, 'exact', $7, $8, to_timestamp($9), 'pending')
       ON CONFLICT (workspace_id, payment_id)
       DO NOTHING
+      RETURNING *
     `,
     [
       input.workspaceId,
@@ -149,6 +150,8 @@ export async function insertPendingGuestPayment(
       input.quote.quoteExpiresAt
     ]
   );
+
+  return result.rows[0] ? toGuestPaymentRecord(result.rows[0]) : null;
 }
 
 export async function markGuestPaymentVerified(
@@ -227,25 +230,11 @@ export async function verifyAndSettleGuestPayment(
     quote: X402Quote;
   }
 ): Promise<{ txHash: string; cachedResponse?: Record<string, unknown> }> {
-  const existing = await findGuestPaymentByPaymentId(db, input.workspaceId, input.paymentId);
-  if (existing) {
-    if (existing.requestHash !== input.requestHash) {
-      throw new X402ServiceError(409, "payment_identifier_conflict", "payment-identifier reuse does not match the original request");
-    }
-    if (existing.status === "settled" && existing.responseCache) {
-      return {
-        txHash: existing.txHash ?? "",
-        cachedResponse: existing.responseCache
-      };
-    }
-    throw new X402ServiceError(409, "payment_in_progress", "Payment is already being processed for this request");
-  }
-
   if (input.quote.quoteExpiresAt <= Math.floor(Date.now() / 1000)) {
     throw new X402ServiceError(402, "quote_expired", "Payment quote has expired");
   }
 
-  await insertPendingGuestPayment(db, {
+  const insertedPayment = await insertPendingGuestPayment(db, {
     workspaceId: input.workspaceId,
     intentId: input.intentId,
     paymentId: input.paymentId,
@@ -253,6 +242,31 @@ export async function verifyAndSettleGuestPayment(
     quote: input.quote,
     facilitatorUrl: config.facilitatorUrl
   });
+  if (!insertedPayment) {
+    const existing = await findGuestPaymentByPaymentId(db, input.workspaceId, input.paymentId);
+    if (!existing) {
+      throw new X402ServiceError(409, "payment_in_progress", "Payment is already being processed for this request");
+    }
+
+    if (existing.requestHash !== input.requestHash) {
+      throw new X402ServiceError(409, "payment_identifier_conflict", "payment-identifier reuse does not match the original request");
+    }
+
+    if (existing.status === "settled" && existing.responseCache) {
+      return {
+        txHash: existing.txHash ?? "",
+        cachedResponse: existing.responseCache
+      };
+    }
+
+    throw new X402ServiceError(
+      409,
+      existing.status === "failed" ? "payment_failed" : "payment_in_progress",
+      existing.status === "failed"
+        ? "Payment already failed for this request"
+        : "Payment is already being processed for this request"
+    );
+  }
 
   try {
     let paymentPayload: ReturnType<typeof parsePaymentSignatureHeader>;
