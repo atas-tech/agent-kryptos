@@ -36,16 +36,16 @@ export interface AuthContextValue {
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 function getStoredRefreshToken(): string | null {
-  return window.localStorage.getItem(REFRESH_TOKEN_KEY);
+  return window.sessionStorage.getItem(REFRESH_TOKEN_KEY);
 }
 
 function setStoredRefreshToken(token: string | null): void {
   if (token) {
-    window.localStorage.setItem(REFRESH_TOKEN_KEY, token);
+    window.sessionStorage.setItem(REFRESH_TOKEN_KEY, token);
     return;
   }
 
-  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
+  window.sessionStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
 async function readError(response: Response, fallback: string): Promise<Error> {

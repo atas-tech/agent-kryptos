@@ -48,6 +48,7 @@ function createAdminSession() {
 describe("dashboard milestone 3", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.restoreAllMocks();
   });
 
@@ -77,7 +78,7 @@ describe("dashboard milestone 3", () => {
   });
 
   it("appends paginated agent rows without duplication", async () => {
-    window.localStorage.setItem("sps_refresh_token", "refresh-1");
+    window.sessionStorage.setItem("sps_refresh_token", "refresh-1");
 
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
@@ -154,7 +155,7 @@ describe("dashboard milestone 3", () => {
   });
 
   it("blocks weak temporary passwords and disables last-admin suspension", async () => {
-    window.localStorage.setItem("sps_refresh_token", "refresh-1");
+    window.sessionStorage.setItem("sps_refresh_token", "refresh-1");
 
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
@@ -222,7 +223,7 @@ describe("dashboard milestone 3", () => {
   });
 
   it("updates workspace display name and syncs the shell", async () => {
-    window.localStorage.setItem("sps_refresh_token", "refresh-1");
+    window.sessionStorage.setItem("sps_refresh_token", "refresh-1");
 
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);

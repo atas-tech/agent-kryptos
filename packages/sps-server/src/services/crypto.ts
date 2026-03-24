@@ -1,6 +1,10 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { jwtVerify, SignJWT } from "jose";
 import type { PolicyDecision, RequestScope } from "../types.js";
+import {
+  deriveAgentFulfillmentTokenSecret,
+  deriveGuestFulfillmentTokenSecret
+} from "../utils/signing-secrets.js";
 
 const ADJECTIVES = [
   "BLUE",
@@ -40,12 +44,22 @@ export interface FulfillmentTokenClaims {
   approval_reference?: string | null;
 }
 
+export type FulfillmentTokenKind = "agent" | "guest";
+
 function canonicalize(payload: CanonicalPayload): string {
   return `${payload.requestId}.${payload.exp}.${payload.scope}`;
 }
 
 function hmac(payload: string, secret: string): string {
   return createHmac("sha256", secret).update(payload).digest("base64url");
+}
+
+function signaturesMatch(expected: string, actual: string): boolean {
+  if (expected.length !== actual.length) {
+    return false;
+  }
+
+  return timingSafeEqual(Buffer.from(expected), Buffer.from(actual));
 }
 
 export function generateRequestId(): string {
@@ -87,7 +101,7 @@ export function verifyPayload(
   }
 
   const expected = hmac(canonicalize({ requestId, exp, scope }), secret);
-  if (expected !== signature) {
+  if (!signaturesMatch(expected, signature)) {
     return { ok: false, reason: "invalid" };
   }
 
@@ -105,10 +119,37 @@ function fulfillmentSecret(secret: string): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
+function fulfillmentAudience(tokenKind: FulfillmentTokenKind): "agent-fulfill" | "guest-fulfill" {
+  return tokenKind === "guest" ? "guest-fulfill" : "agent-fulfill";
+}
+
+function fulfillmentSigningSecret(rootSecret: string, tokenKind: FulfillmentTokenKind): string {
+  return tokenKind === "guest"
+    ? deriveGuestFulfillmentTokenSecret(rootSecret)
+    : deriveAgentFulfillmentTokenSecret(rootSecret);
+}
+
 export async function signFulfillmentToken(
   claims: FulfillmentTokenClaims,
-  secret: string,
+  rootSecret: string,
   expiresAt: number
+): Promise<string> {
+  return signNamedFulfillmentToken(claims, rootSecret, expiresAt, "agent");
+}
+
+export async function signGuestFulfillmentToken(
+  claims: FulfillmentTokenClaims,
+  rootSecret: string,
+  expiresAt: number
+): Promise<string> {
+  return signNamedFulfillmentToken(claims, rootSecret, expiresAt, "guest");
+}
+
+async function signNamedFulfillmentToken(
+  claims: FulfillmentTokenClaims,
+  rootSecret: string,
+  expiresAt: number,
+  tokenKind: FulfillmentTokenKind
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   return new SignJWT({
@@ -123,38 +164,50 @@ export async function signFulfillmentToken(
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setSubject(claims.workspace_id ?? claims.requester_id)
     .setIssuer("sps")
-    .setAudience("agent-fulfill")
+    .setAudience(fulfillmentAudience(tokenKind))
     .setIssuedAt(now)
     .setExpirationTime(expiresAt)
-    .sign(fulfillmentSecret(secret));
+    .sign(fulfillmentSecret(fulfillmentSigningSecret(rootSecret, tokenKind)));
 }
 
-export async function verifyFulfillmentToken(token: string, secret: string): Promise<FulfillmentTokenClaims> {
-  const { payload } = await jwtVerify(token, fulfillmentSecret(secret), {
-    issuer: "sps",
-    audience: "agent-fulfill"
-  });
+export async function verifyFulfillmentToken(
+  token: string,
+  rootSecret: string
+): Promise<FulfillmentTokenClaims & { tokenKind: FulfillmentTokenKind }> {
+  for (const tokenKind of ["agent", "guest"] as const) {
+    try {
+      const { payload } = await jwtVerify(token, fulfillmentSecret(fulfillmentSigningSecret(rootSecret, tokenKind)), {
+        issuer: "sps",
+        audience: fulfillmentAudience(tokenKind)
+      });
 
-  const exchangeId = typeof payload.exchange_id === "string" ? payload.exchange_id : null;
-  const requesterId = typeof payload.requester_id === "string" ? payload.requester_id : null;
-  const workspaceId = typeof payload.workspace_id === "string" ? payload.workspace_id : undefined;
-  const secretName = typeof payload.secret_name === "string" ? payload.secret_name : null;
-  const purpose = typeof payload.purpose === "string" ? payload.purpose : null;
-  const policyHash = typeof payload.policy_hash === "string" ? payload.policy_hash : null;
-  const approvalReference =
-    typeof payload.approval_reference === "string" ? payload.approval_reference : payload.approval_reference === null ? null : undefined;
+      const exchangeId = typeof payload.exchange_id === "string" ? payload.exchange_id : null;
+      const requesterId = typeof payload.requester_id === "string" ? payload.requester_id : null;
+      const workspaceId = typeof payload.workspace_id === "string" ? payload.workspace_id : undefined;
+      const secretName = typeof payload.secret_name === "string" ? payload.secret_name : null;
+      const purpose = typeof payload.purpose === "string" ? payload.purpose : null;
+      const policyHash = typeof payload.policy_hash === "string" ? payload.policy_hash : null;
+      const approvalReference =
+        typeof payload.approval_reference === "string" ? payload.approval_reference : payload.approval_reference === null ? null : undefined;
 
-  if (!exchangeId || !requesterId || !secretName || !purpose || !policyHash) {
-    throw new Error("Invalid fulfillment token payload");
+      if (!exchangeId || !requesterId || !secretName || !purpose || !policyHash) {
+        throw new Error("Invalid fulfillment token payload");
+      }
+
+      return {
+        exchange_id: exchangeId,
+        requester_id: requesterId,
+        workspace_id: workspaceId,
+        secret_name: secretName,
+        purpose,
+        policy_hash: policyHash,
+        approval_reference: approvalReference,
+        tokenKind
+      };
+    } catch {
+      // Try the next fulfillment-token domain.
+    }
   }
 
-  return {
-    exchange_id: exchangeId,
-    requester_id: requesterId,
-    workspace_id: workspaceId,
-    secret_name: secretName,
-    purpose,
-    policy_hash: policyHash,
-    approval_reference: approvalReference
-  };
+  throw new Error("Invalid fulfillment token");
 }

@@ -24,6 +24,11 @@ function isHostedModeEnabled(): boolean {
   return raw === "1" || raw === "true" || raw === "yes";
 }
 
+function isEnvFlagEnabled(name: string): boolean {
+  const raw = process.env[name]?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
 interface UserRow {
   id: string;
   email: string;
@@ -178,8 +183,13 @@ function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-function logVerificationUrl(email: string, verificationToken: string): void {
+export function logVerificationUrl(email: string, verificationToken: string): void {
   if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  if (!isEnvFlagEnabled("SPS_LOG_VERIFICATION_URLS")) {
+    console.info(`Email verification issued for ${email}. Set SPS_LOG_VERIFICATION_URLS=1 to print the verification URL in non-production.`);
     return;
   }
 
@@ -989,7 +999,6 @@ export async function getWorkspaceOwnerVerificationState(
 
 export async function ensureWorkspaceOwnerVerified(db: Pool, workspaceId: string): Promise<void> {
   const state = await getWorkspaceOwnerVerificationState(db, workspaceId);
-  console.log(`[DEBUG] ensureWorkspaceOwnerVerified for workspace ${workspaceId}:`, state);
   if (!state) {
     throw new UserServiceError(404, "workspace_not_found", "Workspace not found");
   }
@@ -999,7 +1008,6 @@ export async function ensureWorkspaceOwnerVerified(db: Pool, workspaceId: string
   }
 
   if (!state.ownerEmailVerified) {
-    console.warn(`[DEBUG] Workspace ${workspaceId} owner ${state.ownerUserId} email NOT verified.`);
     throw new UserServiceError(
       403,
       "workspace_owner_unverified",

@@ -29,6 +29,7 @@ import {
 } from "./services/workspace-policy.js";
 import { HttpX402Provider, type X402Provider, x402ConfigFromEnv } from "./services/x402.js";
 import type { RequestStore } from "./types.js";
+import { resolveRequiredSecret } from "./utils/secrets.js";
 export interface BuildAppOptions {
   store?: RequestStore;
   quotaService?: QuotaService;
@@ -80,6 +81,14 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     await runMigrations(options.db);
   }
 
+  if (process.env.NODE_ENV !== "test") {
+    resolveRequiredSecret("SPS_HMAC_SECRET", options.hmacSecret);
+    if (options.db) {
+      resolveRequiredSecret("SPS_USER_JWT_SECRET");
+      resolveRequiredSecret("SPS_AGENT_JWT_SECRET");
+    }
+  }
+
   const app = Fastify({
     logger: process.env.NODE_ENV !== "test",
     bodyLimit: Number(process.env.SPS_BODY_LIMIT ?? 1024 * 1024),
@@ -101,7 +110,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     return payload;
   });
 
-  const hmacSecret = options.hmacSecret ?? process.env.SPS_HMAC_SECRET ?? "local-dev-hmac-secret";
+  const hmacSecret = resolveRequiredSecret("SPS_HMAC_SECRET", options.hmacSecret);
   const shouldUseInMemoryStore = options.useInMemoryStore ?? process.env.SPS_USE_IN_MEMORY === "1";
 
   if (process.env.NODE_ENV === "production" && shouldUseInMemoryStore) {

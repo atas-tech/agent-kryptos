@@ -987,6 +987,10 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
         return notAvailable(reply);
       }
 
+      if ((claims.tokenKind === "guest") !== isGuestBackedExchange(exchange.requesterId)) {
+        return reply.code(409).send({ error: "Exchange token no longer matches request" });
+      }
+
       if (
         exchange.requesterId !== claims.requester_id ||
         exchange.workspaceId !== (claims.workspace_id ?? exchange.workspaceId) ||

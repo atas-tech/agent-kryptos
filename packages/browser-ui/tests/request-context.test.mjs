@@ -9,10 +9,9 @@ import {
 } from "../src/request-context.js";
 
 test("parseContext reads signed request parameters", () => {
-  const ctx = parseContext("?id=req_123&metadata_sig=meta_sig&submit_sig=submit_sig&api_url=http%3A%2F%2Flocalhost%3A3100");
+  const ctx = parseContext("?id=req_123&metadata_sig=meta_sig&submit_sig=submit_sig");
 
   assert.deepEqual(ctx, {
-    apiUrl: "http://localhost:3100",
     metadataSig: "meta_sig",
     preview: false,
     requestId: "req_123",
@@ -37,13 +36,13 @@ test("signed request context wins over preview fallback", () => {
   assert.equal(getBootstrapMode(ctx), "request");
 });
 
-test("buildPreviewHref strips signed session params but preserves other context", () => {
+test("buildPreviewHref strips signed session params and unsafe api overrides", () => {
   const href = buildPreviewHref(
     "?id=req_123&metadata_sig=meta_sig&submit_sig=submit_sig&api_url=http%3A%2F%2Flocalhost%3A3100",
     "/secret"
   );
 
-  assert.equal(href, "/secret?api_url=http%3A%2F%2Flocalhost%3A3100&preview=1");
+  assert.equal(href, "/secret?preview=1");
 });
 
 test("createPreviewMetadata returns a stable local QA payload", () => {

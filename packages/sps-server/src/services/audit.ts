@@ -104,6 +104,11 @@ const DEFAULT_AUDIT_LIMIT = 50;
 const MAX_AUDIT_LIMIT = 200;
 const DEFAULT_RETENTION_DAYS = 30;
 
+function isEnvFlagEnabled(name: string): boolean {
+  const raw = process.env[name]?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
 function sanitizeMetadata(metadata: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
   if (!metadata) {
     return null;
@@ -169,28 +174,48 @@ function resourceIdForEvent(event: AuditEvent): string | null {
   return event.resourceId ?? event.exchangeId ?? event.requestId ?? event.approvalReference ?? null;
 }
 
-export async function logAudit(db: Pool | null | undefined, event: AuditEvent): Promise<void> {
-  const metadata = buildMetadata(event);
-  const record = {
+function resourceKindForEvent(event: AuditEvent): string | null {
+  if (event.resourceId) {
+    return "resource";
+  }
+
+  if (event.exchangeId) {
+    return "exchange";
+  }
+
+  if (event.requestId) {
+    return "request";
+  }
+
+  if (event.approvalReference) {
+    return "approval";
+  }
+
+  return null;
+}
+
+function logAuditSummary(event: AuditEvent, metadata: Record<string, unknown> | null): void {
+  if (!isEnvFlagEnabled("SPS_LOG_AUDIT_EVENTS")) {
+    return;
+  }
+
+  const summary = sanitizeMetadata({
     timestamp: new Date().toISOString(),
     event: event.event,
-    request_id: event.requestId ?? null,
-    exchange_id: event.exchangeId ?? null,
-    actor_id: actorIdForEvent(event),
     actor_type: actorTypeForEvent(event),
-    requester_id: event.requesterId ?? null,
-    fulfilled_by: event.fulfilledBy ?? null,
-    workspace_id: event.workspaceId ?? null,
-    resource_id: resourceIdForEvent(event),
-    secret_name: event.secretName ?? null,
-    policy_rule_id: event.policyRuleId ?? null,
-    approval_reference: event.approvalReference ?? null,
     action: event.action,
-    metadata,
-    ip: event.ip ?? null
-  };
+    resource_kind: resourceKindForEvent(event),
+    has_metadata: metadata ? true : undefined
+  });
 
-  console.info(JSON.stringify(record));
+  if (summary) {
+    console.info(JSON.stringify(summary));
+  }
+}
+
+export async function logAudit(db: Pool | null | undefined, event: AuditEvent): Promise<void> {
+  const metadata = buildMetadata(event);
+  logAuditSummary(event, metadata);
 
   if (!db) {
     return;

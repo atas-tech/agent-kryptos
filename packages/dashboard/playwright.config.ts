@@ -43,9 +43,19 @@ export default defineConfig({
     {
       command: "npm run dev",
       url: "http://localhost:5173",
-      timeout: 120000,
+      timeout: 240000,
       reuseExistingServer: false,
       cwd: "./",
+      env: {
+        VITE_SPS_API_URL: "http://localhost:3100"
+      }
+    },
+    {
+      command: "npm run dev",
+      url: "http://localhost:5175",
+      timeout: 240000,
+      reuseExistingServer: false,
+      cwd: "../browser-ui",
       env: {
         VITE_SPS_API_URL: "http://localhost:3100"
       }
@@ -55,7 +65,7 @@ export default defineConfig({
       url: "http://localhost:3100/healthz",
       reuseExistingServer: false,
       cwd: "../sps-server",
-      timeout: 120000,
+      timeout: 240000,
       env: {
         DATABASE_URL: process.env.DATABASE_URL || "postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass",
         REDIS_URL: "redis://127.0.0.1:6380",
@@ -80,6 +90,7 @@ export default defineConfig({
         SPS_X402_PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000001",
         SPS_SECRET_REGISTRY_JSON: '[{"secretName": "stripe.api_key.prod", "classification": "finance"}]',
         SPS_EXCHANGE_POLICY_JSON: '[{"ruleId": "allow-test", "secretName": "stripe.api_key.prod", "mode": "allow"}]',
+        SPS_UI_BASE_URL: "http://localhost:5175",
         PORT: "3100"
       }
     }

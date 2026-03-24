@@ -1,5 +1,6 @@
 import { generateConfirmationCode, generateRequestId, generateScopedSigs } from "./crypto.js";
 import type { RequestStore, StoredRequest } from "../types.js";
+import { deriveBrowserSigSecret } from "../utils/signing-secrets.js";
 
 export interface CreateSecretRequestInput {
   publicKey: string;
@@ -51,7 +52,7 @@ export async function createSecretRequest(
 
   await store.setRequest(record, input.requestTtlSeconds);
 
-  const sigs = generateScopedSigs(requestId, expiresAt, input.hmacSecret);
+  const sigs = generateScopedSigs(requestId, expiresAt, deriveBrowserSigSecret(input.hmacSecret));
   const secretUrl = `${input.uiBaseUrl}/?id=${requestId}&metadata_sig=${encodeURIComponent(sigs.metadataSig)}&submit_sig=${encodeURIComponent(sigs.submitSig)}`;
 
   return {

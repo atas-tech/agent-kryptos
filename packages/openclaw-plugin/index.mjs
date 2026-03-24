@@ -601,7 +601,7 @@ export default function register(api, runtime = {}) {
                     spsBaseUrl,
                     agentId: resolveConfiguredAgentId(),
                     onSecretLink: async (secretUrl, confirmationCode) => {
-                        console.log(`[blindpass] Delivering secret link: ${secretUrl}`);
+                        console.log("[blindpass] Delivering secure link to configured channel.");
 
                         const useRawLink = params.raw_link === true || process.env.OPENCLAW_SECRETS_RAW_LINK === "true" || process.env.OPENCLAW_SECRETS_RAW_LINK === "1";
                         const isReRequest = params.re_request === true;

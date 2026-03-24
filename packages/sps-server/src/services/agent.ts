@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { SignJWT } from "jose";
 import type { Pool } from "pg";
 import { decodePageCursor, encodePageCursor } from "./pagination.js";
+import { resolveRequiredSecret } from "../utils/secrets.js";
 import type { WorkspaceStatus } from "./workspace.js";
 
 const API_KEY_HASH_ROUNDS = 12;
@@ -62,7 +63,7 @@ export class AgentServiceError extends Error {
 }
 
 function agentJwtSecret(): Uint8Array {
-  const secret = process.env.SPS_AGENT_JWT_SECRET?.trim() || "local-dev-agent-jwt-secret";
+  const secret = resolveRequiredSecret("SPS_AGENT_JWT_SECRET");
   return new TextEncoder().encode(secret);
 }
 

@@ -196,6 +196,45 @@ async function testUsesRuntimeChannelWhenOtherTransportsMissing() {
     disposeStoredSecret("default");
 }
 
+async function testDoesNotLogSecretUrls() {
+    const api = createMockApi();
+    const outbound = [];
+    const captured = [];
+    const originalLog = console.log;
+
+    try {
+        console.log = (...args) => {
+            captured.push(args.join(" "));
+        };
+
+        register(api, {
+            requestSecretFlowFn: async ({ onSecretLink }) => {
+                await onSecretLink("https://secrets.example/r/abc", "BLUE-FOX-42");
+                return Buffer.from("s-4", "utf8");
+            },
+            cleanupFn: async () => { },
+        });
+
+        await getTool(api, "request_secret").execute(
+            "id-6",
+            {
+                description: "Need token",
+                channel_id: "telegram:123456789",
+                secret_name: "safe_log_check",
+            },
+            { sendText: async (message) => outbound.push(message) },
+        );
+
+        assert.equal(outbound.length, 1, "Should still deliver the secret link to the user");
+        assert.ok(captured.some((line) => line.includes("Delivering secure link to configured channel.")));
+        assert.ok(captured.every((line) => !line.includes("https://secrets.example/r/abc")), "Logs must not contain secret URLs");
+    } finally {
+        console.log = originalLog;
+    }
+
+    disposeStoredSecret("safe_log_check");
+}
+
 async function testShutdownDisposesSecrets() {
     const api = createMockApi();
 
@@ -631,6 +670,10 @@ const tests = [
     {
         name: "request_secret uses api.runtime.channel when other transports are unavailable",
         run: testUsesRuntimeChannelWhenOtherTransportsMissing,
+    },
+    {
+        name: "request_secret does not log live secret URLs",
+        run: testDoesNotLogSecretUrls,
     },
     {
         name: "shutdown hook disposes in-memory secrets",

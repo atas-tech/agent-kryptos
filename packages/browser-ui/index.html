@@ -5,6 +5,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="referrer" content="no-referrer" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' http://127.0.0.1:3100 http://localhost:3100 https: ws: wss:; form-action 'self'; frame-src 'none'"
+  />
   <title>Secure Secret Input | agent-BlindPass</title>
 </head>
 
@@ -166,7 +170,7 @@
           <span class="assurance-pill">Ephemeral delivery</span>
         </div>
 
-        <button type="button" onclick="window.close()" class="primary-close">Dismiss and Close Window</button>
+        <button id="dismiss-window" type="button" class="primary-close">Dismiss and Close Window</button>
       </section>
     </main>
   </div>

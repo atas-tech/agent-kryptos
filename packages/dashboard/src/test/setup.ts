@@ -1,9 +1,9 @@
 import "@testing-library/jest-dom/vitest";
 
-const storage = new Map<string, string>();
+function createStorage() {
+  const storage = new Map<string, string>();
 
-Object.defineProperty(window, "localStorage", {
-  value: {
+  return {
     getItem(key: string) {
       return storage.has(key) ? storage.get(key)! : null;
     },
@@ -16,6 +16,15 @@ Object.defineProperty(window, "localStorage", {
     clear() {
       storage.clear();
     }
-  },
+  };
+}
+
+Object.defineProperty(window, "localStorage", {
+  value: createStorage(),
+  configurable: true
+});
+
+Object.defineProperty(window, "sessionStorage", {
+  value: createStorage(),
   configurable: true
 });

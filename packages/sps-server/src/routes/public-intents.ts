@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyPluginOptions, FastifyReply, FastifyReques
 import type { Pool } from "pg";
 import { rateLimitKeyByIp, sendRateLimited, type RateLimitService } from "../middleware/rate-limit.js";
 import { requireUserRole } from "../middleware/auth.js";
-import { generateRequestId, signFulfillmentToken } from "../services/crypto.js";
+import { generateRequestId, signGuestFulfillmentToken } from "../services/crypto.js";
 import { logAudit } from "../services/audit.js";
 import { getPublicOfferByToken } from "../services/guest-offer.js";
 import {
@@ -194,7 +194,7 @@ function buildHumanRequestDescription(intent: GuestIntentRecord): string {
 }
 
 async function signGuestExchangeFulfillmentToken(exchange: StoredExchange, hmacSecret: string): Promise<string> {
-  return signFulfillmentToken({
+  return signGuestFulfillmentToken({
     exchange_id: exchange.exchangeId,
     requester_id: exchange.requesterId,
     workspace_id: exchange.workspaceId,
@@ -321,7 +321,7 @@ async function issueGuestActivationArtifacts(
       requestTtlSeconds: Math.max(1, existingRequest.expiresAt - Math.floor(Date.now() / 1000)),
       hmacSecret: opts.hmacSecret,
       uiBaseUrl: opts.uiBaseUrl,
-      requireUserAuth: existingRequest.requireUserAuth,
+      requireUserAuth: false,
       requiredUserWorkspaceId: existingRequest.requiredUserWorkspaceId,
       requestedByActorType: existingRequest.requestedByActorType,
       guestIntentId: existingRequest.guestIntentId
@@ -343,7 +343,7 @@ async function issueGuestActivationArtifacts(
       requestTtlSeconds: opts.requestTtlSeconds ?? 180,
       hmacSecret: opts.hmacSecret,
       uiBaseUrl: opts.uiBaseUrl,
-      requireUserAuth: true,
+      requireUserAuth: false,
       requiredUserWorkspaceId: intent.workspaceId,
       requestedByActorType: intent.actorType,
       guestIntentId: intent.id

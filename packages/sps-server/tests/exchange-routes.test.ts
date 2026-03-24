@@ -2,6 +2,7 @@ import { SignJWT } from "jose";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/index.js";
 import { __resetJwksCacheForTests } from "../src/middleware/auth.js";
+import { signGuestFulfillmentToken, verifyFulfillmentToken } from "../src/services/crypto.js";
 import { createGatewayAuthFixture, type GatewayAuthFixture } from "./gateway-auth.fixture.js";
 
 describe("exchange routes", () => {
@@ -219,6 +220,76 @@ describe("exchange routes", () => {
     });
 
     expect(fulfillRes.statusCode).toBe(410);
+    await app.close();
+  });
+
+  it("rejects guest-scoped fulfillment tokens for standard agent exchanges", async () => {
+    const app = await buildApp({
+      useInMemoryStore: true,
+      hmacSecret: "test-hmac",
+      secretRegistry: [
+        {
+          secretName: "stripe.api_key.prod",
+          classification: "credential"
+        }
+      ],
+      exchangePolicyRules: [
+        {
+          ruleId: "stripe-prod",
+          secretName: "stripe.api_key.prod",
+          requesterIds: ["agent:crm-bot"],
+          fulfillerIds: ["agent:payment-bot"]
+        }
+      ]
+    });
+
+    const requesterJwt = await authFixture.issueToken({ agentId: "agent:crm-bot" });
+    const fulfillerJwt = await authFixture.issueToken({ agentId: "agent:payment-bot" });
+
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/v2/secret/exchange/request",
+      headers: {
+        authorization: `Bearer ${requesterJwt}`
+      },
+      payload: {
+        public_key: "cHVibGlj",
+        secret_name: "stripe.api_key.prod",
+        purpose: "charge-order",
+        fulfiller_hint: "agent:payment-bot"
+      }
+    });
+
+    expect(createRes.statusCode).toBe(201);
+    const created = createRes.json() as { fulfillment_token: string; expires_at: number };
+    const claims = await verifyFulfillmentToken(created.fulfillment_token, "test-hmac");
+    const guestToken = await signGuestFulfillmentToken(
+      {
+        exchange_id: claims.exchange_id,
+        requester_id: claims.requester_id,
+        workspace_id: claims.workspace_id,
+        secret_name: claims.secret_name,
+        purpose: claims.purpose,
+        policy_hash: claims.policy_hash,
+        approval_reference: claims.approval_reference
+      },
+      "test-hmac",
+      created.expires_at
+    );
+
+    const fulfillRes = await app.inject({
+      method: "POST",
+      url: "/api/v2/secret/exchange/fulfill",
+      headers: {
+        authorization: `Bearer ${fulfillerJwt}`
+      },
+      payload: {
+        fulfillment_token: guestToken
+      }
+    });
+
+    expect(fulfillRes.statusCode).toBe(409);
+    expect(fulfillRes.json()).toEqual({ error: "Exchange token no longer matches request" });
     await app.close();
   });
 

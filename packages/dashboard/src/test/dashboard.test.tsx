@@ -19,6 +19,7 @@ function renderApp(initialEntries = ["/"]) {
 describe("dashboard milestone 2", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.restoreAllMocks();
   });
 
@@ -29,7 +30,7 @@ describe("dashboard milestone 2", () => {
     expect(await screen.findByText("Welcome back")).toBeInTheDocument();
   });
 
-  it("stores refresh token on login and clears it on logout", async () => {
+  it("stores refresh token in sessionStorage and clears it on logout", async () => {
     const fetchMock = vi.fn<
       (input: string | URL | Request, init?: RequestInit) => Promise<Response>
     >().mockImplementation(async (input) => {
@@ -81,15 +82,16 @@ describe("dashboard milestone 2", () => {
     await userEvent.click(screen.getByRole("button", { name: /login to portal/i }));
 
     await screen.findByText("Workspace command overview");
-    expect(window.localStorage.getItem("sps_refresh_token")).toBe("refresh-1");
+    expect(window.sessionStorage.getItem("sps_refresh_token")).toBe("refresh-1");
+    expect(window.localStorage.getItem("sps_refresh_token")).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: /log out/i }));
     await screen.findByText("Welcome back");
-    expect(window.localStorage.getItem("sps_refresh_token")).toBeNull();
+    expect(window.sessionStorage.getItem("sps_refresh_token")).toBeNull();
   });
 
   it("redirects force-password-change users to change-password", async () => {
-    window.localStorage.setItem("sps_refresh_token", "refresh-1");
+    window.sessionStorage.setItem("sps_refresh_token", "refresh-1");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -129,7 +131,7 @@ describe("dashboard milestone 2", () => {
   });
 
   it("redirects non-admins away from the home route", async () => {
-    window.localStorage.setItem("sps_refresh_token", "refresh-1");
+    window.sessionStorage.setItem("sps_refresh_token", "refresh-1");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(

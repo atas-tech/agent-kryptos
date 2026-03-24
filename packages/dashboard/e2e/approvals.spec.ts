@@ -103,7 +103,10 @@ test.describe("Approvals Inbox", () => {
     }
 
     // Logout and login as viewer
-    await page.evaluate(() => localStorage.clear());
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
     await page.context().clearCookies();
     await page.goto("/login");
 

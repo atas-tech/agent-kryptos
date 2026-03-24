@@ -11,7 +11,6 @@ export function parseContext(search = "") {
   const params = new URLSearchParams(normalizedSearch);
 
   return {
-    apiUrl: params.get("api_url"),
     metadataSig: params.get("metadata_sig"),
     preview: isPreviewFlag(params.get("preview")) || isPreviewFlag(params.get("test")),
     requestId: params.get("id"),
@@ -43,6 +42,7 @@ export function buildPreviewHref(search = "", pathname = "/") {
   const normalizedSearch = search.startsWith("?") ? search.slice(1) : search;
   const params = new URLSearchParams(normalizedSearch);
 
+  params.delete("api_url");
   params.delete("id");
   params.delete("metadata_sig");
   params.delete("submit_sig");

@@ -1,5 +1,7 @@
+import { getStoredRefreshToken, setStoredRefreshToken } from "./auth-storage.js";
 import { sealBase64 } from "./crypto.js";
-import { buildPreviewHref, createPreviewMetadata, getBootstrapMode, parseContext } from "./request-context.js";
+import { enforceTopLevelWindow } from "./frame-guard.js";
+import { createPreviewMetadata, getBootstrapMode, parseContext } from "./request-context.js";
 import "./style.css";
 
 const AUTO_HIDE_MS = 20000;
@@ -10,26 +12,6 @@ const STATUS_COLORS = {
   success: "var(--success)",
   warning: "var(--warning)"
 };
-const REFRESH_TOKEN_KEY = "sps_refresh_token";
-
-function getStoredRefreshToken() {
-  try {
-    return window.localStorage.getItem(REFRESH_TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function setStoredRefreshToken(refreshToken) {
-  try {
-    if (typeof refreshToken === "string" && refreshToken) {
-      window.localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
-    }
-  } catch {
-    // Ignore storage failures and continue with the in-memory access token.
-  }
-}
-
 async function refreshHostedSession(apiUrl) {
   const refreshToken = getStoredRefreshToken();
   if (!refreshToken) {
@@ -47,6 +29,7 @@ async function refreshHostedSession(apiUrl) {
   });
 
   if (!response.ok) {
+    setStoredRefreshToken(null);
     return null;
   }
 
@@ -111,6 +94,10 @@ function setModeLabels(labels, text, mode) {
 }
 
 async function init() {
+  if (enforceTopLevelWindow()) {
+    return;
+  }
+
   const status = document.getElementById("status");
   const code = document.getElementById("code");
   const codeBox = document.getElementById("code-box");
@@ -131,6 +118,7 @@ async function init() {
   const successContainer = document.getElementById("success-container");
   const successStatus = document.getElementById("success-status");
   const successDetail = document.getElementById("success-detail");
+  const dismissWindow = document.getElementById("dismiss-window");
 
   const ui = {
     clearSecret,
@@ -263,6 +251,10 @@ async function init() {
     clearSecretInputs();
   });
 
+  dismissWindow?.addEventListener("click", () => {
+    window.close();
+  });
+
   submitButton.addEventListener("click", async () => {
     const secretValue = currentSecretValue();
     if (!secretValue) {
@@ -326,7 +318,8 @@ async function init() {
       } else {
         setStatus(status, "Submission failed.", "danger");
       }
-    } catch {
+    } catch (error) {
+      console.error("Submission failed:", error);
       setStatus(status, "Encryption or network failed.", "danger");
     } finally {
       if (!isSuccess) {
@@ -344,7 +337,7 @@ async function init() {
     return;
   }
 
-  const resolvedApiUrl = ctx.apiUrl || import.meta.env.VITE_SPS_API_URL || "http://localhost:3100";
+  const resolvedApiUrl = import.meta.env.VITE_SPS_API_URL || "http://127.0.0.1:3100";
 
   if (bootstrapMode === "preview") {
     applySessionView(createPreviewMetadata(), "preview");

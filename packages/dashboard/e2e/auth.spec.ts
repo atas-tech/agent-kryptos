@@ -31,9 +31,10 @@ test.describe("Authentication", () => {
     await expect(page.getByText("Workspace command overview")).toBeVisible();
     await expect(page.locator('.workspace-heading').first()).toHaveText("E2E Workspace");
     
-    // Verify localStorage does NOT contain access tokens (security requirement)
+    // Verify localStorage does not retain session tokens.
     const localStorage = await page.evaluate(() => JSON.stringify(window.localStorage));
     expect(localStorage).not.toContain("access_token");
+    expect(localStorage).not.toContain("sps_refresh_token");
   });
 
   test("Scenario 002: Login & Session Persistence", async ({ page }) => {

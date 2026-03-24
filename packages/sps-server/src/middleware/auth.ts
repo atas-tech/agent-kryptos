@@ -4,6 +4,7 @@ import { createLocalJWKSet, jwtVerify, type JSONWebKeySet, type JWTPayload } fro
 import { verifyPayload } from "../services/crypto.js";
 import { checkPermission, isUserRole, type UserRole } from "../services/rbac.js";
 import { userJwtSecret } from "../utils/crypto.js";
+import { deriveBrowserSigSecret } from "../utils/signing-secrets.js";
 import type { RequestScope } from "../types.js";
 
 interface JwksCacheEntry {
@@ -257,10 +258,6 @@ function agentJwtSecret(): Uint8Array | null {
     return new TextEncoder().encode(configured);
   }
 
-  if (isHostedModeEnabled()) {
-    return new TextEncoder().encode("local-dev-agent-jwt-secret");
-  }
-
   return null;
 }
 
@@ -495,7 +492,7 @@ export function requireBrowserSig(
     return null;
   }
 
-  const result = verifyPayload(req.params.id, scope, sig, hmacSecret);
+  const result = verifyPayload(req.params.id, scope, sig, deriveBrowserSigSecret(hmacSecret));
   if (!result.ok) {
     if (result.reason === "expired") {
       reply.code(410).send({ error: "Request expired" });

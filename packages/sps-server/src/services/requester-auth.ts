@@ -1,5 +1,6 @@
 import { jwtVerify, SignJWT } from "jose";
 import type { GuestActorType } from "./guest-intent.js";
+import { deriveGuestAccessTokenSecret } from "../utils/signing-secrets.js";
 
 export interface GuestAccessTokenClaims {
   intent_id: string;
@@ -9,8 +10,8 @@ export interface GuestAccessTokenClaims {
   actor_type: GuestActorType;
 }
 
-function guestAccessSecret(secret: string): Uint8Array {
-  return new TextEncoder().encode(secret);
+function guestAccessSecret(rootSecret: string): Uint8Array {
+  return new TextEncoder().encode(deriveGuestAccessTokenSecret(rootSecret));
 }
 
 export async function signGuestAccessToken(
