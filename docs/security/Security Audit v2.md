@@ -58,7 +58,7 @@ Since the March 4 audit (v1), the BlindPass codebase has grown approximately 4×
 | C-4: Remove `api_url` from browser-ui query parsing | ✅ Done | Query-controlled API origin removed; browser-ui now pins to configured origin |
 | H-1: Restrict CORS origins | ✅ Done | SPS now allows only configured first-party origins, with loopback-only dev fallback |
 | H-2: Move refresh token to httpOnly cookie | ⚠️ Partial | Moved from `localStorage` to `sessionStorage`; still JS-readable |
-| H-3: Session count limit + invalidate on password change | ❌ Open | No global session cap or password-change-wide revocation |
+| H-3: Session count limit + invalidate on password change | ✅ Done | New sessions enforce a cap and password changes revoke other refresh sessions |
 | H-4: Atomic Redis `updateRequest` + `updateApproval` | ❌ Open | Non-atomic read/modify/write remains |
 | H-5: Rate limit agent API key auth | ✅ Done | Agent token minting is IP-rate-limited and covered by existing regression tests |
 | H-6: Guest payment TOCTOU | ✅ Done | Guest payment settlement now gates provider calls on atomic insert ownership |
@@ -239,16 +239,19 @@ However, the token remains JavaScript-readable on the first-party origin. Combin
 
 ### H-3: No Session Count Limit Per User (NEW)
 
-**File**: [user.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/user.ts#L392-L435)
+**Status (2026-03-24)**: ✅ Resolved.
 
-The `createSessionAndTokens` function creates unlimited sessions per user. An attacker who obtains credentials can create an unbounded number of sessions, filling the `user_sessions` table and consuming DB resources.
+**Files**:
+- [user.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/user.ts)
+- [auth-routes.test.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/tests/auth-routes.test.ts)
+- [.env.test.example](file:///home/hvo/Projects/blindpass/packages/sps-server/.env.test.example)
+- [Unraid.md](file:///home/hvo/Projects/blindpass/docs/deployment/Unraid.md)
 
-More importantly: password change does **not** invalidate existing sessions. Only `forcePasswordChange` blocks the access token, but existing refresh tokens remain valid until they expire (7 days).
+The session issuer now revokes overflow refresh sessions before inserting a new one, using `SPS_AUTH_MAX_ACTIVE_SESSIONS` with a default cap of `10`. Password change now revokes every other refresh session for that user inside the same transaction.
 
-**Recommendation**:
-1. Cap sessions per user (e.g., 10 concurrent)
-2. On password change, revoke **all** other sessions
-3. Add a "revoke all sessions" admin endpoint
+**Residual note**:
+1. Already-issued access tokens from revoked sessions remain valid until their normal short TTL expires because access tokens are still stateless
+2. There is still no dedicated user-facing "revoke all sessions" control
 
 ---
 
@@ -552,7 +555,7 @@ quadrantChart
 | **P1** | M-1: Add CSP headers to both UIs | Low | XSS mitigation | ⚠️ Partial |
 | **P1** | H-5: Rate limit agent API key auth | Low | Prevents key brute-force | ✅ Done |
 | **P1** | H-6: Guest payment TOCTOU | Medium | Prevents duplicate settlements | ✅ Done |
-| **P2** | H-3: Session count limit + invalidate on password change | Medium | Account takeover mitigation | ❌ Open |
+| **P2** | H-3: Session count limit + invalidate on password change | Medium | Account takeover mitigation | ✅ Done |
 | **P2** | H-4: Atomic Redis `updateRequest` + `updateApproval` | Medium | Race condition fix | ❌ Open |
 | **P2** | M-2: Hash verification tokens in DB | Low | Defense-in-depth | ❌ Open |
 | **P2** | M-3: Add verification token expiry | Low | Limits token lifetime | ❌ Open |

@@ -16,6 +16,7 @@ const PASSWORD_HASH_ROUNDS = 12;
 const PASSWORD_MIN_LENGTH = 8;
 const TEMPORARY_PASSWORD_MIN_LENGTH = 12;
 const WEAK_TEMPORARY_PASSWORDS = new Set(["password123", "password123!", "changeme123", "temporary123"]);
+const DEFAULT_MAX_ACTIVE_SESSIONS = 10;
 
 export type UserStatus = "active" | "suspended" | "deleted";
 
@@ -147,6 +148,15 @@ function normalizePassword(password: string): string {
   }
 
   return password;
+}
+
+function maxActiveSessionsPerUser(): number {
+  const raw = Number.parseInt(process.env.SPS_AUTH_MAX_ACTIVE_SESSIONS ?? "", 10);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return DEFAULT_MAX_ACTIVE_SESSIONS;
+  }
+
+  return raw;
 }
 
 function normalizeTemporaryPassword(password: string): string {
@@ -404,6 +414,25 @@ async function createSessionAndTokens(
   user: UserRecord,
   session: SessionContext
 ): Promise<AuthTokens> {
+  await client.query(
+    `
+      WITH overflow AS (
+        SELECT id
+        FROM user_sessions
+        WHERE user_id = $1
+          AND workspace_id = $2
+          AND revoked_at IS NULL
+          AND expires_at > now()
+        ORDER BY last_used_at DESC, created_at DESC
+        OFFSET $3
+      )
+      UPDATE user_sessions
+      SET revoked_at = now()
+      WHERE id IN (SELECT id FROM overflow)
+    `,
+    [user.id, user.workspaceId, Math.max(0, maxActiveSessionsPerUser() - 1)]
+  );
+
   const pendingTokenHash = `pending_${randomBytes(16).toString("hex")}`;
   const created = await client.query<{ id: string }>(
     `
@@ -748,6 +777,17 @@ export async function changePassword(
     );
 
     const updatedUser = toUserRecord(updated.rows[0]);
+    await client.query(
+      `
+        UPDATE user_sessions
+        SET revoked_at = now()
+        WHERE user_id = $1
+          AND workspace_id = $2
+          AND id <> $3
+          AND revoked_at IS NULL
+      `,
+      [userId, workspaceId, sessionId]
+    );
     const token = await mintAccessToken(updatedUser, sessionId);
     await client.query("COMMIT");
 

@@ -70,6 +70,7 @@ Recommended values:
    - `SPS_HMAC_SECRET`: required, strong random value
    - `SPS_UI_BASE_URL`: your public browser UI URL
    - `SPS_CORS_ALLOWED_ORIGINS`: comma-separated browser origins allowed to call the SPS API. Include every deployed first-party frontend origin, for example `https://app.example.com,https://secrets.example.com`
+   - `SPS_AUTH_MAX_ACTIVE_SESSIONS`: optional cap on concurrent active refresh sessions per user. Defaults to `10`
    - `SPS_AGENT_AUTH_PROVIDERS_JSON`: Optional for hosted/API-key-only deployments. Use this only when SPS must trust self-hosted or external workload JWT issuers via `{name, issuer, audience, jwks_url/jwks_file, require_spiffe}`. This replaces the legacy `SPS_GATEWAY_JWKS_URL` and `SPS_GATEWAY_JWKS_FILE` variables.
    - `SPS_EXCHANGE_POLICY_JSON`: optional JSON array defining Agent-to-Agent exchange policies for self-hosted bootstrap/default configuration.
    - `SPS_SECRET_REGISTRY_JSON`: optional JSON array defining known secrets and their classifications for self-hosted bootstrap/default configuration.

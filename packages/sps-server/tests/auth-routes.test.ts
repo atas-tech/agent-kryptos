@@ -9,6 +9,16 @@ const describePg = runPgIntegration ? describe : describe.skip;
 const migrationsDir = new URL("../src/db/migrations/", import.meta.url);
 
 let adminPool: Pool | null = null;
+const originalMaxActiveSessions = process.env.SPS_AUTH_MAX_ACTIVE_SESSIONS;
+
+function restoreMaxActiveSessionsEnv(): void {
+  if (originalMaxActiveSessions === undefined) {
+    delete process.env.SPS_AUTH_MAX_ACTIVE_SESSIONS;
+    return;
+  }
+
+  process.env.SPS_AUTH_MAX_ACTIVE_SESSIONS = originalMaxActiveSessions;
+}
 
 function randomSchema(prefix: string): string {
   return `${prefix}_${Math.random().toString(16).slice(2, 10)}`;
@@ -56,6 +66,7 @@ describePg("auth routes", () => {
   });
 
   afterAll(async () => {
+    restoreMaxActiveSessionsEnv();
     await adminPool?.end();
     adminPool = null;
   });
@@ -268,6 +279,93 @@ describePg("auth routes", () => {
     }
   });
 
+  it("caps active sessions per user and revokes the oldest refresh session", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      process.env.SPS_AUTH_MAX_ACTIVE_SESSIONS = "2";
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const app = await buildApp({ db: pool, useInMemoryStore: true });
+
+      const registerResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/register",
+        headers: {
+          "user-agent": "session-cap-register"
+        },
+        payload: {
+          email: "session-cap@example.com",
+          password: "Password123!",
+          workspace_slug: "session-cap-space",
+          display_name: "Session Cap Space"
+        }
+      });
+      expect(registerResponse.statusCode).toBe(201);
+      const registered = registerResponse.json() as { refresh_token: string };
+
+      const loginOne = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/login",
+        headers: {
+          "user-agent": "session-cap-login-1"
+        },
+        payload: {
+          email: "session-cap@example.com",
+          password: "Password123!"
+        }
+      });
+      expect(loginOne.statusCode).toBe(200);
+      const sessionTwo = loginOne.json() as { refresh_token: string };
+
+      const loginTwo = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/login",
+        headers: {
+          "user-agent": "session-cap-login-2"
+        },
+        payload: {
+          email: "session-cap@example.com",
+          password: "Password123!"
+        }
+      });
+      expect(loginTwo.statusCode).toBe(200);
+      const sessionThree = loginTwo.json() as { refresh_token: string };
+
+      const oldestRefresh = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/refresh",
+        payload: {
+          refresh_token: registered.refresh_token
+        }
+      });
+      expect(oldestRefresh.statusCode).toBe(401);
+
+      const currentRefresh = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/refresh",
+        payload: {
+          refresh_token: sessionThree.refresh_token
+        }
+      });
+      expect(currentRefresh.statusCode).toBe(200);
+
+      const sessionRows = await pool.query<{ revoked_at: Date | null }>(
+        `
+          SELECT revoked_at
+          FROM user_sessions
+          ORDER BY created_at ASC
+        `
+      );
+      expect(sessionRows.rows).toHaveLength(3);
+      expect(sessionRows.rows.filter((row) => row.revoked_at !== null)).toHaveLength(1);
+
+      await app.close();
+    } finally {
+      restoreMaxActiveSessionsEnv();
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
   it("requires password change when the force-password-change claim is set", async () => {
     const { pool, schema } = await createIsolatedPool();
 
@@ -349,6 +447,103 @@ describePg("auth routes", () => {
       });
 
       expect(workspaceResponse.statusCode).toBe(200);
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("revokes other refresh sessions when a user changes their password", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const app = await buildApp({ db: pool, useInMemoryStore: true });
+
+      const registerResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/register",
+        payload: {
+          email: "password-rotate@example.com",
+          password: "Password123!",
+          workspace_slug: "password-rotate-space",
+          display_name: "Password Rotate Space"
+        }
+      });
+      expect(registerResponse.statusCode).toBe(201);
+      const registered = registerResponse.json() as { refresh_token: string };
+
+      const secondLogin = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/login",
+        payload: {
+          email: "password-rotate@example.com",
+          password: "Password123!"
+        }
+      });
+      expect(secondLogin.statusCode).toBe(200);
+      const secondSession = secondLogin.json() as { access_token: string; refresh_token: string };
+
+      const changePasswordResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/change-password",
+        headers: {
+          authorization: `Bearer ${secondSession.access_token}`
+        },
+        payload: {
+          current_password: "Password123!",
+          next_password: "NewPassword123!"
+        }
+      });
+      expect(changePasswordResponse.statusCode).toBe(200);
+
+      const oldSessionRefresh = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/refresh",
+        payload: {
+          refresh_token: registered.refresh_token
+        }
+      });
+      expect(oldSessionRefresh.statusCode).toBe(401);
+
+      const currentSessionRefresh = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/refresh",
+        payload: {
+          refresh_token: secondSession.refresh_token
+        }
+      });
+      expect(currentSessionRefresh.statusCode).toBe(200);
+
+      const oldPasswordLogin = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/login",
+        payload: {
+          email: "password-rotate@example.com",
+          password: "Password123!"
+        }
+      });
+      expect(oldPasswordLogin.statusCode).toBe(401);
+
+      const newPasswordLogin = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/login",
+        payload: {
+          email: "password-rotate@example.com",
+          password: "NewPassword123!"
+        }
+      });
+      expect(newPasswordLogin.statusCode).toBe(200);
+
+      const sessionRows = await pool.query<{ revoked_at: Date | null }>(
+        `
+          SELECT revoked_at
+          FROM user_sessions
+          ORDER BY created_at ASC
+        `
+      );
+      expect(sessionRows.rows.filter((row) => row.revoked_at !== null)).toHaveLength(1);
 
       await app.close();
     } finally {
