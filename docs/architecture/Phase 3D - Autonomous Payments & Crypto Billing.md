@@ -274,9 +274,13 @@ This keeps payment authorization as a narrow capability boundary instead of anot
 
 ## Milestone 3: Hosted Crypto Billing Checkout
 
+> [!IMPORTANT]
+> **Implementation Status**: This milestone is currently **deferred/missing** in the codebase (not present in `packages/sps-server/src/services/billing.ts`). Development is currently focused on E2E verification for Phase 3C and the existing x402 features in Phase 3D.
+
 Add a separate human-admin crypto purchase lane for workspace plan upgrades and renewals.
 
 ### Product Rules
+
 
 - Use **Coinbase Payment Links** as the **first shipped hosted crypto checkout provider**, not the recurring Stripe subscription abstraction
 - Treat the first crypto SKU as a **fixed-term Standard plan purchase**
