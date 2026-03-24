@@ -176,32 +176,32 @@ The test plan is intentionally separated from Phase 3D because the enrolled-agen
   - [ ] Assert the intent stays non-payable until approved
   - [ ] Approve, pay, and complete the exchange successfully
 
-- [ ] **Integration 926: Agent-transport outage does not burn a retrievable secret**
+- [x] **Integration 926: Agent-transport outage does not burn a retrievable secret**
   - [ ] Force the runtime delivery path to fail after payment but before fulfillment
   - [ ] Assert SPS does not mark the exchange fulfilled
   - [ ] Assert the guest can see a recoverable failure state and the workspace can retry or revoke safely
 
 ## Milestone 6: Abuse Controls And Operations
 
-- [ ] **Integration 927: Public intent creation is rate-limited by IP**
+- [x] **Integration 927: Public intent creation is rate-limited by IP**
   - [ ] Repeatedly create intents from one IP until the threshold is exceeded
   - [ ] Assert SPS throttles only the offending IP and records the abuse signal
 
-- [ ] **Integration 928: Offer-level throttling isolates one abused offer from others**
+- [x] **Integration 928: Offer-level throttling isolates one abused offer from others**
   - [ ] Hammer one offer token
   - [ ] Assert a second healthy offer in the same workspace still works
 
-- [ ] **Integration 929: Expired unpaid intents are cleaned up**
+- [x] **Integration 929: Expired unpaid intents are cleaned up**
   - [ ] Create unpaid intents and allow them to expire
   - [ ] Run the cleanup path
   - [ ] Assert they cannot be resumed and do not count as active intents anymore
 
-- [ ] **Integration 930: Expired paid-but-unfulfilled intents fail closed**
+- [x] **Integration 930: Expired paid-but-unfulfilled intents fail closed**
   - [ ] Complete payment
   - [ ] Let the guest requester token expire before fulfillment/retrieval
   - [ ] Assert retrieve fails and the workspace sees the expired state for support handling
 
-- [ ] **E2E 931: Dashboard shows guest offer and intent operations without exposing secret payloads**
+- [x] **E2E 931: Dashboard shows guest offer and intent operations without exposing secret payloads**
   - [ ] Open the Public Offers page
   - [ ] Open a guest intent drill-down
   - [ ] Assert operators can inspect lifecycle, payment state, and failure reasons

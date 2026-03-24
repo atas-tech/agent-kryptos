@@ -6,6 +6,7 @@ import { generateOpaqueToken, type PublicOfferRecord } from "./guest-offer.js";
 export type GuestActorType = "guest_agent" | "guest_human";
 export type GuestIntentStatus = "pending_approval" | "payment_required" | "activated" | "rejected" | "revoked" | "expired";
 export type GuestApprovalStatus = "pending" | "approved" | "rejected";
+export type GuestAgentDeliveryState = "dispatched" | "failed";
 
 interface GuestIntentRow {
   id: string;
@@ -34,6 +35,11 @@ interface GuestIntentRow {
   payment_quote_json: X402Quote | null;
   request_id: string | null;
   exchange_id: string | null;
+  agent_delivery_state: GuestAgentDeliveryState | null;
+  agent_delivery_failure_reason: string | null;
+  agent_delivery_failed_at: Date | null;
+  agent_delivery_last_dispatched_at: Date | null;
+  agent_delivery_attempt_count: number;
   activated_at: Date | null;
   revoked_at: Date | null;
   expires_at: Date;
@@ -68,6 +74,11 @@ export interface GuestIntentRecord {
   paymentQuote: X402Quote | null;
   requestId: string | null;
   exchangeId: string | null;
+  agentDeliveryState: GuestAgentDeliveryState | null;
+  agentDeliveryFailureReason: string | null;
+  agentDeliveryFailedAt: Date | null;
+  agentDeliveryLastDispatchedAt: Date | null;
+  agentDeliveryAttemptCount: number;
   activatedAt: Date | null;
   revokedAt: Date | null;
   expiresAt: Date;
@@ -116,6 +127,11 @@ interface GuestIntentAdminRow {
   latest_payment_tx_hash: string | null;
   latest_payment_settled_at: Date | null;
   latest_payment_created_at: Date | null;
+  agent_delivery_state: GuestAgentDeliveryState | null;
+  agent_delivery_failure_reason: string | null;
+  agent_delivery_failed_at: Date | null;
+  agent_delivery_last_dispatched_at: Date | null;
+  agent_delivery_attempt_count: number;
 }
 
 export interface GuestIntentAdminRecord {
@@ -152,6 +168,11 @@ export interface GuestIntentAdminRecord {
   latestPaymentTxHash: string | null;
   latestPaymentSettledAt: Date | null;
   latestPaymentCreatedAt: Date | null;
+  agentDeliveryState: GuestAgentDeliveryState | null;
+  agentDeliveryFailureReason: string | null;
+  agentDeliveryFailedAt: Date | null;
+  agentDeliveryLastDispatchedAt: Date | null;
+  agentDeliveryAttemptCount: number;
 }
 
 export type CreateGuestIntentResult =
@@ -173,6 +194,18 @@ export class GuestIntentServiceError extends Error {
 
 function toNumber(value: string | number): number {
   return Number(value);
+}
+
+function defaultAgentDeliveryState(row: Pick<GuestIntentRow, "delivery_mode" | "status" | "exchange_id" | "agent_delivery_state">): GuestAgentDeliveryState | null {
+  if (row.agent_delivery_state) {
+    return row.agent_delivery_state;
+  }
+
+  if (row.delivery_mode === "agent" && row.status === "activated" && row.exchange_id) {
+    return "dispatched";
+  }
+
+  return null;
 }
 
 function toGuestIntentRecord(row: GuestIntentRow): GuestIntentRecord {
@@ -203,6 +236,11 @@ function toGuestIntentRecord(row: GuestIntentRow): GuestIntentRecord {
     paymentQuote: row.payment_quote_json,
     requestId: row.request_id,
     exchangeId: row.exchange_id,
+    agentDeliveryState: defaultAgentDeliveryState(row),
+    agentDeliveryFailureReason: row.agent_delivery_failure_reason,
+    agentDeliveryFailedAt: row.agent_delivery_failed_at,
+    agentDeliveryLastDispatchedAt: row.agent_delivery_last_dispatched_at,
+    agentDeliveryAttemptCount: toNumber(row.agent_delivery_attempt_count),
     activatedAt: row.activated_at,
     revokedAt: row.revoked_at,
     expiresAt: row.expires_at,
@@ -257,7 +295,14 @@ function toGuestIntentAdminRecord(row: GuestIntentAdminRow): GuestIntentAdminRec
     latestPaymentStatus: row.latest_payment_status,
     latestPaymentTxHash: row.latest_payment_tx_hash,
     latestPaymentSettledAt: row.latest_payment_settled_at,
-    latestPaymentCreatedAt: row.latest_payment_created_at
+    latestPaymentCreatedAt: row.latest_payment_created_at,
+    agentDeliveryState: row.agent_delivery_state ?? (
+      row.delivery_mode === "agent" && row.status === "activated" && row.exchange_id ? "dispatched" : null
+    ),
+    agentDeliveryFailureReason: row.agent_delivery_failure_reason,
+    agentDeliveryFailedAt: row.agent_delivery_failed_at,
+    agentDeliveryLastDispatchedAt: row.agent_delivery_last_dispatched_at,
+    agentDeliveryAttemptCount: toNumber(row.agent_delivery_attempt_count)
   };
 }
 
@@ -404,6 +449,11 @@ export async function listGuestIntentsForWorkspace(
         gi.allowed_fulfiller_id,
         gi.request_id,
         gi.exchange_id,
+        gi.agent_delivery_state,
+        gi.agent_delivery_failure_reason,
+        gi.agent_delivery_failed_at,
+        gi.agent_delivery_last_dispatched_at,
+        gi.agent_delivery_attempt_count,
         gi.activated_at,
         gi.revoked_at,
         gi.expires_at,
@@ -471,6 +521,11 @@ export async function getGuestIntentAdminById(
         gi.allowed_fulfiller_id,
         gi.request_id,
         gi.exchange_id,
+        gi.agent_delivery_state,
+        gi.agent_delivery_failure_reason,
+        gi.agent_delivery_failed_at,
+        gi.agent_delivery_last_dispatched_at,
+        gi.agent_delivery_attempt_count,
         gi.activated_at,
         gi.revoked_at,
         gi.expires_at,
@@ -878,6 +933,26 @@ export async function activateGuestIntent(
       SET status = 'activated',
           request_id = COALESCE($2, request_id),
           exchange_id = COALESCE($3, exchange_id),
+          agent_delivery_state = CASE
+            WHEN COALESCE($3, exchange_id) IS NOT NULL THEN 'dispatched'
+            ELSE agent_delivery_state
+          END,
+          agent_delivery_failure_reason = CASE
+            WHEN COALESCE($3, exchange_id) IS NOT NULL THEN NULL
+            ELSE agent_delivery_failure_reason
+          END,
+          agent_delivery_failed_at = CASE
+            WHEN COALESCE($3, exchange_id) IS NOT NULL THEN NULL
+            ELSE agent_delivery_failed_at
+          END,
+          agent_delivery_last_dispatched_at = CASE
+            WHEN COALESCE($3, exchange_id) IS NOT NULL THEN now()
+            ELSE agent_delivery_last_dispatched_at
+          END,
+          agent_delivery_attempt_count = CASE
+            WHEN COALESCE($3, exchange_id) IS NOT NULL THEN GREATEST(agent_delivery_attempt_count, 1)
+            ELSE agent_delivery_attempt_count
+          END,
           settled_policy_snapshot_json = $4::jsonb,
           activated_at = now(),
           updated_at = now()
@@ -963,6 +1038,114 @@ export async function revokeGuestIntent(
   }
 
   return toGuestIntentRecord(result.rows[0]);
+}
+
+export async function markGuestAgentDeliveryFailed(
+  db: Pool,
+  workspaceId: string,
+  intentId: string,
+  failureReason: string
+): Promise<GuestIntentRecord> {
+  return withTx(db, async (client) => {
+    const current = await selectIntentById(client, intentId);
+    if (!current || current.workspaceId !== workspaceId) {
+      throw new GuestIntentServiceError(404, "guest_intent_not_found", "Guest intent was not found");
+    }
+    if (current.deliveryMode !== "agent" || !current.exchangeId) {
+      throw new GuestIntentServiceError(409, "guest_intent_not_agent_delivery", "Guest intent is not using agent delivery");
+    }
+    if (current.status !== "activated" || current.revokedAt || current.expiresAt.getTime() <= Date.now()) {
+      throw new GuestIntentServiceError(409, "guest_intent_not_recoverable", "Guest intent is no longer recoverable");
+    }
+
+    const updated = await client.query<GuestIntentRow>(
+      `
+        UPDATE guest_intents
+        SET agent_delivery_state = 'failed',
+            agent_delivery_failure_reason = $3,
+            agent_delivery_failed_at = now(),
+            updated_at = now()
+        WHERE workspace_id = $1
+          AND id = $2
+        RETURNING *
+      `,
+      [workspaceId, intentId, failureReason.trim()]
+    );
+
+    return toGuestIntentRecord(updated.rows[0]);
+  });
+}
+
+export async function retryGuestAgentDelivery(
+  db: Pool,
+  workspaceId: string,
+  intentId: string
+): Promise<GuestIntentRecord> {
+  return withTx(db, async (client) => {
+    const current = await selectIntentById(client, intentId);
+    if (!current || current.workspaceId !== workspaceId) {
+      throw new GuestIntentServiceError(404, "guest_intent_not_found", "Guest intent was not found");
+    }
+    if (current.deliveryMode !== "agent" || !current.exchangeId) {
+      throw new GuestIntentServiceError(409, "guest_intent_not_agent_delivery", "Guest intent is not using agent delivery");
+    }
+    if (current.status !== "activated" || current.revokedAt || current.expiresAt.getTime() <= Date.now()) {
+      throw new GuestIntentServiceError(409, "guest_intent_not_recoverable", "Guest intent is no longer recoverable");
+    }
+    if (current.agentDeliveryState !== "failed") {
+      throw new GuestIntentServiceError(409, "guest_intent_delivery_not_failed", "Guest intent delivery is not awaiting retry");
+    }
+
+    const updated = await client.query<GuestIntentRow>(
+      `
+        UPDATE guest_intents
+        SET agent_delivery_state = 'dispatched',
+            agent_delivery_failure_reason = NULL,
+            agent_delivery_failed_at = NULL,
+            agent_delivery_last_dispatched_at = now(),
+            agent_delivery_attempt_count = agent_delivery_attempt_count + 1,
+            updated_at = now()
+        WHERE workspace_id = $1
+          AND id = $2
+        RETURNING *
+      `,
+      [workspaceId, intentId]
+    );
+
+    return toGuestIntentRecord(updated.rows[0]);
+  });
+}
+
+export async function cleanupExpiredUnpaidGuestIntents(
+  db: Pool,
+  workspaceId?: string
+): Promise<{ expiredIntentCount: number }> {
+  const values: Array<string> = [];
+  const clauses = [
+    "status IN ('pending_approval', 'payment_required')",
+    "expires_at <= now()"
+  ];
+
+  if (workspaceId) {
+    values.push(workspaceId);
+    clauses.push(`workspace_id = $${values.length}`);
+  }
+
+  const result = await db.query<{ id: string }>(
+    `
+      UPDATE guest_intents
+      SET status = 'expired',
+          payment_quote_json = NULL,
+          updated_at = now()
+      WHERE ${clauses.join("\n        AND ")}
+      RETURNING id
+    `,
+    values
+  );
+
+  return {
+    expiredIntentCount: result.rowCount ?? result.rows.length
+  };
 }
 
 export function toGuestIntentPublicStatus(intent: GuestIntentRecord): {

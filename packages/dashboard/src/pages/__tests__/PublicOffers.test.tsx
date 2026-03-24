@@ -62,6 +62,8 @@ function buildIntent(overrides: Partial<Record<string, unknown>> = {}) {
     request_id: null,
     request_state: null,
     exchange_id: null,
+    exchange_state: null,
+    agent_delivery: null,
     activated_at: null,
     revoked_at: null,
     expires_at: new Date(Date.now() + 60_000).toISOString(),
@@ -121,6 +123,76 @@ describe("PublicOffersPage", () => {
     expect((await screen.findAllByText("Charge order 784")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /approve/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /revoke intent/i })).not.toBeInTheDocument();
+  });
+
+  it("shows guest-agent delivery failure detail and lets operators retry safely", async () => {
+    const offer = buildOffer();
+    const failedIntent = buildIntent({
+      delivery_mode: "agent",
+      status: "activated",
+      effective_status: "activated",
+      approval_status: "approved",
+      exchange_id: "ex_1",
+      exchange_state: {
+        status: "pending",
+        fulfilled_by: null,
+        expires_at: new Date(Date.now() + 60_000).toISOString()
+      },
+      agent_delivery: {
+        state: "delivery_failed",
+        recoverable: true,
+        failure_reason: "runtime transport unavailable",
+        failed_at: new Date().toISOString(),
+        last_dispatched_at: new Date().toISOString(),
+        attempt_count: 1
+      }
+    });
+    const retriedIntent = buildIntent({
+      ...failedIntent,
+      agent_delivery: {
+        state: "pending",
+        recoverable: false,
+        failure_reason: null,
+        failed_at: null,
+        last_dispatched_at: new Date().toISOString(),
+        attempt_count: 2
+      }
+    });
+
+    (useAuth as any).mockReturnValue({
+      user: { role: "workspace_operator" }
+    });
+    let currentIntent = failedIntent;
+    (apiRequest as any).mockImplementation((path: string, init?: RequestInit) => {
+      if (path === "/api/v2/public/offers") {
+        return Promise.resolve({ offers: [offer] });
+      }
+      if (path.startsWith("/api/v2/public/intents/admin?")) {
+        return Promise.resolve({ intents: [currentIntent] });
+      }
+      if (path === "/api/v2/public/intents/admin/intent-1") {
+        return Promise.resolve({ intent: currentIntent });
+      }
+      if (path === "/api/v2/public/intents/intent-1/retry-agent-delivery" && init?.method === "POST") {
+        currentIntent = retriedIntent;
+        return Promise.resolve({ intent: currentIntent, exchange_id: "ex_1", fulfillment_token: "redacted" });
+      }
+      return Promise.reject(new Error(`Unexpected path ${path}`));
+    });
+
+    render(<PublicOffersPage />);
+
+    expect(await screen.findByText(/Failure: runtime transport unavailable/i)).toBeInTheDocument();
+    expect(screen.queryByText("redacted")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /retry delivery/i }));
+    await userEvent.click(await screen.findByTestId("confirm-dialog-btn"));
+
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith("/api/v2/public/intents/intent-1/retry-agent-delivery", { method: "POST" });
+    });
+    expect(await screen.findByText(/attempt 2/i)).toBeInTheDocument();
+    expect(await screen.findByText(/No guest-agent delivery failure recorded/i)).toBeInTheDocument();
   });
 
   it("lets operators approve a pending guest intent from the support detail", async () => {

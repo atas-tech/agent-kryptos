@@ -657,23 +657,27 @@ This keeps the wire contract stable while tightening the trust model later.
 - [x] Dashboard policy editor and operator read-only inspection UI are implemented in `packages/dashboard`, and the shared hosted foundation is complete ahead of Phase 3C and later Phase 3E hosted hardening work
 
 ### Phase 3C: Paid Guest Secret Exchange
-- [ ] Workspace-issued public offers/invites for one-time paid guest requests
-- [ ] First-class guest requester identity instead of temporary enrolled-agent records
-- [ ] Guest agent -> human secure delivery as the recommended v1 path, with the guest forwarding only a human-submit `fulfill_url`
-- [ ] Guest -> agent delivery as the follow-on path once production A2A transport is ready
-- [ ] Approval-before-payment ordering for approval-gated guest flows
-- [ ] Offer-level `payment_policy` (`free`, `always_x402`, `quota_then_x402`) so guest intents can continue per-request via x402 after free quota is exhausted
-- [ ] Separate guest payment ledger, rate limits, and abuse controls from enrolled-agent quotas and allowances
+- [x] Workspace-issued public offers/invites for one-time paid guest requests
+- [x] First-class guest requester identity instead of temporary enrolled-agent records
+- [x] Guest agent -> human secure delivery as the recommended v1 path, with the guest forwarding only a human-submit `fulfill_url`
+- [x] Guest -> agent delivery as the follow-on path once production A2A transport is ready, including recoverable outage handling before fulfillment
+- [x] Approval-before-payment ordering for approval-gated guest flows
+- [x] Offer-level `payment_policy` (`free`, `always_x402`, `quota_then_x402`) so guest intents can continue per-request via x402 after free quota is exhausted
+- [x] Separate guest payment ledger, rate limits, and abuse controls from enrolled-agent quotas and allowances
+
+Current implementation snapshot as of `2026-03-24`: Milestones 1-6 are implemented and PostgreSQL-verified in `packages/sps-server`, and the operator support surface is covered in `packages/dashboard`. Phase 3C now includes public offers, guest intents, human and agent delivery, approval-before-payment, guest-specific payment ledgers, recoverable guest-agent dispatch failure, public abuse throttles, expired-intent cleanup, and support views that exclude secret payloads and raw guest capabilities.
 
 ### Phase 3D: Autonomous Payments & Crypto Billing
 - [x] First x402 foundation landed: quote generation and header contracts, facilitator-backed verify/settle abstraction, allowance tracking, transaction ledger, and payment-gated `POST /api/v2/secret/exchange/request`
 - [x] Enrolled-agent overage pricing after free-tier exchange quota exhaustion, with per-agent fiat budgets and settlement-before-release, is implemented for the initial exchange-request route
 - [x] Admin dashboard surface for x402 allowances and transaction ledger is implemented alongside the recurring billing UI
-- [ ] Reuse the same x402 rail for guest-offer `quota_then_x402` activation in Phase 3C while keeping guest ledgers and limits separate from enrolled-agent allowances
-- [ ] Real payer signer boundary so agents can request x402 signing without the main runtime reading raw private keys
-- [ ] Real Node-runtime x402 payer support so agents can pay without a browser wallet
+- [x] Reuse the same x402 rail for guest-offer `quota_then_x402` activation in Phase 3C while keeping guest ledgers and limits separate from enrolled-agent allowances
+- [x] Real payer signer boundary now exists in the runtime shape: `agent-skill` can create x402 signatures from a dedicated payer provider instead of exposing raw key material to the main request path
+- [x] Real Node-runtime x402 payer foundation is in place: SPS now accepts the official x402 v2 buyer/seller contract, and `agent-skill` / OpenClaw can create Base Sepolia exact-payment payloads without any browser wallet flow
 - [ ] Hosted crypto billing checkout for fixed-term workspace plan purchases, separate from recurring Stripe subscription lifecycle
 - [ ] Payment reconciliation, spend ceilings, stuck-payment monitoring, and support-grade ledger/audit visibility
+
+Next phase note: the main remaining 3D work is no longer quote/settle plumbing or runtime signing. It is real-chain smoke validation and support-grade payment operations for agent x402, followed by hosted crypto billing and reconciliation.
 
 ### Phase 3E: Hosted Hardening, Ecosystem & Launch
 - [ ] Hosted analytics surfaces for request volume, exchange outcomes, and active agents

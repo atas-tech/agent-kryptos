@@ -42,6 +42,21 @@ interface IntentRequestState {
   expires_at: string;
 }
 
+interface IntentExchangeState {
+  status: string;
+  fulfilled_by: string | null;
+  expires_at: string | null;
+}
+
+interface IntentAgentDeliveryState {
+  state: string | null;
+  recoverable: boolean;
+  failure_reason: string | null;
+  failed_at: string | null;
+  last_dispatched_at: string | null;
+  attempt_count: number;
+}
+
 interface GuestIntentRecord {
   id: string;
   workspace_id: string;
@@ -52,7 +67,7 @@ interface GuestIntentRecord {
   offer_max_uses: number | null;
   offer_expires_at: string;
   actor_type: "guest_agent" | "guest_human";
-  status: "pending_approval" | "payment_required" | "activated" | "rejected" | "revoked";
+  status: "pending_approval" | "payment_required" | "activated" | "rejected" | "revoked" | "expired";
   effective_status: "pending_approval" | "payment_required" | "activated" | "rejected" | "revoked" | "expired";
   approval_status: "pending" | "approved" | "rejected" | null;
   approval_reference: string | null;
@@ -67,6 +82,8 @@ interface GuestIntentRecord {
   request_id: string | null;
   request_state: IntentRequestState | null;
   exchange_id: string | null;
+  exchange_state: IntentExchangeState | null;
+  agent_delivery: IntentAgentDeliveryState | null;
   activated_at: string | null;
   revoked_at: string | null;
   expires_at: string;
@@ -148,7 +165,8 @@ type IntentAction =
   | { type: "offer_revoke"; offer: OfferRecord }
   | { type: "intent_approve"; intent: GuestIntentRecord }
   | { type: "intent_reject"; intent: GuestIntentRecord }
-  | { type: "intent_revoke"; intent: GuestIntentRecord };
+  | { type: "intent_revoke"; intent: GuestIntentRecord }
+  | { type: "intent_retry_agent_delivery"; intent: GuestIntentRecord };
 
 function actionDialogCopy(action: IntentAction): {
   title: string;
@@ -180,6 +198,15 @@ function actionDialogCopy(action: IntentAction): {
       body: "This permanently denies the current guest request without exposing any secret material.",
       confirmLabel: "Reject intent",
       tone: "danger"
+    };
+  }
+
+  if (action.type === "intent_retry_agent_delivery") {
+    return {
+      title: "Retry guest agent delivery",
+      body: "This reissues the current pending guest-agent fulfillment path without exposing guest tokens or payload data.",
+      confirmLabel: "Retry delivery",
+      tone: "neutral"
     };
   }
 
@@ -313,6 +340,8 @@ export function PublicOffersPage() {
         await apiRequest(`/api/v2/public/intents/${confirmAction.intent.id}/approve`, { method: "POST" });
       } else if (confirmAction.type === "intent_reject") {
         await apiRequest(`/api/v2/public/intents/${confirmAction.intent.id}/reject`, { method: "POST" });
+      } else if (confirmAction.type === "intent_retry_agent_delivery") {
+        await apiRequest(`/api/v2/public/intents/${confirmAction.intent.id}/retry-agent-delivery`, { method: "POST" });
       } else {
         await apiRequest(`/api/v2/public/intents/${confirmAction.intent.id}/revoke`, { method: "POST" });
       }
@@ -353,10 +382,18 @@ export function PublicOffersPage() {
             )
           : (selectedIntent.effective_status !== "revoked" && selectedIntent.effective_status !== "expired" && selectedIntent.effective_status !== "rejected")
             ? (
-                <button className="ghost-button" onClick={() => setConfirmAction({ type: "intent_revoke", intent: selectedIntent })} type="button">
-                  <Undo2 size={16} />
-                  Revoke intent
-                </button>
+                <div className="inline-actions">
+                  {selectedIntent.agent_delivery?.recoverable ? (
+                    <button className="ghost-button" onClick={() => setConfirmAction({ type: "intent_retry_agent_delivery", intent: selectedIntent })} type="button">
+                      <RefreshCw size={16} />
+                      Retry delivery
+                    </button>
+                  ) : null}
+                  <button className="ghost-button" onClick={() => setConfirmAction({ type: "intent_revoke", intent: selectedIntent })} type="button">
+                    <Undo2 size={16} />
+                    Revoke intent
+                  </button>
+                </div>
               )
             : null
       )
@@ -672,6 +709,14 @@ export function PublicOffersPage() {
                 <span className="meta-label">Request ID</span>
                 {selectedIntent.request_id ? <ResourceLabel value={selectedIntent.request_id} /> : <strong>n/a</strong>}
               </div>
+              <div className="detail-list__item">
+                <span className="meta-label">Exchange state</span>
+                <strong>{selectedIntent.exchange_state?.status ?? "n/a"}</strong>
+              </div>
+              <div className="detail-list__item">
+                <span className="meta-label">Exchange ID</span>
+                {selectedIntent.exchange_id ? <ResourceLabel value={selectedIntent.exchange_id} /> : <strong>n/a</strong>}
+              </div>
             </div>
 
             <div className="support-detail-stack">
@@ -700,6 +745,24 @@ export function PublicOffersPage() {
                   <div>Updated {formatDate(selectedIntent.updated_at)}</div>
                 </div>
               </div>
+              {selectedIntent.agent_delivery ? (
+                <div className="detail-list__item">
+                  <span className="meta-label">Agent delivery</span>
+                  <div className="support-payment-row">
+                    <StatusBadge tone={selectedIntent.agent_delivery.recoverable ? "warning" : "neutral"}>
+                      {selectedIntent.agent_delivery.state ?? "n/a"}
+                    </StatusBadge>
+                    <span className="record-meta">attempt {selectedIntent.agent_delivery.attempt_count}</span>
+                  </div>
+                  <div className="record-meta">
+                    {selectedIntent.agent_delivery.failure_reason
+                      ? `Failure: ${selectedIntent.agent_delivery.failure_reason}`
+                      : selectedIntent.exchange_state?.fulfilled_by
+                        ? `Fulfilled by ${selectedIntent.exchange_state.fulfilled_by}`
+                        : "No guest-agent delivery failure recorded"}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         )}

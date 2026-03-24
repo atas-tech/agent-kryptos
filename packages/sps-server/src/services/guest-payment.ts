@@ -4,6 +4,7 @@ import {
   buildPaymentRequiredPayload,
   parsePaymentSignatureHeader,
   type X402Config,
+  validateQuotedPayment,
   X402ServiceError
 } from "./x402.js";
 
@@ -261,11 +262,8 @@ export async function verifyAndSettleGuestPayment(
       throw new X402ServiceError(400, "invalid_payment_signature", "Invalid PAYMENT-SIGNATURE header");
     }
 
-    if (paymentPayload.paymentId !== input.paymentId) {
-      throw new X402ServiceError(400, "payment_identifier_mismatch", "payment-identifier does not match PAYMENT-SIGNATURE");
-    }
-
     const paymentDetails = buildPaymentRequiredPayload(input.quote);
+    validateQuotedPayment(paymentDetails, paymentPayload, config.networkId);
 
     const verifyResult = await provider.verifyPayment({
       paymentPayload,

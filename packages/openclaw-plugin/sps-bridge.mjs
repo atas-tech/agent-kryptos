@@ -34,6 +34,7 @@ async function loadModules(opts = {}) {
         identity,
         keyManager,
         AgentSecretRuntime: AgentSkillRuntimeMod.AgentSecretRuntime,
+        createX402RuntimeProvidersFromEnv: AgentSkillRuntimeMod.createX402RuntimeProvidersFromEnv,
         SpsClient: SpsClientMod.SpsClient,
         GatewaySpsClient: GatewaySpsClientMod.GatewaySpsClient,
     };
@@ -235,10 +236,15 @@ export async function requestExchangeFlow(params) {
     const modules = await loadModules(moduleOverrides);
     const resolvedAgentId = resolveAgentId(agentId);
     const agentToken = await getAgentAuthToken(modules, resolvedAgentId, spsBaseUrl, identityOptions);
+    const x402Runtime = typeof modules.createX402RuntimeProvidersFromEnv === "function"
+        ? modules.createX402RuntimeProvidersFromEnv()
+        : {};
     const runtime = new modules.AgentSecretRuntime({
         spsBaseUrl,
         gatewayBearerToken: agentToken,
         agentId: resolvedAgentId,
+        x402PaymentProvider: x402Runtime.x402PaymentProvider,
+        x402BudgetProvider: x402Runtime.x402BudgetProvider,
     });
 
     try {

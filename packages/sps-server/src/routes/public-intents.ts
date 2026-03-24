@@ -1,18 +1,22 @@
 import type { FastifyInstance, FastifyPluginOptions, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool } from "pg";
+import { rateLimitKeyByIp, sendRateLimited, type RateLimitService } from "../middleware/rate-limit.js";
 import { requireUserRole } from "../middleware/auth.js";
 import { generateRequestId, signFulfillmentToken } from "../services/crypto.js";
 import { logAudit } from "../services/audit.js";
 import { getPublicOfferByToken } from "../services/guest-offer.js";
 import {
   activateGuestIntent,
+  cleanupExpiredUnpaidGuestIntents,
   createOrResumeGuestIntent,
   decideGuestIntentApproval,
   getGuestIntentAdminById,
   getGuestIntentById,
   getGuestIntentByStatusToken,
   listGuestIntentsForWorkspace,
+  markGuestAgentDeliveryFailed,
   revokeGuestIntent,
+  retryGuestAgentDelivery,
   toGuestIntentPublicStatus,
   type GuestIntentAdminRecord,
   type GuestIntentRecord
@@ -32,12 +36,30 @@ import {
   x402ConfigFromEnv
 } from "../services/x402.js";
 import { hashPolicyDecision } from "../services/policy.js";
-import type { PolicyDecision, RequestStore } from "../types.js";
+import type { PolicyDecision, RequestStore, StoredExchange } from "../types.js";
 
 const BASE64_PATTERN = "^[A-Za-z0-9+/]+={0,2}$";
 
 function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
+}
+
+function publicIntentIpLimitPerMinute(): number {
+  const raw = Number(process.env.SPS_PUBLIC_INTENT_IP_LIMIT ?? 30);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return 30;
+  }
+
+  return Math.floor(raw);
+}
+
+function publicIntentOfferLimitPerMinute(): number {
+  const raw = Number(process.env.SPS_PUBLIC_INTENT_OFFER_LIMIT ?? 10);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return 10;
+  }
+
+  return Math.floor(raw);
 }
 
 export interface PublicIntentRoutesOptions extends FastifyPluginOptions {
@@ -46,6 +68,8 @@ export interface PublicIntentRoutesOptions extends FastifyPluginOptions {
   hmacSecret: string;
   uiBaseUrl: string;
   requestTtlSeconds?: number;
+  revokedTtlSeconds?: number;
+  rateLimitService?: RateLimitService;
   x402Provider?: X402Provider;
 }
 
@@ -73,6 +97,7 @@ async function toAdminIntentResponse(
   store: RequestStore
 ): Promise<Record<string, unknown>> {
   const request = intent.requestId ? await store.getRequest(intent.requestId) : null;
+  const exchangeState = intent.exchangeId ? await getGuestExchangeSupportState(store, intent.exchangeId) : null;
   const requestState = request
     ? {
         status: request.status,
@@ -105,6 +130,25 @@ async function toAdminIntentResponse(
     request_id: intent.requestId,
     request_state: requestState,
     exchange_id: intent.exchangeId,
+    exchange_state: exchangeState
+      ? {
+          status: exchangeState.status,
+          fulfilled_by: exchangeState.fulfilledBy,
+          expires_at: exchangeState.expiresAt
+        }
+      : null,
+    agent_delivery: intent.deliveryMode === "agent"
+      ? {
+          state: exchangeState?.status === "pending" && intent.agentDeliveryState === "failed"
+            ? "delivery_failed"
+            : exchangeState?.status ?? intent.agentDeliveryState,
+          recoverable: intent.agentDeliveryState === "failed" && exchangeState?.status === "pending",
+          failure_reason: intent.agentDeliveryFailureReason,
+          failed_at: intent.agentDeliveryFailedAt?.toISOString() ?? null,
+          last_dispatched_at: intent.agentDeliveryLastDispatchedAt?.toISOString() ?? null,
+          attempt_count: intent.agentDeliveryAttemptCount
+        }
+      : null,
     activated_at: intent.activatedAt?.toISOString() ?? null,
     revoked_at: intent.revokedAt?.toISOString() ?? null,
     expires_at: intent.expiresAt.toISOString(),
@@ -147,6 +191,54 @@ function guestRequesterId(intent: GuestIntentRecord): string {
 function buildHumanRequestDescription(intent: GuestIntentRecord): string {
   const requester = intent.requesterLabel?.trim() || "External requester";
   return `${requester} requested a one-time secret handoff. Purpose: ${intent.purpose}`;
+}
+
+async function signGuestExchangeFulfillmentToken(exchange: StoredExchange, hmacSecret: string): Promise<string> {
+  return signFulfillmentToken({
+    exchange_id: exchange.exchangeId,
+    requester_id: exchange.requesterId,
+    workspace_id: exchange.workspaceId,
+    secret_name: exchange.secretName,
+    purpose: exchange.purpose,
+    policy_hash: exchange.policyHash,
+    approval_reference: exchange.policyDecision.approvalReference ?? null
+  }, hmacSecret, exchange.expiresAt);
+}
+
+async function getGuestExchangeSupportState(store: RequestStore, exchangeId: string): Promise<{
+  status: string;
+  fulfilledBy: string | null;
+  expiresAt: string | null;
+}> {
+  const exchange = await store.getExchange(exchangeId);
+  if (exchange) {
+    return {
+      status: exchange.status,
+      fulfilledBy: exchange.fulfilledBy ?? null,
+      expiresAt: new Date(exchange.expiresAt * 1000).toISOString()
+    };
+  }
+
+  const lifecycle = await store.listLifecycleRecordsByExchange(exchangeId);
+  const lastRecord = lifecycle.at(-1);
+  if (!lastRecord) {
+    return {
+      status: "expired",
+      fulfilledBy: null,
+      expiresAt: null
+    };
+  }
+
+  return {
+    status: lastRecord.status ?? (lastRecord.eventType === "exchange_retrieved" ? "retrieved" : "expired"),
+    fulfilledBy:
+      typeof lastRecord.metadata?.fulfilled_by === "string"
+        ? lastRecord.metadata.fulfilled_by
+        : lastRecord.eventType === "exchange_reserved" || lastRecord.eventType === "exchange_submitted"
+          ? (lastRecord.actorId ?? null)
+          : null,
+    expiresAt: null
+  };
 }
 
 function guestIntentAvailableForDelivery(intent: GuestIntentRecord, requestId: string): boolean {
@@ -284,7 +376,7 @@ async function issueGuestActivationArtifacts(
 async function appendGuestExchangeLifecycle(
   store: RequestStore,
   record: {
-    eventType: "exchange_requested" | "exchange_retrieved";
+    eventType: "exchange_requested" | "exchange_delivery_failed" | "exchange_delivery_retried" | "exchange_retrieved";
     exchangeId: string;
     approvalReference: string | null;
     requesterId: string;
@@ -350,17 +442,7 @@ async function issueGuestExchangeArtifacts(
   const requesterId = guestRequesterId(intent);
   const policyDecision = buildGuestExchangeDecision(intent, settledPolicySnapshot);
   const policyHash = hashPolicyDecision(policyDecision, intent.allowedFulfillerId, intent.workspaceId);
-  const fulfillmentToken = await signFulfillmentToken({
-    exchange_id: exchangeId,
-    requester_id: requesterId,
-    workspace_id: intent.workspaceId,
-    secret_name: intent.resolvedSecretName,
-    purpose: intent.purpose,
-    policy_hash: policyHash,
-    approval_reference: policyDecision.approvalReference ?? null
-  }, opts.hmacSecret, exchangeExpiresAt);
-
-  await opts.store.setExchange({
+  const exchangeRecord: StoredExchange = {
     exchangeId,
     requesterId,
     workspaceId: intent.workspaceId,
@@ -376,7 +458,10 @@ async function issueGuestExchangeArtifacts(
     status: "pending",
     createdAt,
     expiresAt: exchangeExpiresAt
-  }, exchangeTtlSeconds);
+  };
+
+  const fulfillmentToken = await signGuestExchangeFulfillmentToken(exchangeRecord, opts.hmacSecret);
+  await opts.store.setExchange(exchangeRecord, exchangeTtlSeconds);
 
   await appendGuestExchangeLifecycle(opts.store, {
     eventType: "exchange_requested",
@@ -498,6 +583,34 @@ export async function registerPublicIntentRoutes(app: FastifyInstance, opts: Pub
     }
   );
 
+  app.post(
+    "/admin/cleanup-expired",
+    async (req, reply) => {
+      const user = await requireUserRole("workspace_operator")(req, reply);
+      if (!user) {
+        return;
+      }
+
+      const result = await cleanupExpiredUnpaidGuestIntents(opts.db, user.workspaceId);
+      await logAudit(opts.db, {
+        event: "guest_intent_cleanup",
+        workspaceId: user.workspaceId,
+        actorId: user.sub,
+        actorType: "user",
+        resourceId: user.workspaceId,
+        metadata: {
+          expired_intent_count: result.expiredIntentCount
+        },
+        action: "guest_intent_cleanup",
+        ip: req.ip
+      });
+
+      return reply.send({
+        expired_intent_count: result.expiredIntentCount
+      });
+    }
+  );
+
   app.get<{ Params: { id: string } }>(
     "/admin/:id",
     {
@@ -586,6 +699,58 @@ export async function registerPublicIntentRoutes(app: FastifyInstance, opts: Pub
                 : "Payment is already being processed for this request",
               code: existingPayment.status === "failed" ? "payment_failed" : "payment_in_progress"
             });
+          }
+        }
+
+        if (opts.rateLimitService) {
+          const ipRateLimit = await opts.rateLimitService.consume(
+            rateLimitKeyByIp(req, `public:intents:create:${offer.workspaceId}`),
+            publicIntentIpLimitPerMinute(),
+            60_000
+          );
+          if (!ipRateLimit.allowed) {
+            await logAudit(opts.db, {
+              event: "guest_intent_rate_limited",
+              workspaceId: offer.workspaceId,
+              actorType: "system",
+              resourceId: offer.id,
+              metadata: {
+                scope: "ip",
+                offer_id: offer.id,
+                ip: req.ip,
+                limit: ipRateLimit.limit,
+                used: ipRateLimit.used,
+                retry_after_seconds: ipRateLimit.retryAfterSeconds
+              },
+              action: "guest_intent_rate_limit",
+              ip: req.ip
+            });
+            return sendRateLimited(reply, ipRateLimit, "Too many guest intent attempts from this IP", "guest_intent_rate_limited");
+          }
+
+          const offerRateLimit = await opts.rateLimitService.consume(
+            `public:intents:offer:${offer.id}`,
+            publicIntentOfferLimitPerMinute(),
+            60_000
+          );
+          if (!offerRateLimit.allowed) {
+            await logAudit(opts.db, {
+              event: "guest_intent_rate_limited",
+              workspaceId: offer.workspaceId,
+              actorType: "system",
+              resourceId: offer.id,
+              metadata: {
+                scope: "offer",
+                offer_id: offer.id,
+                ip: req.ip,
+                limit: offerRateLimit.limit,
+                used: offerRateLimit.used,
+                retry_after_seconds: offerRateLimit.retryAfterSeconds
+              },
+              action: "guest_intent_rate_limit",
+              ip: req.ip
+            });
+            return sendRateLimited(reply, offerRateLimit, "This public offer is temporarily throttled", "guest_offer_rate_limited");
           }
         }
 
@@ -831,29 +996,16 @@ export async function registerPublicIntentRoutes(app: FastifyInstance, opts: Pub
     }
 
     if (intent.deliveryMode === "agent") {
-      const exchange = await opts.store.getExchange(claims.request_id);
-      if (exchange) {
-        return reply.send({
-          intent_id: intent.id,
-          exchange_id: exchange.exchangeId,
-          status: exchange.status,
-          fulfilled_by: exchange.fulfilledBy ?? null,
-          expires_at: new Date(exchange.expiresAt * 1000).toISOString()
-        });
-      }
-
-      const lifecycle = await opts.store.listLifecycleRecordsByExchange(claims.request_id);
-      const lastRecord = lifecycle.at(-1);
-      if (!lastRecord) {
-        return reply.code(410).send({ status: "expired" });
-      }
-
+      const exchangeState = await getGuestExchangeSupportState(opts.store, claims.request_id);
       return reply.send({
         intent_id: intent.id,
         exchange_id: claims.request_id,
-        status: lastRecord.status ?? (lastRecord.eventType === "exchange_retrieved" ? "retrieved" : "expired"),
-        fulfilled_by: typeof lastRecord.metadata?.fulfilled_by === "string" ? lastRecord.metadata.fulfilled_by : null,
-        expires_at: intent.expiresAt.toISOString()
+        status: exchangeState.status === "pending" && intent.agentDeliveryState === "failed"
+          ? "delivery_failed"
+          : exchangeState.status,
+        recoverable: intent.agentDeliveryState === "failed" && exchangeState.status === "pending",
+        fulfilled_by: exchangeState.fulfilledBy,
+        expires_at: exchangeState.expiresAt ?? intent.expiresAt.toISOString()
       });
     }
 
@@ -1064,6 +1216,34 @@ export async function registerPublicIntentRoutes(app: FastifyInstance, opts: Pub
         if (intent.requestId) {
           await opts.store.deleteRequest(intent.requestId).catch(() => undefined);
         }
+        if (intent.exchangeId) {
+          const currentExchange = await opts.store.getExchange(intent.exchangeId);
+          if (currentExchange) {
+            const revoked = await opts.store.revokeExchange(intent.exchangeId, opts.revokedTtlSeconds ?? 300);
+            if (revoked) {
+              await opts.store.appendLifecycleRecord({
+                recordId: generateRequestId(),
+                eventType: "exchange_revoked",
+                exchangeId: revoked.exchangeId,
+                approvalReference: revoked.policyDecision.approvalReference ?? null,
+                requesterId: revoked.requesterId,
+                workspaceId: revoked.workspaceId,
+                secretName: revoked.secretName,
+                purpose: revoked.purpose,
+                fulfillerHint: revoked.fulfillerHint,
+                actorId: user.sub,
+                status: revoked.status,
+                priorStatus: currentExchange.status,
+                reason: "guest intent revoked",
+                policyRuleId: revoked.policyDecision.ruleId,
+                metadata: {
+                  guest_intent_id: intent.id
+                },
+                createdAt: nowSeconds()
+              });
+            }
+          }
+        }
         await logAudit(opts.db, {
           event: "guest_intent_revoked",
           workspaceId: user.workspaceId,
@@ -1077,6 +1257,184 @@ export async function registerPublicIntentRoutes(app: FastifyInstance, opts: Pub
           ip: req.ip
         });
         return reply.send({ intent: toIntentResponse(intent) });
+      } catch (error) {
+        return sendServiceError(reply, error);
+      }
+    }
+  );
+
+  app.post<{ Params: { id: string }; Body: { reason: string } }>(
+    "/:id/agent-delivery-failed",
+    {
+      schema: {
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["id"],
+          properties: {
+            id: { type: "string", minLength: 36, maxLength: 36 }
+          }
+        },
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["reason"],
+          properties: {
+            reason: { type: "string", minLength: 3, maxLength: 500 }
+          }
+        }
+      }
+    },
+    async (req, reply) => {
+      const user = await requireUserRole("workspace_operator")(req, reply);
+      if (!user) {
+        return;
+      }
+
+      try {
+        const current = await getGuestIntentById(opts.db, req.params.id);
+        if (!current || current.workspaceId !== user.workspaceId) {
+          return reply.code(404).send({ error: "Guest intent not found", code: "guest_intent_not_found" });
+        }
+        if (!current.exchangeId) {
+          return reply.code(409).send({ error: "Guest intent has no active exchange", code: "guest_intent_not_agent_delivery" });
+        }
+
+        const exchange = await opts.store.getExchange(current.exchangeId);
+        if (!exchange || exchange.status !== "pending") {
+          return reply.code(409).send({
+            error: "Guest exchange is no longer awaiting delivery",
+            code: "guest_exchange_not_pending_delivery"
+          });
+        }
+
+        const intent = await markGuestAgentDeliveryFailed(opts.db, user.workspaceId, req.params.id, req.body.reason);
+        await appendGuestExchangeLifecycle(opts.store, {
+          eventType: "exchange_delivery_failed",
+          exchangeId: exchange.exchangeId,
+          approvalReference: exchange.policyDecision.approvalReference ?? null,
+          requesterId: exchange.requesterId,
+          workspaceId: exchange.workspaceId ?? intent.workspaceId,
+          secretName: exchange.secretName,
+          purpose: exchange.purpose,
+          fulfillerHint: exchange.fulfillerHint,
+          actorId: user.sub,
+          status: "delivery_failed",
+          priorStatus: exchange.status,
+          reason: req.body.reason.trim(),
+          policyRuleId: exchange.policyDecision.ruleId,
+          metadata: {
+            guest_intent_id: intent.id,
+            delivery_attempt_count: intent.agentDeliveryAttemptCount
+          }
+        });
+        await logAudit(opts.db, {
+          event: "guest_agent_delivery_failed",
+          workspaceId: user.workspaceId,
+          actorId: user.sub,
+          actorType: "user",
+          resourceId: intent.id,
+          exchangeId: exchange.exchangeId,
+          requesterId: exchange.requesterId,
+          secretName: exchange.secretName,
+          policyRuleId: exchange.policyDecision.ruleId,
+          approvalReference: exchange.policyDecision.approvalReference ?? null,
+          metadata: {
+            offer_id: intent.offerId,
+            reason: req.body.reason.trim(),
+            delivery_attempt_count: intent.agentDeliveryAttemptCount
+          },
+          action: "guest_agent_delivery_fail",
+          ip: req.ip
+        });
+        return reply.send({ intent: toIntentResponse(intent) });
+      } catch (error) {
+        return sendServiceError(reply, error);
+      }
+    }
+  );
+
+  app.post<{ Params: { id: string } }>(
+    "/:id/retry-agent-delivery",
+    {
+      schema: {
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["id"],
+          properties: {
+            id: { type: "string", minLength: 36, maxLength: 36 }
+          }
+        }
+      }
+    },
+    async (req, reply) => {
+      const user = await requireUserRole("workspace_operator")(req, reply);
+      if (!user) {
+        return;
+      }
+
+      try {
+        const current = await getGuestIntentById(opts.db, req.params.id);
+        if (!current || current.workspaceId !== user.workspaceId) {
+          return reply.code(404).send({ error: "Guest intent not found", code: "guest_intent_not_found" });
+        }
+        if (!current.exchangeId) {
+          return reply.code(409).send({ error: "Guest intent has no active exchange", code: "guest_intent_not_agent_delivery" });
+        }
+
+        const exchange = await opts.store.getExchange(current.exchangeId);
+        if (!exchange || exchange.status !== "pending") {
+          return reply.code(409).send({
+            error: "Guest exchange is no longer awaiting delivery",
+            code: "guest_exchange_not_pending_delivery"
+          });
+        }
+
+        const intent = await retryGuestAgentDelivery(opts.db, user.workspaceId, req.params.id);
+        const fulfillmentToken = await signGuestExchangeFulfillmentToken(exchange, opts.hmacSecret);
+        await appendGuestExchangeLifecycle(opts.store, {
+          eventType: "exchange_delivery_retried",
+          exchangeId: exchange.exchangeId,
+          approvalReference: exchange.policyDecision.approvalReference ?? null,
+          requesterId: exchange.requesterId,
+          workspaceId: exchange.workspaceId ?? intent.workspaceId,
+          secretName: exchange.secretName,
+          purpose: exchange.purpose,
+          fulfillerHint: exchange.fulfillerHint,
+          actorId: user.sub,
+          status: "pending",
+          priorStatus: "delivery_failed",
+          reason: null,
+          policyRuleId: exchange.policyDecision.ruleId,
+          metadata: {
+            guest_intent_id: intent.id,
+            delivery_attempt_count: intent.agentDeliveryAttemptCount
+          }
+        });
+        await logAudit(opts.db, {
+          event: "guest_agent_delivery_retried",
+          workspaceId: user.workspaceId,
+          actorId: user.sub,
+          actorType: "user",
+          resourceId: intent.id,
+          exchangeId: exchange.exchangeId,
+          requesterId: exchange.requesterId,
+          secretName: exchange.secretName,
+          policyRuleId: exchange.policyDecision.ruleId,
+          approvalReference: exchange.policyDecision.approvalReference ?? null,
+          metadata: {
+            offer_id: intent.offerId,
+            delivery_attempt_count: intent.agentDeliveryAttemptCount
+          },
+          action: "guest_agent_delivery_retry",
+          ip: req.ip
+        });
+        return reply.send({
+          intent: toIntentResponse(intent),
+          exchange_id: exchange.exchangeId,
+          fulfillment_token: fulfillmentToken
+        });
       } catch (error) {
         return sendServiceError(reply, error);
       }

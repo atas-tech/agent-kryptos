@@ -125,13 +125,18 @@ function encodePaymentSignature(params: {
   const option = params.paymentRequired.accepts[0];
   return Buffer.from(JSON.stringify({
     x402Version: 2,
-    paymentId: params.paymentId,
-    scheme: option.scheme,
-    network: option.network,
-    amount: option.maxAmountRequired,
-    resource: option.resource,
-    payer: params.payer ?? "agent:crm-bot",
-    signature: "test-signature"
+    resource: params.paymentRequired.resource,
+    accepted: option,
+    payload: {
+      paymentId: params.paymentId,
+      payer: params.payer ?? "agent:crm-bot",
+      signature: "test-signature"
+    },
+    extensions: {
+      blindpass: {
+        paymentId: params.paymentId
+      }
+    }
   }), "utf8").toString("base64");
 }
 
@@ -158,9 +163,7 @@ class TestX402Provider implements X402Provider {
     this.verifyCalls.push(input);
     return {
       valid: true,
-      scheme: input.paymentPayload.scheme,
-      networkId: input.paymentPayload.network,
-      payer: input.paymentPayload.payer ?? null
+      payer: typeof input.paymentPayload.payload.payer === "string" ? input.paymentPayload.payload.payer : null
     } as const;
   }
 
@@ -294,7 +297,8 @@ describePg("x402 routes", () => {
         accepts: [{
           scheme: "exact",
           network: "eip155:84532",
-          maxAmountRequired: "50000"
+          asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          amount: "50000"
         }],
         metadata: {
           quoted_amount_cents: 5,

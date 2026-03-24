@@ -39,15 +39,17 @@ This phase is intentionally separate from:
 
 ## Current Repo State
 
-The current codebase already contains the first slice of enrolled-agent x402 overage support in `packages/sps-server`:
+The current codebase now contains:
 
-- x402 quote generation and header contracts
-- facilitator-backed verify/settle provider abstraction
+- enrolled-agent x402 overage support in `packages/sps-server`
+- official x402 v2 request/response contract handling in SPS
 - per-agent allowance and spend tracking
 - paid exchange creation after settlement
 - transaction ledger + inflight lease tables
+- a Base Sepolia `exact` Node payer in `packages/agent-skill`
+- OpenClaw/runtime bridge wiring for env-driven `x402PaymentProvider` and `x402BudgetProvider`
 
-The remaining work is to harden that flow into a real payer/runtime path and to add the separate hosted crypto billing lane.
+That means Milestone 1 is implemented and PostgreSQL-verified, and Milestone 2 foundation is landed. The remaining work is real-chain smoke validation, support-grade ledger/audit expansion, and the separate hosted crypto billing lane.
 
 Phase 3C reuses this x402 rail for guest offers that choose `payment_policy=quota_then_x402` or `always_x402`, but guest quotas and ledgers remain separate from enrolled-agent allowance state.
 
@@ -220,7 +222,7 @@ Phase 3B owns the human-facing billing UI, but this phase defines the new paymen
 
 ## Milestone 2: Real Agent-Paid x402 (Node Runtime)
 
-Replace the mock/demo payment path with a real Node-runtime payer implementation.
+Build on the landed runtime foundation and take it through real-chain and operator-ready validation.
 
 ### Scope
 
@@ -230,6 +232,12 @@ Replace the mock/demo payment path with a real Node-runtime payer implementation
 - Restrict the first production-like implementation to `exact` scheme on Base Sepolia
 - Validate quote expiry and fail closed on unsupported schemes/networks
 - Expand ledger/audit metadata with payer address, facilitator error details, and final tx hash
+
+Current implementation snapshot as of `2026-03-24`:
+
+- SPS now validates the quoted x402 v2 contract before verify/settle
+- `agent-skill` can create Base Sepolia `exact` payment payloads with the official x402 SDK
+- the runtime bridge can source payer key, RPC URL, network, and local budget from env configuration
 
 ### Signer Boundary
 

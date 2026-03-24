@@ -1,6 +1,42 @@
 import { describe, expect, it } from "vitest";
 import { SpsClient } from "../src/sps-client.js";
 
+function createPaymentRequiredHeader(): string {
+  return Buffer.from(JSON.stringify({
+    accepts: [{
+      scheme: "exact",
+      network: "eip155:84532",
+      asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      amount: "50000",
+      payTo: "0x0000000000000000000000000000000000000001",
+      maxTimeoutSeconds: 300,
+      extra: {
+        resource: "secret_exchange:ws:agent:stripe.api_key.prod",
+        description: "Secret exchange request overage",
+        name: "USDC",
+        version: "2",
+        quoted_amount_cents: 5,
+        quoted_currency: "USD",
+        quoted_asset_symbol: "USDC",
+        quoted_asset_amount: "0.05",
+        quote_expires_at: 4_100_000_000
+      }
+    }],
+    x402Version: 2,
+    resource: {
+      url: "sps://secret_exchange:ws:agent:stripe.api_key.prod",
+      description: "Secret exchange request overage"
+    },
+    metadata: {
+      quoted_amount_cents: 5,
+      quoted_currency: "USD",
+      quoted_asset_symbol: "USDC",
+      quoted_asset_amount: "0.05",
+      quote_expires_at: 4_100_000_000
+    }
+  }), "utf8").toString("base64");
+}
+
 describe("SpsClient", () => {
   it("requests and polls until submitted", async () => {
     let statusCalls = 0;
@@ -194,42 +230,40 @@ describe("SpsClient", () => {
               accepts: [{
                 scheme: "exact",
                 network: "eip155:84532",
-                maxAmountRequired: "50000",
-                resource: "secret_exchange:ws:agent:stripe.api_key.prod",
-                description: "Secret exchange request overage",
-                payTo: "0x0000000000000000000000000000000000000001"
+                asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+                amount: "50000",
+                payTo: "0x0000000000000000000000000000000000000001",
+                maxTimeoutSeconds: 300,
+                extra: {
+                  resource: "secret_exchange:ws:agent:stripe.api_key.prod",
+                  description: "Secret exchange request overage",
+                  name: "USDC",
+                  version: "2",
+                  quoted_amount_cents: 5,
+                  quoted_currency: "USD",
+                  quoted_asset_symbol: "USDC",
+                  quoted_asset_amount: "0.05",
+                  quote_expires_at: 4_100_000_000
+                }
               }],
               x402Version: 2,
+              resource: {
+                url: "sps://secret_exchange:ws:agent:stripe.api_key.prod",
+                description: "Secret exchange request overage"
+              },
               metadata: {
                 quoted_amount_cents: 5,
                 quoted_currency: "USD",
                 quoted_asset_symbol: "USDC",
                 quoted_asset_amount: "0.05",
-                quote_expires_at: 1_700_000_000
+                quote_expires_at: 4_100_000_000
               }
             }),
             {
               status: 402,
               headers: {
                 "content-type": "application/json",
-                "payment-required": Buffer.from(JSON.stringify({
-                  accepts: [{
-                    scheme: "exact",
-                    network: "eip155:84532",
-                    maxAmountRequired: "50000",
-                    resource: "secret_exchange:ws:agent:stripe.api_key.prod",
-                    description: "Secret exchange request overage",
-                    payTo: "0x0000000000000000000000000000000000000001"
-                  }],
-                  x402Version: 2,
-                  metadata: {
-                    quoted_amount_cents: 5,
-                    quoted_currency: "USD",
-                    quoted_asset_symbol: "USDC",
-                    quoted_asset_amount: "0.05",
-                    quote_expires_at: 1_700_000_000
-                  }
-                }), "utf8").toString("base64")
+                "payment-required": createPaymentRequiredHeader()
               }
             }
           );
@@ -291,41 +325,39 @@ describe("SpsClient", () => {
             accepts: [{
               scheme: "exact",
               network: "eip155:84532",
-              maxAmountRequired: "50000",
-              resource: "secret_exchange:ws:agent:stripe.api_key.prod",
-              description: "Secret exchange request overage",
-              payTo: "0x0000000000000000000000000000000000000001"
+              asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+              amount: "50000",
+              payTo: "0x0000000000000000000000000000000000000001",
+              maxTimeoutSeconds: 300,
+              extra: {
+                resource: "secret_exchange:ws:agent:stripe.api_key.prod",
+                description: "Secret exchange request overage",
+                name: "USDC",
+                version: "2",
+                quoted_amount_cents: 5,
+                quoted_currency: "USD",
+                quoted_asset_symbol: "USDC",
+                quoted_asset_amount: "0.05",
+                quote_expires_at: 4_100_000_000
+              }
             }],
             x402Version: 2,
+            resource: {
+              url: "sps://secret_exchange:ws:agent:stripe.api_key.prod",
+              description: "Secret exchange request overage"
+            },
             metadata: {
               quoted_amount_cents: 5,
               quoted_currency: "USD",
               quoted_asset_symbol: "USDC",
               quoted_asset_amount: "0.05",
-              quote_expires_at: 1_700_000_000
+              quote_expires_at: 4_100_000_000
             }
           }),
           {
             status: 402,
             headers: {
-              "payment-required": Buffer.from(JSON.stringify({
-                accepts: [{
-                  scheme: "exact",
-                  network: "eip155:84532",
-                  maxAmountRequired: "50000",
-                  resource: "secret_exchange:ws:agent:stripe.api_key.prod",
-                  description: "Secret exchange request overage",
-                  payTo: "0x0000000000000000000000000000000000000001"
-                }],
-                x402Version: 2,
-                metadata: {
-                  quoted_amount_cents: 5,
-                  quoted_currency: "USD",
-                  quoted_asset_symbol: "USDC",
-                  quoted_asset_amount: "0.05",
-                  quote_expires_at: 1_700_000_000
-                }
-              }), "utf8").toString("base64")
+              "payment-required": createPaymentRequiredHeader()
             }
           }
         );

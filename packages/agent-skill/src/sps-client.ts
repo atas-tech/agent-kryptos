@@ -27,15 +27,32 @@ export interface CreateExchangeRequestParams {
 export interface X402PaymentOption {
   scheme: "exact";
   network: string;
-  maxAmountRequired: string;
-  resource: string;
-  description: string;
+  asset: string;
+  amount: string;
   payTo: string;
+  maxTimeoutSeconds: number;
+  extra: {
+    resource: string;
+    description: string;
+    name: string;
+    version: string;
+    quoted_amount_cents: number;
+    quoted_currency: "USD";
+    quoted_asset_symbol: "USDC";
+    quoted_asset_amount: string;
+    quote_expires_at: number;
+  };
 }
 
 export interface X402PaymentRequired {
   accepts: [X402PaymentOption];
   x402Version: 2;
+  resource: {
+    url: string;
+    description?: string;
+    mimeType?: string;
+  };
+  extensions?: Record<string, unknown>;
   metadata: {
     quoted_amount_cents: number;
     quoted_currency: "USD";

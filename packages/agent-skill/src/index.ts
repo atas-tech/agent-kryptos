@@ -11,6 +11,7 @@ export * from "./key-manager.js";
 export * from "./secret-store.js";
 export * from "./sps-client.js";
 export * from "./transport.js";
+export * from "./x402.js";
 
 export interface AgentSecretRuntimeOptions {
   spsBaseUrl: string;

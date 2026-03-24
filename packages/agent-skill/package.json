@@ -11,7 +11,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "hpke-js": "^1.7.0"
+    "@x402/evm": "^2.8.0",
+    "@x402/fetch": "^2.8.0",
+    "hpke-js": "^1.7.0",
+    "viem": "^2.47.6"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

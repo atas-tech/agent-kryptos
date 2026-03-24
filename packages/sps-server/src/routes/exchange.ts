@@ -32,6 +32,7 @@ import {
   releaseInflightLease,
   reserveAllowanceSpend,
   rollbackAllowanceSpend,
+  validateQuotedPayment,
   type X402Provider,
   X402ServiceError,
   x402ConfigFromEnv
@@ -788,9 +789,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
             } catch {
               throw new X402ServiceError(400, "invalid_payment_signature", "Invalid PAYMENT-SIGNATURE header");
             }
-            if (paymentPayload.paymentId !== paymentId) {
-              throw new X402ServiceError(400, "payment_identifier_mismatch", "payment-identifier does not match PAYMENT-SIGNATURE");
-            }
+            validateQuotedPayment(paymentRequired, paymentPayload, x402Config.networkId);
 
             const verifyResult = await opts.x402Provider.verifyPayment({
               paymentPayload,

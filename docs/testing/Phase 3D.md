@@ -60,14 +60,17 @@ For Milestone 3, the test plan intentionally assumes **Coinbase Payment Links** 
 ## Milestone 2: Real Agent-Paid x402 (Node Runtime)
 
 - [ ] **Implementation: official x402 contract and Node payer**
-  - [ ] Replace the mock-only facilitator payload/response contract with the official x402 buyer/seller contract in SPS.
-  - [ ] Keep the existing allowance reservation, ledger write, idempotency, and exchange creation sequencing around the real x402 verification and settlement calls.
-  - [ ] Add a Node-based x402 payment provider in `packages/agent-skill` so agents can pay directly without any browser wallet flow.
-  - [ ] Restrict the first real-money implementation to `exact` scheme on Base Sepolia (`eip155:84532`) and fail closed on unsupported schemes or networks.
+  - [x] Replace the mock-only facilitator payload/response contract with the official x402 buyer/seller contract in SPS.
+  - [x] Keep the existing allowance reservation, ledger write, idempotency, and exchange creation sequencing around the real x402 verification and settlement calls.
+  - [x] Add a Node-based x402 payment provider in `packages/agent-skill` so agents can pay directly without any browser wallet flow.
+  - [x] Restrict the first real-money implementation to `exact` scheme on Base Sepolia (`eip155:84532`) and fail closed on unsupported schemes or networks.
   - [ ] Add runtime configuration for the agent payer wallet, facilitator base URL, local spend limit, and network selection.
-  - [ ] Wire `x402PaymentProvider` and `x402BudgetProvider` through the real OpenClaw / runtime bridge path instead of only the demo script.
-  - [ ] Validate quote expiry before settlement and assert facilitator verification output still matches the quoted network / scheme before creating the exchange resource.
+  - [x] Wire `x402PaymentProvider` and `x402BudgetProvider` through the real OpenClaw / runtime bridge path instead of only the demo script.
+  - [x] Validate quote expiry before settlement and assert facilitator verification output still matches the quoted network / scheme before creating the exchange resource.
   - [ ] Expand x402 ledger and logs as needed to capture payer address, facilitator error metadata, and the final transaction hash for support and reconciliation.
+
+> [!NOTE]
+> Implementation snapshot as of `2026-03-24`: the Node runtime now emits the official x402 v2 `PAYMENT-SIGNATURE` contract from `packages/agent-skill`, SPS verifies/settles against the official v2 payload shape, and the OpenClaw bridge can source payer config from runtime env vars for Base Sepolia exact payments. Remaining Milestone 2 work is real-chain smoke verification, broader runtime config hardening, and support-grade ledger expansion.
 
 - [ ] **Integration: real Base Sepolia payment smoke path**
   - [ ] Provision a dedicated test agent wallet with Base Sepolia ETH for gas and testnet USDC for payment.

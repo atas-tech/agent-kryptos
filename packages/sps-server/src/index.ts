@@ -226,6 +226,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
         hmacSecret,
         uiBaseUrl: options.uiBaseUrl ?? options.baseUrl ?? process.env.SPS_UI_BASE_URL ?? "http://localhost:5173",
         requestTtlSeconds: 180,
+        revokedTtlSeconds: 300,
+        rateLimitService,
         x402Provider: options.x402Provider ?? (
           x402Config.enabled && x402Config.facilitatorUrl
             ? new HttpX402Provider(x402Config.facilitatorUrl, x402Config.providerTimeoutMs)

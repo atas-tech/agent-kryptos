@@ -39,7 +39,11 @@ export interface AuditEvent {
     | "guest_intent_activated"
     | "guest_intent_approved"
     | "guest_intent_rejected"
-    | "guest_intent_revoked";
+    | "guest_intent_revoked"
+    | "guest_intent_rate_limited"
+    | "guest_intent_cleanup"
+    | "guest_agent_delivery_failed"
+    | "guest_agent_delivery_retried";
   requestId?: string;
   exchangeId?: string;
   approvalReference?: string | null;

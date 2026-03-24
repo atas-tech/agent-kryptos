@@ -10,6 +10,22 @@ const DEFAULT_LEASE_DURATION_SECONDS = 60;
 const DEFAULT_PROVIDER_TIMEOUT_MS = 20_000;
 const RESPONSE_CACHE_RETENTION_DAYS = 30;
 const USDC_DECIMALS = 6;
+const X402_ASSET_BY_NETWORK: Record<string, {
+  address: string;
+  name: string;
+  version: string;
+}> = {
+  "eip155:8453": {
+    address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    name: "USD Coin",
+    version: "2"
+  },
+  "eip155:84532": {
+    address: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    name: "USDC",
+    version: "2"
+  }
+};
 
 export interface X402Config {
   enabled: boolean;
@@ -26,15 +42,32 @@ export interface X402Config {
 export interface X402PaymentOption {
   scheme: "exact";
   network: string;
-  maxAmountRequired: string;
-  resource: string;
-  description: string;
+  asset: string;
+  amount: string;
   payTo: string;
+  maxTimeoutSeconds: number;
+  extra: {
+    resource: string;
+    description: string;
+    name: string;
+    version: string;
+    quoted_amount_cents: number;
+    quoted_currency: "USD";
+    quoted_asset_symbol: "USDC";
+    quoted_asset_amount: string;
+    quote_expires_at: number;
+  };
 }
 
 export interface X402PaymentRequired {
   accepts: [X402PaymentOption];
   x402Version: 2;
+  resource: {
+    url: string;
+    description?: string;
+    mimeType?: string;
+  };
+  extensions?: Record<string, unknown>;
   metadata: {
     quoted_amount_cents: number;
     quoted_currency: "USD";
@@ -57,14 +90,14 @@ export interface X402Quote {
 
 export interface X402PaymentSignaturePayload {
   x402Version: 2;
-  paymentId: string;
-  scheme: "exact";
-  network: string;
-  amount: string;
-  resource: string;
-  payer?: string;
-  signature?: string;
-  payload?: string;
+  resource?: {
+    url: string;
+    description?: string;
+    mimeType?: string;
+  };
+  accepted: X402PaymentOption;
+  payload: Record<string, unknown>;
+  extensions?: Record<string, unknown>;
 }
 
 export interface X402VerifyInput {
@@ -75,8 +108,6 @@ export interface X402VerifyInput {
 
 export interface X402VerifyResult {
   valid: boolean;
-  scheme: string;
-  networkId: string;
   payer?: string | null;
   failureReason?: string | null;
 }
@@ -208,6 +239,22 @@ function toDisplayAmount(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
+function toResourceUrl(resource: string): string {
+  return `sps://${resource.replace(/^\/+/, "")}`;
+}
+
+function getX402AssetInfo(networkId: string): {
+  address: string;
+  name: string;
+  version: string;
+} {
+  return X402_ASSET_BY_NETWORK[networkId] ?? {
+    address: "USDC",
+    name: "USDC",
+    version: "2"
+  };
+}
+
 function utcMonthStart(date = new Date()): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
 }
@@ -262,16 +309,33 @@ export function buildGuestIntentQuote(config: X402Config, params: {
 }
 
 export function buildPaymentRequiredPayload(quote: X402Quote): X402PaymentRequired {
+  const timeoutSeconds = Math.max(1, quote.quoteExpiresAt - Math.floor(Date.now() / 1000));
+  const asset = getX402AssetInfo(quote.networkId);
   return {
     accepts: [{
       scheme: "exact",
       network: quote.networkId,
-      maxAmountRequired: quote.amountAssetUnits,
-      resource: quote.resource,
-      description: quote.description,
-      payTo: quote.payTo
+      asset: asset.address,
+      amount: quote.amountAssetUnits,
+      payTo: quote.payTo,
+      maxTimeoutSeconds: timeoutSeconds,
+      extra: {
+        resource: quote.resource,
+        description: quote.description,
+        name: asset.name,
+        version: asset.version,
+        quoted_amount_cents: quote.amountUsdCents,
+        quoted_currency: "USD",
+        quoted_asset_symbol: "USDC",
+        quoted_asset_amount: quote.amountAssetDisplay,
+        quote_expires_at: quote.quoteExpiresAt
+      }
     }],
     x402Version: 2,
+    resource: {
+      url: toResourceUrl(quote.resource),
+      description: quote.description
+    },
     metadata: {
       quoted_amount_cents: quote.amountUsdCents,
       quoted_currency: "USD",
@@ -303,22 +367,101 @@ export function parsePaymentSignatureHeader(value: string): X402PaymentSignature
       const parsed = JSON.parse(candidate) as Partial<X402PaymentSignaturePayload>;
       if (
         parsed.x402Version === 2 &&
-        typeof parsed.paymentId === "string" &&
-        typeof parsed.scheme === "string" &&
-        typeof parsed.network === "string" &&
-        typeof parsed.amount === "string" &&
-        typeof parsed.resource === "string"
+        parsed.accepted &&
+        typeof parsed.accepted === "object" &&
+        typeof parsed.accepted.scheme === "string" &&
+        typeof parsed.accepted.network === "string" &&
+        typeof parsed.accepted.asset === "string" &&
+        typeof parsed.accepted.amount === "string" &&
+        typeof parsed.accepted.payTo === "string" &&
+        typeof parsed.accepted.maxTimeoutSeconds === "number" &&
+        parsed.accepted.extra &&
+        typeof parsed.accepted.extra === "object" &&
+        typeof parsed.payload === "object" &&
+        parsed.payload !== null
       ) {
         return {
           x402Version: 2,
-          paymentId: parsed.paymentId.trim(),
-          scheme: "exact",
-          network: parsed.network.trim(),
-          amount: parsed.amount.trim(),
-          resource: parsed.resource.trim(),
-          payer: typeof parsed.payer === "string" ? parsed.payer.trim() : undefined,
-          signature: typeof parsed.signature === "string" ? parsed.signature.trim() : undefined,
-          payload: typeof parsed.payload === "string" ? parsed.payload.trim() : undefined
+          resource: parsed.resource && typeof parsed.resource === "object" && typeof parsed.resource.url === "string"
+            ? {
+                url: parsed.resource.url.trim(),
+                description: typeof parsed.resource.description === "string" ? parsed.resource.description.trim() : undefined,
+                mimeType: typeof parsed.resource.mimeType === "string" ? parsed.resource.mimeType.trim() : undefined
+              }
+            : undefined,
+          accepted: {
+            scheme: "exact",
+            network: parsed.accepted.network.trim(),
+            asset: parsed.accepted.asset.trim(),
+            amount: parsed.accepted.amount.trim(),
+            payTo: parsed.accepted.payTo.trim(),
+            maxTimeoutSeconds: parsed.accepted.maxTimeoutSeconds,
+            extra: {
+              resource: String((parsed.accepted.extra as Record<string, unknown>).resource ?? "").trim(),
+              description: String((parsed.accepted.extra as Record<string, unknown>).description ?? "").trim(),
+              name: String((parsed.accepted.extra as Record<string, unknown>).name ?? "USDC").trim(),
+              version: String((parsed.accepted.extra as Record<string, unknown>).version ?? "2").trim(),
+              quoted_amount_cents: Number((parsed.accepted.extra as Record<string, unknown>).quoted_amount_cents ?? Number.NaN),
+              quoted_currency: "USD",
+              quoted_asset_symbol: "USDC",
+              quoted_asset_amount: String((parsed.accepted.extra as Record<string, unknown>).quoted_asset_amount ?? "").trim(),
+              quote_expires_at: Number((parsed.accepted.extra as Record<string, unknown>).quote_expires_at ?? Number.NaN)
+            }
+          },
+          payload: parsed.payload as Record<string, unknown>,
+          extensions: parsed.extensions && typeof parsed.extensions === "object"
+            ? parsed.extensions
+            : undefined
+        };
+      }
+
+      const legacy = parsed as Partial<{
+        x402Version: number;
+        paymentId: string;
+        scheme: string;
+        network: string;
+        amount: string;
+        resource: string;
+        payer: string;
+        signature: string;
+      }>;
+      if (
+        legacy.x402Version === 2 &&
+        typeof legacy.paymentId === "string" &&
+        typeof legacy.scheme === "string" &&
+        typeof legacy.network === "string" &&
+        typeof legacy.amount === "string" &&
+        typeof legacy.resource === "string"
+      ) {
+        return {
+          x402Version: 2,
+          resource: {
+            url: toResourceUrl(legacy.resource.trim())
+          },
+          accepted: {
+            scheme: "exact",
+            network: legacy.network.trim(),
+            asset: "USDC",
+            amount: legacy.amount.trim(),
+            payTo: "",
+            maxTimeoutSeconds: 0,
+            extra: {
+              resource: legacy.resource.trim(),
+              description: "",
+              name: "USDC",
+              version: "2",
+              quoted_amount_cents: Number.NaN,
+              quoted_currency: "USD",
+              quoted_asset_symbol: "USDC",
+              quoted_asset_amount: "",
+              quote_expires_at: 0
+            }
+          },
+          payload: {
+            paymentId: legacy.paymentId.trim(),
+            payer: typeof legacy.payer === "string" ? legacy.payer.trim() : undefined,
+            signature: typeof legacy.signature === "string" ? legacy.signature.trim() : undefined
+          }
         };
       }
     } catch {
@@ -335,11 +478,43 @@ export class HttpX402Provider implements X402Provider {
   constructor(private readonly facilitatorUrl: string, private readonly timeoutMs: number = DEFAULT_PROVIDER_TIMEOUT_MS) {}
 
   async verifyPayment(input: X402VerifyInput): Promise<X402VerifyResult> {
-    return this.post<X402VerifyResult>("/verify", input);
+    const response = await this.post<{
+      isValid: boolean;
+      invalidReason?: string;
+      payer?: string | null;
+    }>("/verify", {
+      x402Version: 2,
+      paymentPayload: input.paymentPayload,
+      paymentRequirements: input.paymentPayload.accepted
+    });
+
+    return {
+      valid: response.isValid,
+      payer: response.payer ?? null,
+      failureReason: response.invalidReason ?? null
+    };
   }
 
   async settlePayment(input: X402SettleInput): Promise<X402SettleResult> {
-    return this.post<X402SettleResult>("/settle", input);
+    const response = await this.post<{
+      success: boolean;
+      transaction: string;
+      errorReason?: string;
+      errorMessage?: string;
+    }>("/settle", {
+      x402Version: 2,
+      paymentPayload: input.paymentPayload,
+      paymentRequirements: input.paymentPayload.accepted
+    });
+
+    if (!response.success) {
+      throw new Error(response.errorMessage ?? response.errorReason ?? "Facilitator settlement failed");
+    }
+
+    return {
+      status: "settled",
+      txHash: response.transaction
+    };
   }
 
   private async post<T>(path: string, body: unknown): Promise<T> {
@@ -376,6 +551,39 @@ export class X402ServiceError extends Error {
     super(message);
     this.statusCode = statusCode;
     this.code = code;
+  }
+}
+
+export function validateQuotedPayment(
+  paymentRequired: X402PaymentRequired,
+  paymentPayload: X402PaymentSignaturePayload,
+  expectedNetworkId: string,
+  nowSeconds = Math.floor(Date.now() / 1000)
+): void {
+  if (paymentRequired.metadata.quote_expires_at <= nowSeconds) {
+    throw new X402ServiceError(402, "quote_expired", "Payment quote has expired");
+  }
+
+  const accepted = paymentPayload.accepted;
+  const expected = paymentRequired.accepts[0];
+
+  if (accepted.scheme !== "exact") {
+    throw new X402ServiceError(400, "unsupported_payment_scheme", "Unsupported x402 payment scheme");
+  }
+
+  if (accepted.network !== expectedNetworkId || expected.network !== expectedNetworkId) {
+    throw new X402ServiceError(400, "unsupported_payment_network", "Unsupported x402 payment network");
+  }
+
+  if (
+    accepted.network !== expected.network
+    || accepted.asset !== expected.asset
+    || accepted.amount !== expected.amount
+    || accepted.scheme !== expected.scheme
+    || accepted.payTo.toLowerCase() !== expected.payTo.toLowerCase()
+    || String(accepted.extra.resource ?? "") !== String(expected.extra.resource ?? "")
+  ) {
+    throw new X402ServiceError(400, "payment_requirements_mismatch", "PAYMENT-SIGNATURE does not match the quoted payment requirements");
   }
 }
 

@@ -8,6 +8,8 @@ export type PolicyDecisionMode = "allow" | "pending_approval" | "deny";
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type LifecycleEventType =
   | "exchange_requested"
+  | "exchange_delivery_failed"
+  | "exchange_delivery_retried"
   | "exchange_reserved"
   | "exchange_submitted"
   | "exchange_retrieved"
