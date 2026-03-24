@@ -36,7 +36,7 @@ Since the March 4 audit (v1), the BlindPass codebase has grown approximately 4×
 | H-1: Redis `updateRequest` TOCTOU race | ❌ Still open, now also affects `updateApprovalRequest` |
 | H-2: No rate limiting | ✅ **Fixed** — `RateLimitService` added for auth + public intents |
 | H-3: Confirmation code low entropy | ❌ Still open (6,400 combinations) |
-| H-4: CORS `origin: true` | ❌ Still open |
+| H-4: CORS `origin: true` | ✅ Fixed — SPS now enforces an explicit browser-origin allowlist |
 | M-1: Gateway `Math.random()` | ❌ Still open |
 | M-2: No CSP header | ⚠️ Partially — CSP added, but dashboard production edge enforcement still needs confirmation |
 | M-3: Static asset exposure | ✅ **Resolved** — UI decoupled |
@@ -56,7 +56,7 @@ Since the March 4 audit (v1), the BlindPass codebase has grown approximately 4×
 | C-2: Fail-fast for missing secrets in production | ✅ Done | `buildApp()` now requires HMAC/user/agent secrets; token helpers fail closed |
 | C-3: Separate signing keys per token type | ✅ Done | Browser sigs, agent fulfillment, guest fulfillment, and guest access now use distinct derived signing keys |
 | C-4: Remove `api_url` from browser-ui query parsing | ✅ Done | Query-controlled API origin removed; browser-ui now pins to configured origin |
-| H-1: Restrict CORS origins | ❌ Open | `origin: true` remains in SPS |
+| H-1: Restrict CORS origins | ✅ Done | SPS now allows only configured first-party origins, with loopback-only dev fallback |
 | H-2: Move refresh token to httpOnly cookie | ⚠️ Partial | Moved from `localStorage` to `sessionStorage`; still JS-readable |
 | H-3: Session count limit + invalidate on password change | ❌ Open | No global session cap or password-change-wide revocation |
 | H-4: Atomic Redis `updateRequest` + `updateApproval` | ❌ Open | Non-atomic read/modify/write remains |
@@ -187,15 +187,29 @@ The original issue was that the browser UI read `api_url` directly from the quer
 
 ## 🟠 High Findings
 
-### H-1: CORS `origin: true` Reflects Any Origin (v1 — STILL OPEN)
+### H-1: CORS `origin: true` Reflects Any Origin (v1)
 
-**File**: [index.ts L94-97](file:///home/hvo/Projects/blindpass/packages/sps-server/src/index.ts#L94-L97)
+**Status (2026-03-24)**: ✅ Resolved.
 
-`origin: true` reflects any requesting origin. With the addition of user authentication, the dashboard SPA, billing endpoints, and workspace admin APIs, the impact is now higher:
+**Files**:
+- [index.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/index.ts)
+- [cors.test.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/tests/cors.test.ts)
+- [.env.test.example](file:///home/hvo/Projects/blindpass/packages/sps-server/.env.test.example)
+- [Unraid.md](file:///home/hvo/Projects/blindpass/docs/deployment/Unraid.md)
+
+`origin: true` formerly reflected any requesting origin. With the addition of user authentication, the dashboard SPA, billing endpoints, and workspace admin APIs, the impact had become materially higher:
 - Any malicious website can make authenticated API calls using the user's access token (if it can extract it from browser storage via XSS or another same-origin compromise)
 - Billing operations, workspace member management, and policy changes are accessible cross-origin
 
-**Recommendation**: Restrict CORS origins to the deployed UI domains.
+The implementation now:
+1. restricts browser origins to an explicit allowlist from `SPS_CORS_ALLOWED_ORIGINS` plus `SPS_UI_BASE_URL`
+2. normalizes origin values before comparison
+3. fails closed in production when no browser origin is configured
+4. keeps non-production loopback origins available for local dashboard/browser-ui development
+
+**Residual note**:
+1. Deployments still need to keep `SPS_CORS_ALLOWED_ORIGINS` aligned with every first-party frontend origin
+2. This closes arbitrary-origin reflection, but it does not reduce the separate risk of JS-readable refresh tokens on an already-compromised first-party origin
 
 ---
 
@@ -526,7 +540,7 @@ quadrantChart
 | **P0** | C-2: Fail-fast for missing secrets in production | Low | Prevents catastrophic misconfiguration | ✅ Done |
 | **P0** | C-3: Separate signing keys per token type | Medium | Key compromise isolation | ✅ Done |
 | **P0** | C-4: Remove `api_url` from browser-ui query parsing | Low | Eliminates zero-click phishing primitive | ✅ Done |
-| **P1** | H-1: Restrict CORS origins | Low | Prevents cross-origin API abuse | ❌ Open |
+| **P1** | H-1: Restrict CORS origins | Low | Prevents cross-origin API abuse | ✅ Done |
 | **P1** | H-2: Move refresh token to httpOnly cookie | Medium | Prevents XSS-based token theft | ⚠️ Partial |
 | **P1** | M-1: Add CSP headers to both UIs | Low | XSS mitigation | ⚠️ Partial |
 | **P1** | H-5: Rate limit agent API key auth | Low | Prevents key brute-force | ❌ Open |
@@ -563,7 +577,7 @@ quadrantChart
 ### Key Attack Chains
 
 1. **XSS → Session token theft → Account takeover (H-2 + M-1 + H-1)**: Refresh tokens are still JS-readable in `sessionStorage`; a dashboard-origin XSS can still steal them even though persistence is reduced.
-2. **Open CORS + frontend compromise → Cross-origin API abuse (H-1)**: Any successful origin compromise still has broad API reach because `origin: true` remains.
+2. **First-party origin compromise → API abuse from an allowed frontend (Residual H-1/H-2)**: Arbitrary-origin reflection is gone, but a compromised allowed frontend origin can still abuse API reach while refresh tokens remain JS-readable.
 3. **Facilitator MITM → Free paid exchanges (M-4)**: Hijacking the x402 facilitator URL lets an attacker claim payments are valid without actual payment.
 4. **Race condition → Duplicate settlement (H-6)**: Concurrent guest payment requests both pass the existence check and both call `provider.settlePayment`, causing double-spend on the facilitator.
 5. **Race condition → Policy bypass (H-4)**: TOCTOU in `updateApprovalRequest` could let an already-rejected approval be re-approved under concurrent load.

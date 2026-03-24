@@ -90,6 +90,7 @@ export default defineConfig({
         SPS_X402_PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000001",
         SPS_SECRET_REGISTRY_JSON: '[{"secretName": "stripe.api_key.prod", "classification": "finance"}]',
         SPS_EXCHANGE_POLICY_JSON: '[{"ruleId": "allow-test", "secretName": "stripe.api_key.prod", "mode": "allow"}]',
+        SPS_CORS_ALLOWED_ORIGINS: "http://localhost:5173,http://localhost:5175",
         SPS_UI_BASE_URL: "http://localhost:5175",
         PORT: "3100"
       }

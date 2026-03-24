@@ -39,6 +39,7 @@ export interface BuildAppOptions {
   hmacSecret?: string;
   baseUrl?: string;
   uiBaseUrl?: string; // Add this for consistency
+  corsAllowedOrigins?: string[];
   useInMemoryStore?: boolean;
   secretRegistry?: SecretRegistryEntry[];
   exchangePolicyRules?: ExchangePolicyRule[];
@@ -76,6 +77,68 @@ function isHostedModeEnabled(): boolean {
   return raw === "1" || raw === "true" || raw === "yes";
 }
 
+function normalizeOrigin(rawOrigin: string): string | null {
+  const trimmed = rawOrigin.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+function parseCorsOriginList(rawValue: string | undefined): string[] {
+  if (!rawValue) {
+    return [];
+  }
+
+  return rawValue
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
+}
+
+function resolveCorsAllowedOrigins(options: BuildAppOptions): Set<string> {
+  const configuredOrigins = new Set<string>();
+  const candidates = [
+    ...(options.corsAllowedOrigins ?? []),
+    ...parseCorsOriginList(process.env.SPS_CORS_ALLOWED_ORIGINS),
+    options.uiBaseUrl,
+    process.env.SPS_UI_BASE_URL
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+
+    const normalized = normalizeOrigin(candidate);
+    if (!normalized) {
+      throw new Error(`Invalid CORS origin configuration: ${candidate}`);
+    }
+
+    configuredOrigins.add(normalized);
+  }
+
+  if (process.env.NODE_ENV === "production" && configuredOrigins.size === 0) {
+    throw new Error("Configure SPS_CORS_ALLOWED_ORIGINS or SPS_UI_BASE_URL before enabling production CORS.");
+  }
+
+  return configuredOrigins;
+}
+
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   if (options.db && options.runMigrations) {
     await runMigrations(options.db);
@@ -100,11 +163,6 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     }
   });
 
-  await app.register(cors, {
-    origin: true,
-    credentials: false
-  });
-
   app.addHook("onSend", async (_req, reply, payload) => {
     reply.header("Referrer-Policy", "no-referrer");
     return payload;
@@ -116,6 +174,36 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   if (process.env.NODE_ENV === "production" && shouldUseInMemoryStore) {
     throw new Error("In-memory store is disabled in production. Configure Redis instead.");
   }
+
+  const allowedCorsOrigins = resolveCorsAllowedOrigins(options);
+  const allowLoopbackCorsOrigins = process.env.NODE_ENV !== "production";
+
+  await app.register(cors, {
+    origin(requestOrigin, callback) {
+      if (!requestOrigin) {
+        callback(null, true);
+        return;
+      }
+
+      const normalizedOrigin = normalizeOrigin(requestOrigin);
+      if (!normalizedOrigin) {
+        callback(null, false);
+        return;
+      }
+
+      let isAllowed = allowedCorsOrigins.has(normalizedOrigin);
+      if (!isAllowed && allowLoopbackCorsOrigins) {
+        try {
+          isAllowed = isLoopbackHostname(new URL(normalizedOrigin).hostname);
+        } catch {
+          isAllowed = false;
+        }
+      }
+
+      callback(null, isAllowed);
+    },
+    credentials: false
+  });
 
   let store = options.store;
   let quotaService = options.quotaService;

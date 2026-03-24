@@ -69,6 +69,7 @@ Recommended values:
 6. Fill in the SPS template values:
    - `SPS_HMAC_SECRET`: required, strong random value
    - `SPS_UI_BASE_URL`: your public browser UI URL
+   - `SPS_CORS_ALLOWED_ORIGINS`: comma-separated browser origins allowed to call the SPS API. Include every deployed first-party frontend origin, for example `https://app.example.com,https://secrets.example.com`
    - `SPS_AGENT_AUTH_PROVIDERS_JSON`: Optional for hosted/API-key-only deployments. Use this only when SPS must trust self-hosted or external workload JWT issuers via `{name, issuer, audience, jwks_url/jwks_file, require_spiffe}`. This replaces the legacy `SPS_GATEWAY_JWKS_URL` and `SPS_GATEWAY_JWKS_FILE` variables.
    - `SPS_EXCHANGE_POLICY_JSON`: optional JSON array defining Agent-to-Agent exchange policies for self-hosted bootstrap/default configuration.
    - `SPS_SECRET_REGISTRY_JSON`: optional JSON array defining known secrets and their classifications for self-hosted bootstrap/default configuration.
@@ -141,6 +142,7 @@ Examples:
 
 - `SPS_BASE_URL=https://sps.example.com`
 - `SPS_UI_BASE_URL=https://secrets.example.com`
+- `SPS_CORS_ALLOWED_ORIGINS=https://app.example.com,https://secrets.example.com`
 
 ## Troubleshooting
 
@@ -152,6 +154,7 @@ If the SPS container starts but generated links are wrong:
 If the browser UI loads but cannot talk to the API:
 
 - check the `VITE_SPS_API_URL` value used when the UI image was built
+- check `SPS_CORS_ALLOWED_ORIGINS` includes the calling frontend origin
 - rebuild and redeploy the UI image if needed
 
 If the SPS container cannot validate gateway tokens:

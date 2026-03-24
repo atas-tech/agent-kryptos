@@ -24,7 +24,7 @@ Open questions that would materially change ranking:
 
 ## Executive summary
 
-The initial highest-risk themes were auth material misuse and official-origin phishing. The direct exploit paths for missing runtime signing secrets, query-controlled browser-ui API origin, and live-link stdout leakage have since been mitigated in code. The highest remaining themes are browser-session theft through any future frontend compromise, open CORS, payment/concurrency issues, and incomplete production header coverage on all surfaces.
+The initial highest-risk themes were auth material misuse and official-origin phishing. The direct exploit paths for missing runtime signing secrets, query-controlled browser-ui API origin, live-link stdout leakage, and arbitrary-origin CORS reflection have since been mitigated in code. The highest remaining themes are browser-session theft through any future frontend compromise, payment/concurrency issues, and incomplete production header coverage on all surfaces.
 
 ## Status update since initial model
 
@@ -160,7 +160,7 @@ flowchart TD
 ## Top abuse paths
 
 1. Attacker lands XSS or same-origin script execution on a BlindPass frontend origin, reads JS-accessible refresh tokens from `sessionStorage`, and mints new access tokens.
-2. Attacker abuses `origin: true` CORS together with any origin compromise to reach sensitive API routes from an untrusted site.
+2. Attacker compromises an allowed first-party frontend origin and uses its existing API reach together with JS-readable refresh tokens to persist access.
 3. Attacker or insider with log access attempts to recover sensitive workflow data; current code now redacts/gates the main stdout leak paths, reducing but not eliminating the sensitivity of log sinks.
 4. Attacker abuses public offer tokens to create high-volume guest intents, spamming operator approval queues or exhausting rate limits/quotas even if secret disclosure is blocked.
 5. Attacker exploits guest payment concurrency or facilitator trust weaknesses to obtain duplicate settlements or fraudulent payment acceptance.
