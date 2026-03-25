@@ -10,7 +10,7 @@ import {
   type BillingProvider,
   type BillingRecord
 } from "../services/billing.js";
-import { activeAgentLimit, activeMemberLimit, exchangeAllowed, type QuotaService } from "../services/quota.js";
+import { activeAgentLimit, activeMemberLimit, exchangeAllowed, exchangeQuotaIncluded, type QuotaService } from "../services/quota.js";
 import { countActiveWorkspaceUsers, ensureWorkspaceOwnerVerified, UserServiceError } from "../services/user.js";
 import { getWorkspace } from "../services/workspace.js";
 import {
@@ -92,7 +92,7 @@ async function buildDashboardSummary(db: Pool, quotaService: QuotaService, works
         used: activeMembers,
         limit: activeMemberLimit(workspace.tier)
       },
-      a2a_exchange_available: exchangeAllowed(workspace.tier)
+      a2a_exchange_available: exchangeQuotaIncluded(workspace.tier)
     }
   };
 }

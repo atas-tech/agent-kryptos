@@ -62,6 +62,11 @@ function publicIntentOfferLimitPerMinute(): number {
   return Math.floor(raw);
 }
 
+function isHostedModeEnabled(): boolean {
+  const raw = process.env.SPS_HOSTED_MODE?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
 export interface PublicIntentRoutesOptions extends FastifyPluginOptions {
   db: Pool;
   store: RequestStore;
@@ -321,7 +326,7 @@ async function issueGuestActivationArtifacts(
       requestTtlSeconds: Math.max(1, existingRequest.expiresAt - Math.floor(Date.now() / 1000)),
       hmacSecret: opts.hmacSecret,
       uiBaseUrl: opts.uiBaseUrl,
-      requireUserAuth: false,
+      requireUserAuth: isHostedModeEnabled(),
       requiredUserWorkspaceId: existingRequest.requiredUserWorkspaceId,
       requestedByActorType: existingRequest.requestedByActorType,
       guestIntentId: existingRequest.guestIntentId
@@ -343,7 +348,7 @@ async function issueGuestActivationArtifacts(
       requestTtlSeconds: opts.requestTtlSeconds ?? 180,
       hmacSecret: opts.hmacSecret,
       uiBaseUrl: opts.uiBaseUrl,
-      requireUserAuth: false,
+      requireUserAuth: isHostedModeEnabled(),
       requiredUserWorkspaceId: intent.workspaceId,
       requestedByActorType: intent.actorType,
       guestIntentId: intent.id

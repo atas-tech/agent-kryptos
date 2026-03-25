@@ -354,7 +354,7 @@ describePg("billing routes", () => {
       });
       expect(freeTierExchangeResponse.statusCode).toBe(403);
       expect(freeTierExchangeResponse.json()).toEqual({
-        error: "Exchange is not available on the free tier",
+        error: "Exchange is not available on this workspace tier",
         code: "feature_not_available"
       });
 

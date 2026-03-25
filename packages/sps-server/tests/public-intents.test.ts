@@ -43,7 +43,7 @@ async function disposeIsolatedPool(pool: Pool, schema: string): Promise<void> {
   await adminPool?.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
 }
 
-async function registerOwner(app: Awaited<ReturnType<typeof buildApp>>, identity: string) {
+async function registerOwner(app: Awaited<ReturnType<typeof buildApp>>, pool: Pool | null, identity: string) {
   const response = await app.inject({
     method: "POST",
     url: "/api/v2/auth/register",
@@ -56,10 +56,16 @@ async function registerOwner(app: Awaited<ReturnType<typeof buildApp>>, identity
   });
 
   expect(response.statusCode).toBe(201);
-  return response.json() as {
+  const body = response.json() as {
     access_token: string;
     user: { id: string; workspace_id: string };
   };
+
+  if (pool) {
+    await pool.query("UPDATE workspaces SET tier = 'standard' WHERE id = $1", [body.user.workspace_id]);
+  }
+
+  return body;
 }
 
 async function verifyOwner(app: Awaited<ReturnType<typeof buildApp>>, pool: Pool, email: string): Promise<void> {
@@ -469,7 +475,7 @@ describePg("Phase 3C public offers and guest intents", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true });
-      const owner = await registerOwner(app, "public-offer-admin");
+      const owner = await registerOwner(app, pool, "public-offer-admin");
       await verifyOwner(app, pool, "public-offer-admin@example.com");
 
       const response = await app.inject({
@@ -518,7 +524,7 @@ describePg("Phase 3C public offers and guest intents", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true });
-      const owner = await registerOwner(app, "public-offer-operator");
+      const owner = await registerOwner(app, pool, "public-offer-operator");
       await verifyOwner(app, pool, "public-offer-operator@example.com");
       const operator = await createMemberAndLogin(
         app,
@@ -571,7 +577,7 @@ describePg("Phase 3C public offers and guest intents", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true });
-      const owner = await registerOwner(app, "public-offer-viewer");
+      const owner = await registerOwner(app, pool, "public-offer-viewer");
       await verifyOwner(app, pool, "public-offer-viewer@example.com");
       const viewer = await createMemberAndLogin(
         app,
@@ -630,7 +636,7 @@ describePg("Phase 3C public offers and guest intents", () => {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const x402Provider = new TestX402Provider();
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
-      const owner = await registerOwner(app, "guest-support-viewer");
+      const owner = await registerOwner(app, pool, "guest-support-viewer");
       await verifyOwner(app, pool, "guest-support-viewer@example.com");
       const viewer = await createMemberAndLogin(
         app,
@@ -727,7 +733,7 @@ describePg("Phase 3C public offers and guest intents", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true });
-      const owner = await registerOwner(app, "public-offer-expiry");
+      const owner = await registerOwner(app, pool, "public-offer-expiry");
       await verifyOwner(app, pool, "public-offer-expiry@example.com");
       const created = await createOffer(app, owner.access_token, { ttl_seconds: 1 });
 
@@ -758,7 +764,7 @@ describePg("Phase 3C public offers and guest intents", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true });
-      const owner = await registerOwner(app, "guest-status");
+      const owner = await registerOwner(app, pool, "guest-status");
       await verifyOwner(app, pool, "guest-status@example.com");
       const created = await createOffer(app, owner.access_token, {
         payment_policy: "always_x402",
@@ -807,7 +813,7 @@ describePg("Phase 3C public offers and guest intents", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true });
-      const owner = await registerOwner(app, "guest-dedupe");
+      const owner = await registerOwner(app, pool, "guest-dedupe");
       await verifyOwner(app, pool, "guest-dedupe@example.com");
       const created = await createOffer(app, owner.access_token);
 
@@ -856,7 +862,7 @@ describePg("Phase 3C public offers and guest intents", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true });
-      const owner = await registerOwner(app, "guest-quota");
+      const owner = await registerOwner(app, pool, "guest-quota");
       await verifyOwner(app, pool, "guest-quota@example.com");
       const created = await createOffer(app, owner.access_token, {
         payment_policy: "quota_then_x402",
@@ -908,7 +914,7 @@ describePg("Phase 3C public offers and guest intents", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true });
-      const owner = await registerOwner(app, "guest-approval");
+      const owner = await registerOwner(app, pool, "guest-approval");
       await verifyOwner(app, pool, "guest-approval@example.com");
       const created = await createOffer(app, owner.access_token, {
         require_approval: true
@@ -945,7 +951,7 @@ describePg("Phase 3C public offers and guest intents", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true });
-      const owner = await registerOwner(app, "guest-approval-operator");
+      const owner = await registerOwner(app, pool, "guest-approval-operator");
       await verifyOwner(app, pool, "guest-approval-operator@example.com");
       const operator = await createMemberAndLogin(
         app,
@@ -1017,7 +1023,7 @@ describePg("Phase 3C public offers and guest intents", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true });
-      const owner = await registerOwner(app, "guest-approval-reject");
+      const owner = await registerOwner(app, pool, "guest-approval-reject");
       await verifyOwner(app, pool, "guest-approval-reject@example.com");
       const operator = await createMemberAndLogin(
         app,
@@ -1092,7 +1098,7 @@ describePg("Phase 3C public offers and guest intents", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true });
-      const owner = await registerOwner(app, "guest-payment-quote");
+      const owner = await registerOwner(app, pool, "guest-payment-quote");
       await verifyOwner(app, pool, "guest-payment-quote@example.com");
       const created = await createOffer(app, owner.access_token, {
         payment_policy: "always_x402",
@@ -1141,7 +1147,7 @@ describePg("Phase 3C public offers and guest intents", () => {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const x402Provider = new TestX402Provider();
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
-      const owner = await registerOwner(app, "guest-payment-idempotent");
+      const owner = await registerOwner(app, pool, "guest-payment-idempotent");
       await verifyOwner(app, pool, "guest-payment-idempotent@example.com");
       const created = await createOffer(app, owner.access_token, {
         payment_policy: "always_x402",
@@ -1185,7 +1191,7 @@ describePg("Phase 3C public offers and guest intents", () => {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const x402Provider = new TestX402Provider();
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
-      const owner = await registerOwner(app, "guest-payment-conflict");
+      const owner = await registerOwner(app, pool, "guest-payment-conflict");
       await verifyOwner(app, pool, "guest-payment-conflict@example.com");
       const created = await createOffer(app, owner.access_token, {
         payment_policy: "always_x402",
@@ -1227,7 +1233,7 @@ describePg("Phase 3C public offers and guest intents", () => {
       const x402Provider = new TestX402Provider();
       x402Provider.settleError = new Error("forced settlement failure");
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
-      const owner = await registerOwner(app, "guest-payment-failed");
+      const owner = await registerOwner(app, pool, "guest-payment-failed");
       await verifyOwner(app, pool, "guest-payment-failed@example.com");
       const created = await createOffer(app, owner.access_token, {
         payment_policy: "always_x402",
@@ -1294,7 +1300,7 @@ describePg("Phase 3C public offers and guest intents", () => {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const x402Provider = new TestX402Provider();
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
-      const owner = await registerOwner(app, "guest-payment-expired");
+      const owner = await registerOwner(app, pool, "guest-payment-expired");
       await verifyOwner(app, pool, "guest-payment-expired@example.com");
       const created = await createOffer(app, owner.access_token, {
         payment_policy: "always_x402",
@@ -1359,7 +1365,7 @@ describePg("Phase 3C public offers and guest intents", () => {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const x402Provider = new TestX402Provider();
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
-      const owner = await registerOwner(app, "guest-revoke");
+      const owner = await registerOwner(app, pool, "guest-revoke");
       await verifyOwner(app, pool, "guest-revoke@example.com");
       const created = await createOffer(app, owner.access_token, {
         payment_policy: "always_x402",
@@ -1441,7 +1447,7 @@ describePg("Phase 3C public offers and guest intents", () => {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const x402Provider = new TestX402Provider();
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
-      const owner = await registerOwner(app, "guest-expired-unfulfilled");
+      const owner = await registerOwner(app, pool, "guest-expired-unfulfilled");
       await verifyOwner(app, pool, "guest-expired-unfulfilled@example.com");
       const created = await createOffer(app, owner.access_token, {
         payment_policy: "always_x402",
@@ -1500,7 +1506,7 @@ describePg("Phase 3C public offers and guest intents", () => {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const x402Provider = new TestX402Provider();
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
-      const owner = await registerOwner(app, "guest-audit");
+      const owner = await registerOwner(app, pool, "guest-audit");
       await verifyOwner(app, pool, "guest-audit@example.com");
       const created = await createOffer(app, owner.access_token, {
         payment_policy: "always_x402",
@@ -1591,9 +1597,9 @@ describePg("Phase 3C public offers and guest intents", () => {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const x402Provider = new TestX402Provider();
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
-      const owner = await registerOwner(app, "guest-paid-human");
+      const owner = await registerOwner(app, pool, "guest-paid-human");
       await verifyOwner(app, pool, "guest-paid-human@example.com");
-      const otherWorkspace = await registerOwner(app, "guest-paid-other");
+      const otherWorkspace = await registerOwner(app, pool, "guest-paid-other");
       await verifyOwner(app, pool, "guest-paid-other@example.com");
       const created = await createOffer(app, owner.access_token, {
         payment_policy: "always_x402",
@@ -1773,7 +1779,7 @@ describePg("Phase 3C public offers and guest intents", () => {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const x402Provider = new TestX402Provider();
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
-      const owner = await registerOwner(app, "guest-agent-exchange");
+      const owner = await registerOwner(app, pool, "guest-agent-exchange");
       await verifyOwner(app, pool, "guest-agent-exchange@example.com");
       await enrollAgent(app, owner.access_token, "agent-alpha", "Agent Alpha");
       const created = await createOffer(app, owner.access_token, {
@@ -1824,7 +1830,7 @@ describePg("Phase 3C public offers and guest intents", () => {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const x402Provider = new TestX402Provider();
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
-      const owner = await registerOwner(app, "guest-agent-deny");
+      const owner = await registerOwner(app, pool, "guest-agent-deny");
       await verifyOwner(app, pool, "guest-agent-deny@example.com");
       const allowedAgent = await enrollAgent(app, owner.access_token, "agent-allowed", "Allowed Agent");
       const wrongAgent = await enrollAgent(app, owner.access_token, "agent-wrong", "Wrong Agent");
@@ -1886,7 +1892,7 @@ describePg("Phase 3C public offers and guest intents", () => {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const x402Provider = new TestX402Provider();
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
-      const owner = await registerOwner(app, "guest-agent-lifecycle");
+      const owner = await registerOwner(app, pool, "guest-agent-lifecycle");
       await verifyOwner(app, pool, "guest-agent-lifecycle@example.com");
       const agent = await enrollAgent(app, owner.access_token, "agent-runner", "Agent Runner");
       const agentAuth = await mintAgentToken(app, agent.bootstrap_api_key, "203.0.113.21");
@@ -2022,7 +2028,7 @@ describePg("Phase 3C public offers and guest intents", () => {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const x402Provider = new TestX402Provider();
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
-      const owner = await registerOwner(app, "guest-agent-approval");
+      const owner = await registerOwner(app, pool, "guest-agent-approval");
       await verifyOwner(app, pool, "guest-agent-approval@example.com");
       const agent = await enrollAgent(app, owner.access_token, "agent-gated", "Agent Gated");
       const agentAuth = await mintAgentToken(app, agent.bootstrap_api_key, "203.0.113.22");
@@ -2103,7 +2109,7 @@ describePg("Phase 3C public offers and guest intents", () => {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const x402Provider = new TestX402Provider();
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
-      const owner = await registerOwner(app, "guest-token-scope");
+      const owner = await registerOwner(app, pool, "guest-token-scope");
       await verifyOwner(app, pool, "guest-token-scope@example.com");
       const created = await createOffer(app, owner.access_token, {
         payment_policy: "always_x402",
@@ -2178,7 +2184,7 @@ describePg("Phase 3C public offers and guest intents", () => {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const x402Provider = new TestX402Provider();
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
-      const owner = await registerOwner(app, "guest-agent-outage");
+      const owner = await registerOwner(app, pool, "guest-agent-outage");
       await verifyOwner(app, pool, "guest-agent-outage@example.com");
       const agent = await enrollAgent(app, owner.access_token, "agent-recover", "Agent Recover");
       const agentAuth = await mintAgentToken(app, agent.bootstrap_api_key, "203.0.113.23");
@@ -2393,7 +2399,7 @@ describePg("Phase 3C public offers and guest intents", () => {
       try {
         await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
         const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true });
-        const owner = await registerOwner(app, "guest-ip-rate-limit");
+        const owner = await registerOwner(app, pool, "guest-ip-rate-limit");
         await verifyOwner(app, pool, "guest-ip-rate-limit@example.com");
         const created = await createOffer(app, owner.access_token, {
           payment_policy: "always_x402",
@@ -2479,7 +2485,7 @@ describePg("Phase 3C public offers and guest intents", () => {
       try {
         await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
         const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true });
-        const owner = await registerOwner(app, "guest-offer-rate-limit");
+        const owner = await registerOwner(app, pool, "guest-offer-rate-limit");
         await verifyOwner(app, pool, "guest-offer-rate-limit@example.com");
         const abusedOffer = await createOffer(app, owner.access_token, {
           payment_policy: "always_x402",
@@ -2546,7 +2552,7 @@ describePg("Phase 3C public offers and guest intents", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true });
-      const owner = await registerOwner(app, "guest-cleanup");
+      const owner = await registerOwner(app, pool, "guest-cleanup");
       await verifyOwner(app, pool, "guest-cleanup@example.com");
       const created = await createOffer(app, owner.access_token, {
         payment_policy: "always_x402",
@@ -2624,7 +2630,7 @@ describePg("Phase 3C public offers and guest intents", () => {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const x402Provider = new TestX402Provider();
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true, x402Provider });
-      const owner = await registerOwner(app, "guest-expired-support");
+      const owner = await registerOwner(app, pool, "guest-expired-support");
       await verifyOwner(app, pool, "guest-expired-support@example.com");
       const created = await createOffer(app, owner.access_token, {
         payment_policy: "always_x402",

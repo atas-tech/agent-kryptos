@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbPool } from "../src/db/index.js";
 import { runMigrations } from "../src/db/migrate.js";
 import { buildApp } from "../src/index.js";
+import { StripeBillingProvider } from "../src/services/billing.js";
 import { cleanupExpiredAuditRecords } from "../src/services/audit.js";
 import { findAuditLeaks } from "./helpers/audit-leak-scanner.js";
 
@@ -53,8 +54,11 @@ async function createApp(pool: Pool, stripeClient?: any): Promise<App> {
   const defaultMockStripe = {
     customers: { create: async () => ({ id: "cus_mock" }) },
     checkout: { sessions: { create: async () => ({ id: "cs_mock", url: "https://stripe.com/mock" }) } },
+    billingPortal: { sessions: { create: async () => ({ id: "cp_mock", url: "https://stripe.com/portal" }) } },
     webhooks: { constructEvent: (payload: string) => JSON.parse(payload) }
   };
+
+  const billingProvider = new StripeBillingProvider(stripeClient ?? (defaultMockStripe as any));
 
   return buildApp({
     db: pool,
@@ -62,7 +66,7 @@ async function createApp(pool: Pool, stripeClient?: any): Promise<App> {
     trustProxy: true,
     hmacSecret: "test-hmac",
     baseUrl: "http://localhost:3100",
-    stripeClient: stripeClient ?? defaultMockStripe
+    billingProvider
   });
 }
 

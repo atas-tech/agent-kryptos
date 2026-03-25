@@ -72,7 +72,8 @@ describe("proxy trust", () => {
   it("uses the forwarded client IP when trustProxy is enabled", async () => {
     const app = await buildApp({
       trustProxy: true,
-      useInMemoryStore: true
+      useInMemoryStore: true,
+      hmacSecret: "test-hmac-secret"
     });
 
     app.get("/__ip", async (req) => ({ ip: req.ip }));
@@ -141,7 +142,8 @@ describePg("database foundation", () => {
         "010_public_offers.sql",
         "011_guest_intents.sql",
         "012_guest_payments.sql",
-        "013_audit_guest_actor.sql"
+        "013_audit_guest_actor.sql",
+        "014_guest_agent_delivery_state.sql"
       ]);
       expect(secondRun).toEqual([]);
 

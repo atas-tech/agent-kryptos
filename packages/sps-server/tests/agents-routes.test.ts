@@ -42,7 +42,7 @@ async function disposeIsolatedPool(pool: Pool, schema: string): Promise<void> {
   await adminPool?.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
 }
 
-async function registerOwner(app: Awaited<ReturnType<typeof buildApp>>, identity: string) {
+async function registerOwner(app: Awaited<ReturnType<typeof buildApp>>, pool: Pool | null, identity: string) {
   const response = await app.inject({
     method: "POST",
     url: "/api/v2/auth/register",
@@ -55,10 +55,16 @@ async function registerOwner(app: Awaited<ReturnType<typeof buildApp>>, identity
   });
 
   expect(response.statusCode).toBe(201);
-  return response.json() as {
+  const body = response.json() as {
     access_token: string;
     user: { id: string; workspace_id: string };
   };
+
+  if (pool) {
+    await pool.query("UPDATE workspaces SET tier = 'standard' WHERE id = $1", [body.user.workspace_id]);
+  }
+
+  return body;
 }
 
 async function verifyOwner(app: Awaited<ReturnType<typeof buildApp>>, pool: Pool, email: string): Promise<void> {
@@ -117,7 +123,7 @@ describePg("agent routes", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true });
-      const owner = await registerOwner(app, "agent-owner");
+      const owner = await registerOwner(app, pool, "agent-owner");
       await verifyOwner(app, pool, "agent-owner@example.com");
 
       const enrollResponse = await app.inject({
@@ -260,7 +266,7 @@ describePg("agent routes", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true });
-      const owner = await registerOwner(app, "reenroll-owner");
+      const owner = await registerOwner(app, pool, "reenroll-owner");
       await verifyOwner(app, pool, "reenroll-owner@example.com");
 
       const firstEnroll = await app.inject({
@@ -332,7 +338,7 @@ describePg("agent routes", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true });
-      const owner = await registerOwner(app, "rbac-owner");
+      const owner = await registerOwner(app, pool, "rbac-owner");
       await verifyOwner(app, pool, "rbac-owner@example.com");
 
       const createViewerResponse = await app.inject({
@@ -436,10 +442,10 @@ describePg("agent routes", () => {
     try {
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true, trustProxy: true });
-      const owner = await registerOwner(app, "paged-owner");
+      const owner = await registerOwner(app, pool, "paged-owner");
       await verifyOwner(app, pool, "paged-owner@example.com");
 
-      const otherOwner = await registerOwner(app, "paged-other");
+      const otherOwner = await registerOwner(app, pool, "paged-other");
       await verifyOwner(app, pool, "paged-other@example.com");
 
       for (const [index, agentId] of ["agent-a", "agent-b", "agent-c"].entries()) {

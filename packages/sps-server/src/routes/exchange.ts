@@ -697,7 +697,7 @@ export async function registerExchangeRoutes(app: FastifyInstance, opts: Exchang
       });
 
       if (opts.db && workspace?.tier === "free" && agent.workspaceId) {
-        if (!exchangeAllowed(workspace.tier)) {
+        if (!exchangeAllowed(workspace.tier) && !x402Config.enabled) {
           return reply.code(403).send({ error: "Exchange is not available on this workspace tier", code: "feature_not_available" });
         }
 

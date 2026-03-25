@@ -288,7 +288,7 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
         requestId: req.params.id,
         actorId: submitterUserId,
         actorType: submitterUserId ? "user" : undefined,
-        workspaceId: submitterWorkspaceId,
+        workspaceId: submitterWorkspaceId || record.workspaceId,
         action: "submit",
         ip: req.ip
       });
