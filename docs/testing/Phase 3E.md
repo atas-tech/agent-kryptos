@@ -62,6 +62,11 @@ Useful companion commands:
   - [x] Secret request and retrieval flow succeeds end-to-end
   - [x] Exchange request, fulfill, submit, and retrieve flow succeeds end-to-end
 
+- [x] **Analytics E2E**
+  - [x] Dashboard metrics reflect workspace activity (Request volume, Active agents)
+  - [x] Charts and insight panels render correctly
+  - [x] Timeframe selectors trigger data reloads
+
 - [ ] **Python and Go SDKs**
   - [ ] Both SDKs complete the same hosted bootstrap and secret delivery flow
   - [ ] Both SDKs document in-memory-only secret handling expectations

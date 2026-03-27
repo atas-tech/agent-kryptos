@@ -156,6 +156,7 @@ export function AnalyticsPage() {
               <select
                 aria-label="Analytics window"
                 className="dashboard-select"
+                data-testid="analytics-days-select"
                 onChange={(event) => setDays(Number.parseInt(event.target.value, 10))}
                 value={days}
               >
@@ -169,6 +170,7 @@ export function AnalyticsPage() {
               <select
                 aria-label="Active agent window"
                 className="dashboard-select"
+                data-testid="analytics-hours-select"
                 onChange={(event) => setHours(Number.parseInt(event.target.value, 10))}
                 value={hours}
               >
