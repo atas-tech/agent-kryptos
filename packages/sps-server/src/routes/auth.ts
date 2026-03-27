@@ -13,6 +13,7 @@ import {
   UserServiceError,
   verifyEmail
 } from "../services/user.js";
+import { TurnstileServiceError, verifyTurnstileToken } from "../services/turnstile.js";
 import type { AuthResult, UserRecord } from "../services/user.js";
 import type { WorkspaceRecord } from "../services/workspace.js";
 
@@ -241,6 +242,10 @@ function sendServiceError(reply: FastifyReply, error: unknown) {
     return reply.code(error.statusCode).send({ error: error.message, code: error.code });
   }
 
+  if (error instanceof TurnstileServiceError) {
+    return reply.code(error.statusCode).send({ error: error.message, code: error.code });
+  }
+
   if (error instanceof Error && (
     error.message.includes("slug") ||
     error.message.includes("displayName") ||
@@ -257,7 +262,7 @@ async function requireCurrentUser(req: FastifyRequest, reply: FastifyReply): Pro
 }
 
 export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesOptions): Promise<void> {
-  app.post<{ Body: { email: string; password: string; workspace_slug: string; display_name: string } }>(
+  app.post<{ Body: { email: string; password: string; workspace_slug: string; display_name: string; cf_turnstile_response?: string } }>(
     "/register",
     {
       schema: {
@@ -269,7 +274,8 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
             email: { type: "string", minLength: 3, maxLength: 320 },
             password: { type: "string", minLength: 8, maxLength: 200 },
             workspace_slug: { type: "string", minLength: 3, maxLength: 40 },
-            display_name: { type: "string", minLength: 1, maxLength: 160 }
+            display_name: { type: "string", minLength: 1, maxLength: 160 },
+            cf_turnstile_response: { type: "string", minLength: 1, maxLength: 4096 }
           }
         }
       }
@@ -284,6 +290,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
       }
 
       try {
+        await verifyTurnstileToken(req.body.cf_turnstile_response, req.ip);
         const result = await registerUser(
           opts.db,
           req.body.email,
@@ -300,7 +307,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
     }
   );
 
-  app.post<{ Body: { email: string; password: string } }>(
+  app.post<{ Body: { email: string; password: string; cf_turnstile_response?: string } }>(
     "/login",
     {
       schema: {
@@ -310,7 +317,8 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
           required: ["email", "password"],
           properties: {
             email: { type: "string", minLength: 3, maxLength: 320 },
-            password: { type: "string", minLength: 1, maxLength: 200 }
+            password: { type: "string", minLength: 1, maxLength: 200 },
+            cf_turnstile_response: { type: "string", minLength: 1, maxLength: 4096 }
           }
         }
       }
@@ -325,6 +333,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
       }
 
       try {
+        await verifyTurnstileToken(req.body.cf_turnstile_response, req.ip);
         const result = await authenticateUser(
           opts.db,
           req.body.email,

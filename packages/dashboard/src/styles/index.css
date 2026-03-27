@@ -300,6 +300,15 @@
     @apply block text-xs;
   }
 
+  .turnstile-placeholder__copy {
+    @apply flex-1;
+  }
+
+  .turnstile-widget {
+    min-width: 300px;
+    min-height: 65px;
+  }
+
   .turnstile-placeholder--warning {
     border-color: rgba(251, 191, 36, 0.28);
     background: rgba(251, 191, 36, 0.08);

@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDbPool } from "../src/db/index.js";
 import { runMigrations } from "../src/db/migrate.js";
 import { buildApp } from "../src/index.js";
@@ -10,6 +10,7 @@ const migrationsDir = new URL("../src/db/migrations/", import.meta.url);
 
 let adminPool: Pool | null = null;
 const originalMaxActiveSessions = process.env.SPS_AUTH_MAX_ACTIVE_SESSIONS;
+const originalTurnstileSecret = process.env.SPS_TURNSTILE_SECRET;
 
 function restoreMaxActiveSessionsEnv(): void {
   if (originalMaxActiveSessions === undefined) {
@@ -63,6 +64,15 @@ async function disposeIsolatedPool(pool: Pool, schema: string): Promise<void> {
 }
 
 describePg("auth routes", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    if (originalTurnstileSecret === undefined) {
+      delete process.env.SPS_TURNSTILE_SECRET;
+    } else {
+      process.env.SPS_TURNSTILE_SECRET = originalTurnstileSecret;
+    }
+  });
+
   beforeAll(() => {
     if (!process.env.DATABASE_URL) {
       throw new Error("DATABASE_URL must be set for PostgreSQL integration tests");
@@ -205,6 +215,107 @@ describePg("auth routes", () => {
 
       expect(badPasswordResponse.statusCode).toBe(401);
 
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("skips turnstile validation when no secret is configured", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      delete process.env.SPS_TURNSTILE_SECRET;
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const app = await buildApp({ db: pool, useInMemoryStore: true });
+
+      const registerResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/register",
+        payload: {
+          email: "no-turnstile@example.com",
+          password: "Password123!",
+          workspace_slug: "no-turnstile-space",
+          display_name: "No Turnstile Space"
+        }
+      });
+
+      expect(registerResponse.statusCode).toBe(201);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("rejects invalid turnstile tokens for register and login when configured", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      process.env.SPS_TURNSTILE_SECRET = "turnstile-secret";
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const app = await buildApp({ db: pool, useInMemoryStore: true });
+
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ success: false, "error-codes": ["invalid-input-response"] }), { status: 200 })
+      );
+      const blockedRegister = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/register",
+        payload: {
+          email: "blocked@example.com",
+          password: "Password123!",
+          workspace_slug: "blocked-space",
+          display_name: "Blocked Space",
+          cf_turnstile_response: "invalid-token"
+        }
+      });
+
+      expect(blockedRegister.statusCode).toBe(400);
+      expect(blockedRegister.json()).toMatchObject({
+        code: "invalid_turnstile"
+      });
+
+      fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }));
+      const registerResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/register",
+        payload: {
+          email: "allowed@example.com",
+          password: "Password123!",
+          workspace_slug: "allowed-space",
+          display_name: "Allowed Space",
+          cf_turnstile_response: "valid-token"
+        }
+      });
+      expect(registerResponse.statusCode).toBe(201);
+
+      fetchMock.mockResolvedValueOnce(
+        new Response(JSON.stringify({ success: false, "error-codes": ["timeout-or-duplicate"] }), { status: 200 })
+      );
+      const blockedLogin = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/login",
+        payload: {
+          email: "allowed@example.com",
+          password: "Password123!",
+          cf_turnstile_response: "expired-token"
+        }
+      });
+
+      expect(blockedLogin.statusCode).toBe(400);
+      expect(blockedLogin.json()).toMatchObject({
+        code: "invalid_turnstile"
+      });
+
+      expect(fetchMock).toHaveBeenCalled();
       await app.close();
     } finally {
       await disposeIsolatedPool(pool, schema);

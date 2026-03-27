@@ -14,6 +14,7 @@ interface RegisterInput {
   password: string;
   workspaceSlug: string;
   displayName: string;
+  turnstileToken?: string | null;
 }
 
 export interface AuthContextValue {
@@ -22,7 +23,7 @@ export interface AuthContextValue {
   accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<AuthApiResponse>;
+  login: (email: string, password: string, turnstileToken?: string | null) => Promise<AuthApiResponse>;
   register: (input: RegisterInput) => Promise<AuthApiResponse>;
   logout: () => Promise<void>;
   refresh: () => Promise<string | null>;
@@ -119,14 +120,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
     })();
   }, []);
 
-  async function login(email: string, password: string): Promise<AuthApiResponse> {
+  async function login(email: string, password: string, turnstileToken?: string | null): Promise<AuthApiResponse> {
     const response = await fetch(`${apiBaseUrl()}/api/v2/auth/login`, {
       method: "POST",
       credentials: "include",
       headers: {
         "content-type": "application/json"
       },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({
+        email,
+        password,
+        cf_turnstile_response: turnstileToken ?? undefined
+      })
     });
 
     if (!response.ok) {
@@ -149,7 +154,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
         email: input.email,
         password: input.password,
         workspace_slug: input.workspaceSlug,
-        display_name: input.displayName
+        display_name: input.displayName,
+        cf_turnstile_response: input.turnstileToken ?? undefined
       })
     });
 

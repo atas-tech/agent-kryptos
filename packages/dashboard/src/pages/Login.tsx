@@ -1,10 +1,12 @@
 import { ArrowRight, Eye, Lock, Mail } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useCallback, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { firstAllowedRoute } from "../auth/ProtectedRoute.js";
 import { useAuth } from "../auth/useAuth.js";
 import { AuthShell } from "../components/AuthShell.js";
 import { FormField } from "../components/FormField.js";
+import { TurnstileWidget } from "../components/TurnstileWidget.js";
+import { turnstileEnabled } from "../security/turnstile.js";
 
 export function LoginPage() {
   const { login, user } = useAuth();
@@ -13,16 +15,27 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requiresTurnstile = turnstileEnabled();
+  const handleTurnstileChange = useCallback((token: string | null) => {
+    setTurnstileToken(token);
+    setError((current) => (current === "Complete human verification to continue." ? null : current));
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (requiresTurnstile && !turnstileToken) {
+      setError("Complete human verification to continue.");
+      return;
+    }
+
     setPending(true);
     setError(null);
 
     try {
-      const session = await login(email, password);
+      const session = await login(email, password, turnstileToken);
       const redirectTo = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
       navigate(redirectTo ?? firstAllowedRoute(session.user.role), { replace: true });
     } catch (submissionError) {
@@ -82,13 +95,7 @@ export function LoginPage() {
           value={password}
         />
 
-        <div className="turnstile-placeholder">
-          <div className="checkbox-proxy" />
-          <div>
-            <strong>Verify you are human</strong>
-            <span>Turnstile placeholder until Phase 3B Milestone 6.</span>
-          </div>
-        </div>
+        <TurnstileWidget onTokenChange={handleTurnstileChange} />
 
         <div className="auth-form__actions">
           <Link className="text-link" to="/forgot-password">

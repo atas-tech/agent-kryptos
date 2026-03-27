@@ -1,9 +1,11 @@
 import { ArrowRight, Eye, Lock, Mail, User2, Workflow } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useCallback, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/useAuth.js";
 import { AuthShell } from "../components/AuthShell.js";
 import { FormField } from "../components/FormField.js";
+import { TurnstileWidget } from "../components/TurnstileWidget.js";
+import { turnstileEnabled } from "../security/turnstile.js";
 
 export function RegisterPage() {
   const { register } = useAuth();
@@ -13,9 +15,15 @@ export function RegisterPage() {
   const [workspaceSlug, setWorkspaceSlug] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requiresTurnstile = turnstileEnabled();
+  const handleTurnstileChange = useCallback((token: string | null) => {
+    setTurnstileToken(token);
+    setError((current) => (current === "Complete human verification to continue." ? null : current));
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -24,11 +32,16 @@ export function RegisterPage() {
       return;
     }
 
+    if (requiresTurnstile && !turnstileToken) {
+      setError("Complete human verification to continue.");
+      return;
+    }
+
     setPending(true);
     setError(null);
 
     try {
-      const session = await register({ email, password, workspaceSlug, displayName });
+      const session = await register({ email, password, workspaceSlug, displayName, turnstileToken });
       navigate(session.user.role === "workspace_admin" ? "/" : "/agents", { replace: true });
     } catch (submissionError) {
       setError(submissionError instanceof Error ? submissionError.message : "Unable to create workspace");
@@ -111,6 +124,8 @@ export function RegisterPage() {
             I agree to the encrypted data handling terms and privacy policy for this workspace.
           </span>
         </label>
+
+        <TurnstileWidget onTokenChange={handleTurnstileChange} />
 
         <button className="primary-button primary-button--full" disabled={pending} type="submit">
           {pending ? "Provisioning..." : "Create my account"}
