@@ -140,3 +140,7 @@ export function exchangeAllowed(tier: WorkspaceTier): boolean {
 export function exchangeQuotaIncluded(tier: WorkspaceTier): boolean {
   return resolveLimit("exchange_request", tier) > 0;
 }
+
+export function dailyQuotaLimit(action: QuotaAction, tier: WorkspaceTier): number {
+  return resolveLimit(action, tier);
+}

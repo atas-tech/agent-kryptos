@@ -24,26 +24,26 @@ Useful companion commands:
 
 ## Milestone 1: Dashboard Session Hardening & Advanced Abuse Controls
 
-- [ ] **Hosted refresh-session cookie migration**
-  - [ ] Hosted login and refresh responses set or rotate the refresh token using `Secure` + `httpOnly` cookies
-  - [ ] Dashboard auth no longer persists the refresh token in `localStorage` or `sessionStorage`
-  - [ ] Page reload and token refresh still work through the cookie-backed hosted session flow
-  - [ ] Logout clears the refresh cookie and revokes the backing server-side session
-  - [ ] Missing or invalid hosted refresh cookies fail closed without silently restoring the session
+- [x] **Hosted refresh-session cookie migration**
+  - [x] Hosted login and refresh responses set or rotate the refresh token using `Secure` + `httpOnly` cookies
+  - [x] Dashboard auth no longer persists the refresh token in `localStorage` or `sessionStorage`
+  - [x] Page reload and token refresh still work through the cookie-backed hosted session flow
+  - [x] Logout clears the refresh cookie and revokes the backing server-side session
+  - [x] Missing or invalid hosted refresh cookies fail closed without silently restoring the session
 
-- [ ] **Turnstile**
-  - [ ] Register/login accepts a valid Turnstile token when configured
-  - [ ] Register/login rejects an invalid Turnstile token when configured
-  - [ ] Local/dev mode skips Turnstile validation when the secret is unset
+- [x] **Turnstile**
+  - [x] Register/login accepts a valid Turnstile token when configured
+  - [x] Register/login rejects an invalid Turnstile token when configured
+  - [x] Local/dev mode skips Turnstile validation when the secret is unset
 
-- [ ] **Burst throttling**
-  - [ ] A workspace exceeding the burst threshold emits an `abuse_alert` audit event
-  - [ ] Throttled workspaces are reduced to 1 request/minute
-  - [ ] The throttle clears automatically after the window expires
-- [ ] **Burst Simulator**
-  - [ ] Trigger a 5x quota burst
-  - [ ] Verify `abuse_alert` is emitted
-  - [ ] Verify the throttle applies only to the affected workspace
+- [x] **Burst throttling**
+  - [x] A workspace exceeding the burst threshold emits an `abuse_alert` audit event
+  - [x] Throttled workspaces are reduced to 1 request/minute
+  - [x] The throttle clears automatically after the window expires
+- [x] **Burst Simulator**
+  - [x] Trigger a 5x quota burst
+  - [x] Verify `abuse_alert` is emitted
+  - [x] Verify the throttle applies only to the affected workspace
 
 ## Milestone 2: Analytics, SDKs, Documentation & Community
 

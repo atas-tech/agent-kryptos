@@ -1,9 +1,10 @@
 import type { FastifyInstance, FastifyPluginOptions } from "fastify";
 import type { Pool } from "pg";
+import type { RateLimitService } from "../middleware/rate-limit.js";
 import { requireBrowserSig, requireGatewayAuth, requireUserAuth } from "../middleware/auth.js";
 import { logAudit } from "../services/audit.js";
 import { getGuestIntentById } from "../services/guest-intent.js";
-import type { QuotaService } from "../services/quota.js";
+import { dailyQuotaLimit, type QuotaService } from "../services/quota.js";
 import { createSecretRequest } from "../services/secret-request.js";
 import { getWorkspace } from "../services/workspace.js";
 import type { RequestStore, StoredRequest } from "../types.js";
@@ -38,7 +39,13 @@ export interface SecretRoutesOptions extends FastifyPluginOptions {
   uiBaseUrl?: string;
   db?: Pool | null;
   quotaService?: QuotaService;
+  rateLimitService?: RateLimitService;
 }
+
+const WORKSPACE_BURST_WINDOW_MS = 60 * 60 * 1000;
+const WORKSPACE_THROTTLE_WINDOW_MS = 60 * 1000;
+const WORKSPACE_BURST_MULTIPLIER = 5;
+const WORKSPACE_THROTTLE_LIMIT = 1;
 
 function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
@@ -122,21 +129,68 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
         return reply.code(400).send({ error: "description must not be blank" });
       }
 
-      if (opts.db && opts.quotaService && payload.workspaceId) {
+      if (opts.db && payload.workspaceId) {
         const workspace = await getWorkspace(opts.db, payload.workspaceId, { activeOnly: true });
         if (!workspace) {
           return reply.code(404).send({ error: "Workspace not found", code: "workspace_not_found" });
         }
 
-        const quota = await opts.quotaService.consumeDailyQuota(payload.workspaceId, "secret_request", workspace.tier);
-        if (!quota.allowed) {
-          return reply.code(429).send({
-            error: "Secret request quota exceeded",
-            code: "quota_exceeded",
-            limit: quota.limit,
-            used: quota.used,
-            reset_at: quota.resetAt
-          });
+        if (isHostedModeEnabled() && opts.rateLimitService) {
+          const burstThreshold = dailyQuotaLimit("secret_request", workspace.tier) * WORKSPACE_BURST_MULTIPLIER;
+          const burst = await opts.rateLimitService.consumeWorkspaceBurst(
+            `workspace:burst:${payload.workspaceId}:secret_request`,
+            burstThreshold,
+            WORKSPACE_BURST_WINDOW_MS,
+            WORKSPACE_THROTTLE_LIMIT,
+            WORKSPACE_THROTTLE_WINDOW_MS
+          );
+
+          if (burst.triggerAlert) {
+            await logAudit(opts.db, {
+              event: "abuse_alert",
+              workspaceId: payload.workspaceId,
+              actorType: "system",
+              resourceId: payload.workspaceId,
+              metadata: {
+                scope: "secret_request",
+                tier: workspace.tier,
+                threshold: burst.threshold,
+                used: burst.windowUsed,
+                throttle_limit: burst.throttleLimit,
+                throttle_window_seconds: Math.floor(WORKSPACE_THROTTLE_WINDOW_MS / 1000),
+                window_seconds: Math.floor(WORKSPACE_BURST_WINDOW_MS / 1000),
+                ip: req.ip
+              },
+              action: "workspace_burst_detected",
+              ip: req.ip
+            });
+          }
+
+          if (burst.throttled) {
+            reply.header("Retry-After", String(burst.retryAfterSeconds));
+            return reply.code(429).send({
+              error: "Workspace is temporarily throttled due to burst activity",
+              code: "abuse_throttled",
+              retry_after_seconds: burst.retryAfterSeconds,
+              limit: burst.throttleLimit,
+              used: burst.throttleUsed,
+              threshold: burst.threshold,
+              window_used: burst.windowUsed
+            });
+          }
+        }
+
+        if (opts.quotaService) {
+          const quota = await opts.quotaService.consumeDailyQuota(payload.workspaceId, "secret_request", workspace.tier);
+          if (!quota.allowed) {
+            return reply.code(429).send({
+              error: "Secret request quota exceeded",
+              code: "quota_exceeded",
+              limit: quota.limit,
+              used: quota.used,
+              reset_at: quota.resetAt
+            });
+          }
         }
       }
 

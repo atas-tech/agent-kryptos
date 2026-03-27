@@ -262,6 +262,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       store,
       db: options.db,
       quotaService,
+      rateLimitService,
       hmacSecret,
       requestTtlSeconds: 180,
       submittedTtlSeconds: 60,

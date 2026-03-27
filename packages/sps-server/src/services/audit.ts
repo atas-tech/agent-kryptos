@@ -32,6 +32,7 @@ export interface AuditEvent {
     | "member_updated"
     | "workspace_policy_validated"
     | "workspace_policy_updated"
+    | "abuse_alert"
     | "public_offer_created"
     | "public_offer_revoked"
     | "guest_intent_pending_approval"

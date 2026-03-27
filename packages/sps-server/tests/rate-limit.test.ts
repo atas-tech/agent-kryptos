@@ -1,10 +1,11 @@
 import { URL } from "node:url";
 import { SignJWT } from "jose";
 import type { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createDbPool } from "../src/db/index.js";
 import { runMigrations } from "../src/db/migrate.js";
 import { buildApp } from "../src/index.js";
+import { InMemoryRateLimitService } from "../src/middleware/rate-limit.js";
 import { cleanupExpiredAuditRecords } from "../src/services/audit.js";
 
 const runPgIntegration = process.env.SPS_PG_INTEGRATION === "1";
@@ -127,6 +128,21 @@ async function issueHostedAgentToken(workspaceId: string, agentId: string): Prom
     .setIssuedAt(now)
     .setExpirationTime(now + 300)
     .sign(new TextEncoder().encode(process.env.SPS_AGENT_JWT_SECRET!));
+}
+
+async function requestSecret(app: App, agentToken: string, description: string, ip = "198.51.100.20") {
+  return app.inject({
+    method: "POST",
+    url: "/api/v2/secret/request",
+    headers: {
+      authorization: `Bearer ${agentToken}`,
+      "x-forwarded-for": ip
+    },
+    payload: {
+      public_key: "cHVibGljLWtleQ==",
+      description
+    }
+  });
 }
 
 describePg("Milestone 6 rate limits and audit", () => {
@@ -287,6 +303,117 @@ describePg("Milestone 6 rate limits and audit", () => {
       await app.close();
     } finally {
       await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("throttles bursty secret-request traffic per workspace and emits a single abuse alert", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const app = await createHostedApp(pool);
+
+      const ownerA = await registerOwner(app, "burst-owner-a");
+      const ownerB = await registerOwner(app, "burst-owner-b");
+      const workspaceAAgent = await issueHostedAgentToken(ownerA.user.workspace_id, "agent:burst-a");
+      const workspaceBAgent = await issueHostedAgentToken(ownerB.user.workspace_id, "agent:burst-b");
+
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        const response = await requestSecret(app, workspaceAAgent, `Burst attempt ${attempt + 1}`, "198.51.100.21");
+        if (attempt < 10) {
+          expect(response.statusCode).toBe(201);
+        } else {
+          expect(response.statusCode).toBe(429);
+          expect((response.json() as { code: string }).code).toBe("quota_exceeded");
+        }
+      }
+
+      const throttled = await requestSecret(app, workspaceAAgent, "Burst attempt 51", "198.51.100.21");
+      expect(throttled.statusCode).toBe(429);
+      expect(Number(throttled.headers["retry-after"])).toBeGreaterThan(0);
+      expect(throttled.json()).toMatchObject({
+        code: "abuse_throttled",
+        limit: 1,
+        threshold: 50,
+        window_used: 51
+      });
+
+      const auditRows = await pool.query<{
+        event_type: string;
+        metadata: Record<string, unknown> | null;
+      }>(
+        `
+          SELECT event_type, metadata
+          FROM audit_log
+          WHERE workspace_id = $1 AND event_type = 'abuse_alert'
+          ORDER BY created_at ASC
+        `,
+        [ownerA.user.workspace_id]
+      );
+
+      expect(auditRows.rows).toHaveLength(1);
+      expect(auditRows.rows[0]).toMatchObject({
+        event_type: "abuse_alert",
+        metadata: expect.objectContaining({
+          scope: "secret_request",
+          threshold: 50,
+          used: 51,
+          throttle_limit: 1
+        })
+      });
+
+      const unaffectedWorkspace = await requestSecret(app, workspaceBAgent, "Other workspace request", "198.51.100.22");
+      expect(unaffectedWorkspace.statusCode).toBe(201);
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("self clears workspace burst throttles after the sliding hour window passes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-27T00:00:00Z"));
+
+    try {
+      const service = new InMemoryRateLimitService();
+
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        const result = await service.consumeWorkspaceBurst(
+          "workspace:burst:test-workspace:secret_request",
+          50,
+          60 * 60 * 1000,
+          1,
+          60 * 1000
+        );
+        expect(result.throttled).toBe(false);
+      }
+
+      const throttled = await service.consumeWorkspaceBurst(
+        "workspace:burst:test-workspace:secret_request",
+        50,
+        60 * 60 * 1000,
+        1,
+        60 * 1000
+      );
+      expect(throttled.throttled).toBe(true);
+      expect(throttled.triggerAlert).toBe(true);
+      expect(throttled.windowUsed).toBe(51);
+
+      vi.advanceTimersByTime(61 * 60 * 1000);
+      const afterWindow = await service.consumeWorkspaceBurst(
+        "workspace:burst:test-workspace:secret_request",
+        50,
+        60 * 60 * 1000,
+        1,
+        60 * 1000
+      );
+      expect(afterWindow.throttled).toBe(false);
+      expect(afterWindow.triggerAlert).toBe(false);
+      expect(afterWindow.windowUsed).toBe(1);
+      expect(afterWindow.retryAfterSeconds).toBe(0);
+    } finally {
+      vi.useRealTimers();
     }
   });
 
