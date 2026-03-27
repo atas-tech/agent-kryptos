@@ -20,6 +20,16 @@ function restoreMaxActiveSessionsEnv(): void {
   process.env.SPS_AUTH_MAX_ACTIVE_SESSIONS = originalMaxActiveSessions;
 }
 
+function extractCookiePair(setCookieHeader: string | string[] | undefined): string {
+  const normalized = Array.isArray(setCookieHeader) ? setCookieHeader[0] : setCookieHeader;
+  const cookiePair = normalized?.split(";")[0];
+  if (!cookiePair) {
+    throw new Error("Set-Cookie header missing");
+  }
+
+  return cookiePair;
+}
+
 function randomSchema(prefix: string): string {
   return `${prefix}_${Math.random().toString(16).slice(2, 10)}`;
 }
@@ -275,6 +285,99 @@ describePg("auth routes", () => {
 
       await app.close();
     } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("uses httpOnly refresh cookies in hosted mode", async () => {
+    const { pool, schema } = await createIsolatedPool();
+    const originalHostedMode = process.env.SPS_HOSTED_MODE;
+    const originalCookieDomain = process.env.SPS_AUTH_COOKIE_DOMAIN;
+
+    try {
+      process.env.SPS_HOSTED_MODE = "1";
+      process.env.SPS_AUTH_COOKIE_DOMAIN = "blindpass.test";
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const app = await buildApp({ db: pool, useInMemoryStore: true });
+
+      const registerResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/register",
+        payload: {
+          email: "cookie@example.com",
+          password: "Password123!",
+          workspace_slug: "cookie-space",
+          display_name: "Cookie Space"
+        }
+      });
+
+      expect(registerResponse.statusCode).toBe(201);
+      const registered = registerResponse.json() as { access_token: string; refresh_token?: string };
+      expect(registered.refresh_token).toBeUndefined();
+
+      const registerSetCookie = String(registerResponse.headers["set-cookie"] ?? "");
+      expect(registerSetCookie).toContain("sps_refresh_token=");
+      expect(registerSetCookie).toContain("HttpOnly");
+      expect(registerSetCookie).toContain("SameSite=Strict");
+      expect(registerSetCookie).toContain("Domain=blindpass.test");
+
+      const firstCookie = extractCookiePair(registerResponse.headers["set-cookie"]);
+      const refreshResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/refresh",
+        headers: {
+          cookie: firstCookie
+        },
+        payload: {}
+      });
+
+      expect(refreshResponse.statusCode).toBe(200);
+      const refreshed = refreshResponse.json() as { access_token: string; refresh_token?: string };
+      expect(refreshed.refresh_token).toBeUndefined();
+
+      const rotatedCookie = extractCookiePair(refreshResponse.headers["set-cookie"]);
+      expect(rotatedCookie).not.toBe(firstCookie);
+
+      const oldCookieRefresh = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/refresh",
+        headers: {
+          cookie: firstCookie
+        },
+        payload: {}
+      });
+      expect(oldCookieRefresh.statusCode).toBe(401);
+      expect(String(oldCookieRefresh.headers["set-cookie"] ?? "")).toContain("Max-Age=0");
+
+      const logoutResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/logout",
+        headers: {
+          authorization: `Bearer ${refreshed.access_token}`,
+          cookie: rotatedCookie
+        }
+      });
+      expect(logoutResponse.statusCode).toBe(204);
+      expect(String(logoutResponse.headers["set-cookie"] ?? "")).toContain("Max-Age=0");
+
+      const refreshAfterLogout = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/refresh",
+        headers: {
+          cookie: rotatedCookie
+        },
+        payload: {}
+      });
+      expect(refreshAfterLogout.statusCode).toBe(401);
+
+      await app.close();
+    } finally {
+      process.env.SPS_HOSTED_MODE = originalHostedMode;
+      if (originalCookieDomain === undefined) {
+        delete process.env.SPS_AUTH_COOKIE_DOMAIN;
+      } else {
+        process.env.SPS_AUTH_COOKIE_DOMAIN = originalCookieDomain;
+      }
       await disposeIsolatedPool(pool, schema);
     }
   });

@@ -24,23 +24,29 @@ describe("dashboard milestone 2", () => {
   });
 
   it("redirects unauthenticated users to login", async () => {
-    vi.stubGlobal("fetch", vi.fn());
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "Invalid refresh token" }), { status: 401 }))
+    );
     renderApp(["/"]);
 
     expect(await screen.findByText("Welcome back")).toBeInTheDocument();
   });
 
-  it("stores refresh token in sessionStorage and clears it on logout", async () => {
+  it("uses cookie-backed refresh without persisting tokens in browser storage", async () => {
     const fetchMock = vi.fn<
       (input: string | URL | Request, init?: RequestInit) => Promise<Response>
     >().mockImplementation(async (input) => {
       const url = String(input);
 
+      if (url.endsWith("/api/v2/auth/refresh")) {
+        return new Response(JSON.stringify({ error: "Invalid refresh token" }), { status: 401 });
+      }
+
       if (url.endsWith("/api/v2/auth/login")) {
         return new Response(
           JSON.stringify({
             access_token: "header.eyJmcGMiOmZhbHNlfQ.signature",
-            refresh_token: "refresh-1",
             user: {
               id: "user-1",
               email: "owner@example.com",
@@ -77,28 +83,35 @@ describe("dashboard milestone 2", () => {
     vi.stubGlobal("fetch", fetchMock);
     renderApp(["/login"]);
 
+    await screen.findByText("Welcome back");
     await userEvent.type(screen.getByLabelText("Email address"), "owner@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "Password123!");
     await userEvent.click(screen.getByRole("button", { name: /login to portal/i }));
 
     await screen.findByText("Workspace command overview");
-    expect(window.sessionStorage.getItem("sps_refresh_token")).toBe("refresh-1");
+    expect(window.sessionStorage.getItem("sps_refresh_token")).toBeNull();
     expect(window.localStorage.getItem("sps_refresh_token")).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: /log out/i }));
     await screen.findByText("Welcome back");
     expect(window.sessionStorage.getItem("sps_refresh_token")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/v2\/auth\/login$/),
+      expect.objectContaining({ credentials: "include" })
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/v2\/auth\/logout$/),
+      expect.objectContaining({ credentials: "include" })
+    );
   });
 
   it("redirects force-password-change users to change-password", async () => {
-    window.sessionStorage.setItem("sps_refresh_token", "refresh-1");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
         new Response(
           JSON.stringify({
             access_token: "header.eyJmcGMiOnRydWV9.signature",
-            refresh_token: "refresh-2",
             user: {
               id: "user-2",
               email: "operator@example.com",
@@ -131,14 +144,12 @@ describe("dashboard milestone 2", () => {
   });
 
   it("redirects non-admins away from the home route", async () => {
-    window.sessionStorage.setItem("sps_refresh_token", "refresh-1");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
         new Response(
           JSON.stringify({
             access_token: "header.eyJmcGMiOmZhbHNlfQ.signature",
-            refresh_token: "refresh-2",
             user: {
               id: "user-2",
               email: "operator@example.com",
@@ -172,42 +183,45 @@ describe("dashboard milestone 2", () => {
   });
 
   it("registers a workspace and redirects into the shell", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(
-          JSON.stringify({
-            access_token: "header.eyJmcGMiOmZhbHNlfQ.signature",
-            refresh_token: "refresh-3",
-            user: {
-              id: "user-3",
-              email: "owner@example.com",
-              role: "workspace_admin",
-              status: "active",
-              email_verified: false,
-              force_password_change: false,
-              workspace_id: "workspace-3",
-              created_at: "2026-03-13T00:00:00.000Z",
-              updated_at: "2026-03-13T00:00:00.000Z"
-            },
-            workspace: {
-              id: "workspace-3",
-              slug: "agent-lab",
-              display_name: "Agent Lab",
-              tier: "free",
-              status: "active",
-              owner_user_id: "user-3",
-              created_at: "2026-03-13T00:00:00.000Z",
-              updated_at: "2026-03-13T00:00:00.000Z"
-            }
-          }),
-          { status: 201 }
-        )
-      )
-    );
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+
+      if (url.endsWith("/api/v2/auth/refresh")) {
+        return new Response(JSON.stringify({ error: "Invalid refresh token" }), { status: 401 });
+      }
+
+      return new Response(
+        JSON.stringify({
+          access_token: "header.eyJmcGMiOmZhbHNlfQ.signature",
+          user: {
+            id: "user-3",
+            email: "owner@example.com",
+            role: "workspace_admin",
+            status: "active",
+            email_verified: false,
+            force_password_change: false,
+            workspace_id: "workspace-3",
+            created_at: "2026-03-13T00:00:00.000Z",
+            updated_at: "2026-03-13T00:00:00.000Z"
+          },
+          workspace: {
+            id: "workspace-3",
+            slug: "agent-lab",
+            display_name: "Agent Lab",
+            tier: "free",
+            status: "active",
+            owner_user_id: "user-3",
+            created_at: "2026-03-13T00:00:00.000Z",
+            updated_at: "2026-03-13T00:00:00.000Z"
+          }
+        }),
+        { status: 201 }
+      );
+    }));
 
     renderApp(["/register"]);
 
+    await screen.findByLabelText("Display name");
     await userEvent.type(screen.getByLabelText("Display name"), "Agent Lab");
     await userEvent.type(screen.getByLabelText("Email address"), "owner@example.com");
     await userEvent.type(screen.getByLabelText("Workspace slug"), "agent-lab");
@@ -241,5 +255,10 @@ describe("dashboard milestone 2", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:3100/api/v2/workspace",
+      expect.objectContaining({ credentials: "include" })
+    );
   });
 });

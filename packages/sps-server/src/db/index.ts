@@ -1,6 +1,6 @@
 import { Pool, type PoolConfig, type PoolClient } from "pg";
 
-const DEFAULT_DATABASE_URL = "postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass";
+const DEFAULT_DATABASE_URL = "postgresql://blindpass:localdev@127.0.0.1:5433/blindpass";
 const DEFAULT_POOL_SIZE = 10;
 
 export type DbExecutor = Pick<Pool, "query"> | Pick<PoolClient, "query">;

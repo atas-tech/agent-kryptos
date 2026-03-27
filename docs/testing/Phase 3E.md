@@ -9,7 +9,7 @@ Phase 3E spans `packages/sps-server`, `packages/dashboard`, SDK packaging work, 
 1. Start local dependencies:
    `docker compose up -d redis postgres`
 2. Export the PostgreSQL connection string and enable hosted integration coverage:
-   `export DATABASE_URL=postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass`
+   `export DATABASE_URL=postgresql://blindpass:localdev@127.0.0.1:5433/blindpass`
    `export SPS_PG_INTEGRATION=1`
 3. Run the server test suites:
    `npm test --workspace=packages/sps-server`

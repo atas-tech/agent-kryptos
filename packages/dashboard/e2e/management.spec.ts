@@ -20,7 +20,7 @@ test.describe("Management", () => {
     await expect(page).toHaveURL("/");
     
     // 2. Mark owner as verified in DB
-    const client = new pg.Client({ connectionString: process.env.DATABASE_URL || "postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass" });
+    const client = new pg.Client({ connectionString: process.env.DATABASE_URL || "postgresql://blindpass:localdev@127.0.0.1:5433/blindpass" });
     await client.connect();
     try {
       await client.query(

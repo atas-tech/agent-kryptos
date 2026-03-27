@@ -31,10 +31,13 @@ test.describe("Authentication", () => {
     await expect(page.getByText("Workspace command overview")).toBeVisible();
     await expect(page.locator('.workspace-heading').first()).toHaveText("E2E Workspace");
     
-    // Verify localStorage does not retain session tokens.
+    // Verify browser storage does not retain session tokens.
     const localStorage = await page.evaluate(() => JSON.stringify(window.localStorage));
+    const sessionStorage = await page.evaluate(() => JSON.stringify(window.sessionStorage));
     expect(localStorage).not.toContain("access_token");
     expect(localStorage).not.toContain("sps_refresh_token");
+    expect(sessionStorage).not.toContain("access_token");
+    expect(sessionStorage).not.toContain("sps_refresh_token");
   });
 
   test("Scenario 002: Login & Session Persistence", async ({ page }) => {

@@ -71,7 +71,7 @@ Add PostgreSQL as a durable store for workspace, user, and agent records. Redis 
 #### [NEW] [db/index.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/db/index.ts)
 
 - PostgreSQL connection pool using `pg` (`Pool`)
-- Configured via `DATABASE_URL` env var (default: `postgresql://localhost:5432/agent_blindpass`)
+- Configured via `DATABASE_URL` env var (default: `postgresql://localhost:5432/blindpass`)
 - Connection pool size from `DB_POOL_SIZE` (default: 10)
 - Graceful shutdown on `onClose` hook
 
@@ -125,7 +125,7 @@ CREATE UNIQUE INDEX idx_workspaces_slug_unique ON workspaces(slug);
 #### [MODIFY] [docker-compose.yml](file:///home/hvo/Projects/blindpass/docker-compose.yml)
 
 - Add `postgres` service (`postgres:16-alpine`)
-- Add `agent_blindpass` database with configurable credentials
+- Add `blindpass` database with configurable credentials
 - Add volume mount for data persistence
 
 #### [MODIFY] [index.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/index.ts)
@@ -503,7 +503,7 @@ services:
     image: postgres:16-alpine
     container_name: blindpass-postgres
     environment:
-      POSTGRES_DB: agent_blindpass
+      POSTGRES_DB: blindpass
       POSTGRES_USER: blindpass
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localdev}
     ports:
@@ -511,7 +511,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U blindpass -d agent_blindpass"]
+      test: ["CMD-SHELL", "pg_isready -U blindpass -d blindpass"]
       interval: 1s
       timeout: 3s
       retries: 30

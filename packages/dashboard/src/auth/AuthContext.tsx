@@ -9,8 +9,6 @@ import {
 import { apiBaseUrl, configureApiClient, type AuthApiResponse } from "../api/client.js";
 import type { AuthUser, WorkspaceSummary } from "./types.js";
 
-const REFRESH_TOKEN_KEY = "sps_refresh_token";
-
 interface RegisterInput {
   email: string;
   password: string;
@@ -35,29 +33,9 @@ export interface AuthContextValue {
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-function getStoredRefreshToken(): string | null {
-  return window.sessionStorage.getItem(REFRESH_TOKEN_KEY);
-}
-
-function setStoredRefreshToken(token: string | null): void {
-  if (token) {
-    window.sessionStorage.setItem(REFRESH_TOKEN_KEY, token);
-    return;
-  }
-
-  window.sessionStorage.removeItem(REFRESH_TOKEN_KEY);
-}
-
 async function readError(response: Response, fallback: string): Promise<Error> {
   const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
   return new Error(payload?.message ?? payload?.error ?? fallback);
-}
-
-function updateTokens(setAccessToken: (token: string | null) => void, accessToken: string, refreshToken?: string): void {
-  setAccessToken(accessToken);
-  if (refreshToken !== undefined) {
-    setStoredRefreshToken(refreshToken);
-  }
 }
 
 export function AuthProvider({ children }: PropsWithChildren) {
@@ -70,7 +48,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   function applyAuth(payload: AuthApiResponse): void {
     accessTokenRef.current = payload.access_token;
     syncApiClient();
-    updateTokens(setAccessToken, payload.access_token, payload.refresh_token);
+    setAccessToken(payload.access_token);
     setUser(payload.user);
     if (payload.workspace) {
       setWorkspace(payload.workspace);
@@ -83,7 +61,6 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setAccessToken(null);
     setUser(null);
     setWorkspace(null);
-    setStoredRefreshToken(null);
   }
 
   function syncApiClient(): void {
@@ -96,27 +73,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   let refreshPromise: Promise<string | null> | null = null;
 
-  async function refresh(explicitRefreshToken?: string): Promise<string | null> {
+  async function refresh(): Promise<string | null> {
     if (refreshPromise) {
       return refreshPromise;
     }
 
     refreshPromise = (async () => {
       try {
-        const refreshToken = explicitRefreshToken ?? getStoredRefreshToken();
-        if (!refreshToken) {
-          clearAuth();
-          return null;
-        }
-
         const response = await fetch(`${apiBaseUrl()}/api/v2/auth/refresh`, {
           method: "POST",
+          credentials: "include",
           headers: {
             "content-type": "application/json"
           },
-          body: JSON.stringify({
-            refresh_token: refreshToken
-          })
+          body: JSON.stringify({})
         });
 
         if (!response.ok) {
@@ -142,10 +112,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     void (async () => {
       try {
-        const token = getStoredRefreshToken();
-        if (token) {
-          await refresh(token);
-        }
+        await refresh();
       } finally {
         setIsLoading(false);
       }
@@ -155,6 +122,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   async function login(email: string, password: string): Promise<AuthApiResponse> {
     const response = await fetch(`${apiBaseUrl()}/api/v2/auth/login`, {
       method: "POST",
+      credentials: "include",
       headers: {
         "content-type": "application/json"
       },
@@ -173,6 +141,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   async function register(input: RegisterInput): Promise<AuthApiResponse> {
     const response = await fetch(`${apiBaseUrl()}/api/v2/auth/register`, {
       method: "POST",
+      credentials: "include",
       headers: {
         "content-type": "application/json"
       },
@@ -202,6 +171,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
     await fetch(`${apiBaseUrl()}/api/v2/auth/logout`, {
       method: "POST",
+      credentials: "include",
       headers: {
         authorization: `Bearer ${token}`
       }
@@ -211,6 +181,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   async function changePassword(currentPassword: string, nextPassword: string): Promise<void> {
     const response = await fetch(`${apiBaseUrl()}/api/v2/auth/change-password`, {
       method: "POST",
+      credentials: "include",
       headers: {
         "content-type": "application/json",
         authorization: accessToken ? `Bearer ${accessToken}` : ""
@@ -230,7 +201,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
       user: AuthUser;
     };
 
-    updateTokens(setAccessToken, payload.access_token);
+    accessTokenRef.current = payload.access_token;
+    syncApiClient();
+    setAccessToken(payload.access_token);
     setUser(payload.user);
   }
 

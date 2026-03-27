@@ -13,12 +13,156 @@ import {
   UserServiceError,
   verifyEmail
 } from "../services/user.js";
-import type { UserRecord } from "../services/user.js";
+import type { AuthResult, UserRecord } from "../services/user.js";
 import type { WorkspaceRecord } from "../services/workspace.js";
 
 export interface AuthRoutesOptions extends FastifyPluginOptions {
   db: Pool;
   rateLimitService?: RateLimitService;
+}
+
+const REFRESH_COOKIE_NAME = "sps_refresh_token";
+const REFRESH_COOKIE_PATH = "/api/v2/auth";
+
+function isHostedModeEnabled(): boolean {
+  const raw = process.env.SPS_HOSTED_MODE?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
+function isProductionEnv(): boolean {
+  return process.env.NODE_ENV === "production";
+}
+
+function parseCookies(header: string | undefined): Record<string, string> {
+  if (!header) {
+    return {};
+  }
+
+  const cookies: Record<string, string> = {};
+  for (const entry of header.split(";")) {
+    const separatorIndex = entry.indexOf("=");
+    if (separatorIndex <= 0) {
+      continue;
+    }
+
+    const key = entry.slice(0, separatorIndex).trim();
+    const value = entry.slice(separatorIndex + 1).trim();
+    if (!key) {
+      continue;
+    }
+
+    cookies[key] = decodeURIComponent(value);
+  }
+
+  return cookies;
+}
+
+function requestIsHttps(req: FastifyRequest): boolean {
+  if (req.protocol === "https") {
+    return true;
+  }
+
+  const forwardedProto = req.headers["x-forwarded-proto"];
+  if (Array.isArray(forwardedProto)) {
+    return forwardedProto.some((value) => value.includes("https"));
+  }
+
+  return typeof forwardedProto === "string" && forwardedProto.includes("https");
+}
+
+function shouldUseSecureCookies(req: FastifyRequest): boolean {
+  return isProductionEnv() || requestIsHttps(req);
+}
+
+function authCookieDomain(): string | null {
+  const domain = process.env.SPS_AUTH_COOKIE_DOMAIN?.trim();
+  return domain ? domain : null;
+}
+
+function serializeCookie(name: string, value: string, attributes: {
+  path: string;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: "Strict" | "Lax" | "None";
+  domain?: string | null;
+  expires?: Date;
+  maxAge?: number;
+}): string {
+  const parts = [`${name}=${encodeURIComponent(value)}`];
+  parts.push(`Path=${attributes.path}`);
+
+  if (attributes.domain) {
+    parts.push(`Domain=${attributes.domain}`);
+  }
+
+  if (attributes.expires) {
+    parts.push(`Expires=${attributes.expires.toUTCString()}`);
+  }
+
+  if (typeof attributes.maxAge === "number") {
+    parts.push(`Max-Age=${Math.max(0, Math.floor(attributes.maxAge))}`);
+  }
+
+  if (attributes.httpOnly) {
+    parts.push("HttpOnly");
+  }
+
+  if (attributes.secure) {
+    parts.push("Secure");
+  }
+
+  if (attributes.sameSite) {
+    parts.push(`SameSite=${attributes.sameSite}`);
+  }
+
+  return parts.join("; ");
+}
+
+function setRefreshTokenCookie(req: FastifyRequest, reply: FastifyReply, token: string, expiresAtEpochSeconds: number): void {
+  if (isHostedModeEnabled() && isProductionEnv() && !shouldUseSecureCookies(req)) {
+    throw new UserServiceError(500, "insecure_cookie_config", "Hosted auth requires HTTPS for refresh cookies");
+  }
+
+  const maxAge = Math.max(0, expiresAtEpochSeconds - Math.floor(Date.now() / 1000));
+  reply.header("Set-Cookie", serializeCookie(REFRESH_COOKIE_NAME, token, {
+    path: REFRESH_COOKIE_PATH,
+    domain: authCookieDomain(),
+    expires: new Date(expiresAtEpochSeconds * 1000),
+    maxAge,
+    httpOnly: true,
+    sameSite: "Strict",
+    secure: shouldUseSecureCookies(req)
+  }));
+}
+
+function clearRefreshTokenCookie(req: FastifyRequest, reply: FastifyReply): void {
+  reply.header("Set-Cookie", serializeCookie(REFRESH_COOKIE_NAME, "", {
+    path: REFRESH_COOKIE_PATH,
+    domain: authCookieDomain(),
+    expires: new Date(0),
+    maxAge: 0,
+    httpOnly: true,
+    sameSite: "Strict",
+    secure: shouldUseSecureCookies(req)
+  }));
+}
+
+function getRefreshTokenFromRequest(req: FastifyRequest): string | null {
+  const cookieHeader = req.headers.cookie;
+  const normalizedCookieHeader = Array.isArray(cookieHeader) ? cookieHeader.join("; ") : cookieHeader;
+  const cookieToken = parseCookies(normalizedCookieHeader)[REFRESH_COOKIE_NAME];
+  if (cookieToken) {
+    return cookieToken;
+  }
+
+  if (req.body && typeof req.body === "object" && "refresh_token" in req.body) {
+    const refreshToken = (req.body as { refresh_token?: unknown }).refresh_token;
+    if (typeof refreshToken === "string" && refreshToken.trim()) {
+      return refreshToken;
+    }
+  }
+
+  return null;
 }
 
 function userAgentFromHeaders(header: string | string[] | undefined): string | null {
@@ -61,6 +205,35 @@ function sessionContextForRequest(ip: string, userAgent: string | null) {
     ipAddress: ip,
     userAgent
   };
+}
+
+function buildAuthResponse(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  result: AuthResult
+) {
+  const payload = {
+    access_token: result.tokens.accessToken,
+    access_token_expires_at: result.tokens.accessTokenExpiresAt,
+    refresh_token_expires_at: result.tokens.refreshTokenExpiresAt,
+    user: toUserResponse(result.user),
+    workspace: toWorkspaceResponse(result.workspace)
+  } as {
+    access_token: string;
+    access_token_expires_at: number;
+    refresh_token?: string;
+    refresh_token_expires_at: number;
+    user: ReturnType<typeof toUserResponse>;
+    workspace: ReturnType<typeof toWorkspaceResponse>;
+  };
+
+  if (isHostedModeEnabled()) {
+    setRefreshTokenCookie(req, reply, result.tokens.refreshToken, result.tokens.refreshTokenExpiresAt);
+    return payload;
+  }
+
+  payload.refresh_token = result.tokens.refreshToken;
+  return payload;
 }
 
 function sendServiceError(reply: FastifyReply, error: unknown) {
@@ -120,14 +293,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
           sessionContextForRequest(req.ip, userAgentFromHeaders(req.headers["user-agent"]))
         );
 
-        return reply.code(201).send({
-          access_token: result.tokens.accessToken,
-          refresh_token: result.tokens.refreshToken,
-          access_token_expires_at: result.tokens.accessTokenExpiresAt,
-          refresh_token_expires_at: result.tokens.refreshTokenExpiresAt,
-          user: toUserResponse(result.user),
-          workspace: toWorkspaceResponse(result.workspace)
-        });
+        return reply.code(201).send(buildAuthResponse(req, reply, result));
       } catch (error) {
         return sendServiceError(reply, error);
       }
@@ -166,28 +332,20 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
           sessionContextForRequest(req.ip, userAgentFromHeaders(req.headers["user-agent"]))
         );
 
-        return reply.send({
-          access_token: result.tokens.accessToken,
-          refresh_token: result.tokens.refreshToken,
-          access_token_expires_at: result.tokens.accessTokenExpiresAt,
-          refresh_token_expires_at: result.tokens.refreshTokenExpiresAt,
-          user: toUserResponse(result.user),
-          workspace: toWorkspaceResponse(result.workspace)
-        });
+        return reply.send(buildAuthResponse(req, reply, result));
       } catch (error) {
         return sendServiceError(reply, error);
       }
     }
   );
 
-  app.post<{ Body: { refresh_token: string } }>(
+  app.post<{ Body: { refresh_token?: string } }>(
     "/refresh",
     {
       schema: {
         body: {
           type: "object",
           additionalProperties: false,
-          required: ["refresh_token"],
           properties: {
             refresh_token: { type: "string", minLength: 20, maxLength: 4096 }
           }
@@ -196,21 +354,23 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
     },
     async (req, reply) => {
       try {
+        const refreshToken = getRefreshTokenFromRequest(req);
+        if (!refreshToken) {
+          clearRefreshTokenCookie(req, reply);
+          return reply.code(401).send({ error: "Invalid refresh token", code: "invalid_refresh_token" });
+        }
+
         const result = await refreshSession(
           opts.db,
-          req.body.refresh_token,
+          refreshToken,
           sessionContextForRequest(req.ip, userAgentFromHeaders(req.headers["user-agent"]))
         );
 
-        return reply.send({
-          access_token: result.tokens.accessToken,
-          refresh_token: result.tokens.refreshToken,
-          access_token_expires_at: result.tokens.accessTokenExpiresAt,
-          refresh_token_expires_at: result.tokens.refreshTokenExpiresAt,
-          user: toUserResponse(result.user),
-          workspace: toWorkspaceResponse(result.workspace)
-        });
+        return reply.send(buildAuthResponse(req, reply, result));
       } catch (error) {
+        if (error instanceof UserServiceError && error.code === "invalid_refresh_token") {
+          clearRefreshTokenCookie(req, reply);
+        }
         return sendServiceError(reply, error);
       }
     }
@@ -219,14 +379,17 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
   app.post("/logout", async (req, reply) => {
     const currentUser = await requireCurrentUser(req, reply);
     if (!currentUser) {
+      clearRefreshTokenCookie(req, reply);
       return;
     }
 
     if (!currentUser.sid) {
+      clearRefreshTokenCookie(req, reply);
       return reply.code(401).send({ error: "Session id missing from token", code: "invalid_token" });
     }
 
     await logoutSession(opts.db, currentUser.sub, currentUser.workspaceId, currentUser.sid);
+    clearRefreshTokenCookie(req, reply);
     return reply.code(204).send();
   });
 

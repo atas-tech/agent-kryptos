@@ -202,7 +202,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
       callback(null, isAllowed);
     },
-    credentials: false
+    credentials: true
   });
 
   let store = options.store;

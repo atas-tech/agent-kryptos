@@ -8,7 +8,7 @@ import { SpsClient } from '../packages/agent-skill/dist/sps-client.js';
 
 const FACILITATOR_PORT = 3101;
 const SPS_PORT = 3100;
-const DATABASE_URL = process.env.DATABASE_URL || "postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass";
+const DATABASE_URL = process.env.DATABASE_URL || "postgresql://blindpass:localdev@127.0.0.1:5433/blindpass";
 
 async function run() {
   console.log('🤖 Starting Autonomous Payer E2E Validation...');

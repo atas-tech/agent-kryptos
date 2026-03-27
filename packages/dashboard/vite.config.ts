@@ -10,10 +10,17 @@ const securityHeaders = {
   "X-Frame-Options": "DENY"
 };
 
+const devServerHeaders = {
+  "Permissions-Policy": securityHeaders["Permissions-Policy"],
+  "Referrer-Policy": securityHeaders["Referrer-Policy"],
+  "X-Content-Type-Options": securityHeaders["X-Content-Type-Options"],
+  "X-Frame-Options": securityHeaders["X-Frame-Options"]
+};
+
 export default defineConfig({
   plugins: [react()],
   server: {
-    headers: securityHeaders,
+    headers: devServerHeaders,
     port: 5173
   },
   preview: {

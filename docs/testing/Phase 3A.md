@@ -9,7 +9,7 @@ Phase 3A E2E coverage is PostgreSQL-backed and is skipped unless `DATABASE_URL` 
 1. Start local dependencies:
    `docker compose up -d redis postgres`
 2. Export the PostgreSQL connection string:
-   `export DATABASE_URL=postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass`
+   `export DATABASE_URL=postgresql://blindpass:localdev@127.0.0.1:5433/blindpass`
 3. Run the SPS E2E suite:
    `npm run test:e2e --workspace=packages/sps-server`
 

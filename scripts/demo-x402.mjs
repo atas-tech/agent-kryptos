@@ -3,7 +3,7 @@ import pkg from 'pg';
 const { Pool } = pkg;
 import { AgentSecretRuntime } from "../packages/agent-skill/dist/index.js";
 
-const DEFAULT_DATABASE_URL = "postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass";
+const DEFAULT_DATABASE_URL = "postgresql://blindpass:localdev@127.0.0.1:5433/blindpass";
 const databaseUrl = process.env.DATABASE_URL || DEFAULT_DATABASE_URL;
 const baseUrl = process.env.SPS_BASE_URL || "http://localhost:3100";
 const facilitatorPort = 3102;

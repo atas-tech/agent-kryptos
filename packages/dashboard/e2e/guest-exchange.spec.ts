@@ -26,7 +26,7 @@ test.describe("Guest Secret Exchange (Phase 3C)", () => {
 
   test.beforeAll(async () => {
     pool = new pg.Pool({
-      connectionString: process.env.DATABASE_URL || "postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass",
+      connectionString: process.env.DATABASE_URL || "postgresql://blindpass:localdev@127.0.0.1:5433/blindpass",
     });
 
     // Start mock facilitator

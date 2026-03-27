@@ -81,6 +81,7 @@ export async function apiRequest<T>(
 
   const response = await fetch(`${apiBaseUrl()}${path}`, {
     ...init,
+    credentials: init.credentials ?? "include",
     headers
   });
 

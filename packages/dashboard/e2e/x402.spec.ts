@@ -14,7 +14,7 @@ test.describe("x402 Payments (Milestone 6)", () => {
 
   test.beforeAll(async () => {
     pool = new pg.Pool({
-      connectionString: process.env.DATABASE_URL || "postgresql://blindpass:localdev@127.0.0.1:5433/agent_blindpass",
+      connectionString: process.env.DATABASE_URL || "postgresql://blindpass:localdev@127.0.0.1:5433/blindpass",
     });
 
     // Start mock facilitator
