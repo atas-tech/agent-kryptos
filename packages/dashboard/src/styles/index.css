@@ -758,6 +758,111 @@
     color: rgba(240, 244, 255, 0.9);
   }
 
+  .sr-only {
+    @apply absolute h-px w-px overflow-hidden whitespace-nowrap border-0 p-0;
+    clip: rect(0, 0, 0, 0);
+    margin: -1px;
+  }
+
+  .analytics-chart {
+    @apply mt-4 grid gap-4;
+  }
+
+  .analytics-chart__bars {
+    @apply flex min-h-[240px] items-end gap-2 rounded-[24px] border px-4 py-5;
+    border-color: rgba(0, 245, 212, 0.12);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01)),
+      linear-gradient(180deg, rgba(0, 245, 212, 0.04), transparent 70%);
+  }
+
+  .analytics-chart__axis {
+    @apply flex items-center justify-between text-xs uppercase tracking-[0.18em];
+    color: var(--muted);
+  }
+
+  .analytics-bar-group {
+    @apply flex min-h-[200px] flex-1 items-end justify-center;
+  }
+
+  .analytics-bar,
+  .analytics-stack {
+    @apply w-full rounded-t-[18px];
+  }
+
+  .analytics-bar {
+    min-height: 3px;
+    background: linear-gradient(180deg, rgba(0, 245, 212, 0.95), rgba(141, 104, 255, 0.6));
+    box-shadow: 0 10px 30px rgba(0, 245, 212, 0.12);
+  }
+
+  .analytics-stack {
+    @apply flex min-h-[3px] flex-col justify-end overflow-hidden;
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .analytics-stack__segment {
+    @apply w-full;
+  }
+
+  .analytics-stack__segment--success,
+  .analytics-legend__swatch--success {
+    background: linear-gradient(180deg, #00f5d4, #00c8a3);
+  }
+
+  .analytics-stack__segment--warning,
+  .analytics-legend__swatch--warning {
+    background: linear-gradient(180deg, #ffd166, #ff9f43);
+  }
+
+  .analytics-stack__segment--danger,
+  .analytics-legend__swatch--danger {
+    background: linear-gradient(180deg, #ff7a8a, #ff4d6d);
+  }
+
+  .analytics-stack__segment--empty {
+    @apply h-full;
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .analytics-legend {
+    @apply mt-5 flex flex-wrap gap-4 text-sm;
+    color: rgba(240, 244, 255, 0.82);
+  }
+
+  .analytics-legend__item,
+  .analytics-metric-copy,
+  .analytics-insight__header {
+    @apply inline-flex items-center gap-2;
+  }
+
+  .analytics-legend__swatch {
+    @apply h-3 w-3 rounded-full;
+  }
+
+  .analytics-metric-copy {
+    color: rgba(240, 244, 255, 0.66);
+  }
+
+  .analytics-metric-copy small {
+    @apply text-xs;
+  }
+
+  .analytics-insights {
+    @apply grid gap-4 pt-4 md:grid-cols-3;
+  }
+
+  .analytics-insight {
+    @apply rounded-[22px] border p-4;
+    border-color: rgba(0, 245, 212, 0.12);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .analytics-insight p {
+    @apply mt-3 text-sm leading-7;
+    color: rgba(240, 244, 255, 0.76);
+  }
+
   .data-table tbody tr:hover {
     background: rgba(255, 255, 255, 0.03);
   }

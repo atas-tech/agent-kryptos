@@ -25,6 +25,7 @@ export interface AuditEvent {
     | "x402_payment_settled"
     | "x402_payment_failed"
     | "x402_budget_denied"
+    | "agent_token_minted"
     | "agent_enrolled"
     | "agent_api_key_rotated"
     | "agent_revoked"

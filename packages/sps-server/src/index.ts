@@ -5,6 +5,7 @@ import type { Pool } from "pg";
 import { createDbPool } from "./db/index.js";
 import { runMigrations } from "./db/migrate.js";
 import { registerAgentRoutes } from "./routes/agents.js";
+import { registerAnalyticsRoutes } from "./routes/analytics.js";
 import { registerAuditRoutes } from "./routes/audit.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerBillingRoutes } from "./routes/billing.js";
@@ -293,6 +294,10 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     await app.register(async (auditRoutesApp) => {
       await registerAuditRoutes(auditRoutesApp, { db: options.db! });
     }, { prefix: "/api/v2/audit" });
+
+    await app.register(async (analyticsRoutesApp) => {
+      await registerAnalyticsRoutes(analyticsRoutesApp, { db: options.db! });
+    }, { prefix: "/api/v2/analytics" });
 
     await app.register(async (authRoutesApp) => {
       await registerAuthRoutes(authRoutesApp, {

@@ -93,8 +93,8 @@ Metadata-minimized, zero-knowledge-preserving workspace metrics:
 Backend aggregate queries over the `audit_log` table, scoped by `workspace_id`:
 
 - `getRequestVolume(workspaceId, days)` → daily counts of `request_created` events
-- `getExchangeMetrics(workspaceId, days)` → daily counts grouped by terminal status
-- `getActiveAgentCount(workspaceId, hours)` → distinct `actor_id` where `actor_type = 'agent'`
+- `getExchangeMetrics(workspaceId, days)` → daily counts grouped into successful, failed/expired, and denied terminal buckets
+- `getActiveAgentCount(workspaceId, hours)` → distinct `actor_id` where `actor_type = 'agent'` and `event_type = 'agent_token_minted'`
 
 All queries return counts and timestamps only. They never expose secret names, ciphertext, token values, or per-agent identifiers beyond aggregate counts.
 
@@ -254,7 +254,7 @@ npm test --workspace=packages/dashboard
 
 - `getRequestVolume` returns correct daily counts from `audit_log`
 - `getExchangeMetrics` groups by terminal status correctly
-- `getActiveAgentCount` counts distinct actors within the time window
+- `getActiveAgentCount` counts distinct `agent_token_minted` actors within the time window
 - Analytics endpoints return only caller-workspace data
 
 - Node.js SDK bootstrap → request secret → retrieve flow succeeds

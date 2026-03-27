@@ -89,6 +89,33 @@ export interface X402TransactionListResponse {
   next_cursor: string | null;
 }
 
+export interface AnalyticsRequestPoint {
+  date: string;
+  count: number;
+}
+
+export interface AnalyticsRequestVolumeResponse {
+  days: number;
+  series: AnalyticsRequestPoint[];
+}
+
+export interface AnalyticsExchangePoint {
+  date: string;
+  successful: number;
+  failed_expired: number;
+  denied: number;
+}
+
+export interface AnalyticsExchangeMetricsResponse {
+  days: number;
+  series: AnalyticsExchangePoint[];
+}
+
+export interface AnalyticsActiveAgentsResponse {
+  hours: number;
+  active_agents: number;
+}
+
 export interface WorkspacePolicyValidationIssue {
   path: string;
   code: string;
@@ -141,6 +168,18 @@ export interface WorkspacePolicyValidationResponse {
 
 export function getDashboardSummary(): Promise<DashboardSummaryResponse> {
   return apiRequest<DashboardSummaryResponse>("/api/v2/dashboard/summary");
+}
+
+export function getAnalyticsRequestVolume(days = 30): Promise<AnalyticsRequestVolumeResponse> {
+  return apiRequest<AnalyticsRequestVolumeResponse>(`/api/v2/analytics/requests?days=${days}`);
+}
+
+export function getAnalyticsExchangeMetrics(days = 30): Promise<AnalyticsExchangeMetricsResponse> {
+  return apiRequest<AnalyticsExchangeMetricsResponse>(`/api/v2/analytics/exchanges?days=${days}`);
+}
+
+export function getAnalyticsActiveAgents(hours = 24): Promise<AnalyticsActiveAgentsResponse> {
+  return apiRequest<AnalyticsActiveAgentsResponse>(`/api/v2/analytics/agents?hours=${hours}`);
 }
 
 export function createBillingCheckoutSession(): Promise<BillingCheckoutResponse> {

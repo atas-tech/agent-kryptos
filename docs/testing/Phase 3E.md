@@ -48,10 +48,14 @@ Useful companion commands:
 ## Milestone 2: Analytics, SDKs, Documentation & Community
 
 - [ ] **Business-event analytics**
-  - [ ] Request volume chart reflects `request_created` audit events
-  - [ ] Exchange outcome chart reflects requested/submitted/retrieved/denied/rejected business events
-  - [ ] Active agent count reflects distinct agent actors over the configured window
-  - [ ] Analytics never exposes secret names, ciphertext, token values, or per-agent identities
+  - [x] Analytics API request-volume series reflects `request_created` audit events
+  - [x] Analytics API exchange-outcome series groups successful vs failed/expired vs denied terminal business events
+  - [x] Analytics API active-agent count reflects distinct recent agent token-mint actors over the configured window
+  - [x] Analytics API enforces workspace scoping and blocks `workspace_viewer` access
+  - [x] Request volume chart reflects `request_created` audit events
+  - [x] Exchange outcome chart reflects requested/submitted/retrieved/denied/rejected business events
+  - [x] Active agent count reflects distinct agent actors over the configured window
+  - [x] Analytics never exposes secret names, ciphertext, token values, or per-agent identities
 
 - [ ] **Node.js SDK**
   - [ ] Bootstrap API key to JWT minting works against a local hosted SPS

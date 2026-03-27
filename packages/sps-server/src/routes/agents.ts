@@ -195,6 +195,18 @@ export async function registerAgentRoutes(app: FastifyInstance, opts: AgentRoute
       }
 
       const token = await mintAgentAccessToken(agent);
+      await logAudit(opts.db, {
+        event: "agent_token_minted",
+        workspaceId: agent.workspaceId,
+        agentId: agent.agentId,
+        actorType: "agent",
+        resourceId: agent.id,
+        metadata: {
+          minted_via: "bootstrap_api_key"
+        },
+        action: "agent_token_mint",
+        ip: req.ip
+      });
       return reply.send({
         access_token: token.accessToken,
         access_token_expires_at: token.accessTokenExpiresAt,
