@@ -106,6 +106,17 @@ async function runDemo() {
       payload
     });
 
+    // For the demo, if the app doesn't have agent routes (in-memory), mock it here
+    if (url.pathname === "/api/v2/agents/token" && response.statusCode === 404) {
+      return new Response(JSON.stringify({
+        access_token: await issueJwt(identity, "demo-agent"),
+        access_token_expires_at: new Date(Date.now() + 3600000).toISOString()
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }
+
     return new Response(response.body, {
       status: response.statusCode,
       headers: response.headers
@@ -159,7 +170,7 @@ async function runDemo() {
 
     const agentClient = new SpsClient({
       baseUrl,
-      gatewayBearerToken: await issueJwt(identity, "demo-agent"),
+      bootstrapApiKey: "demo-bootstrap-api-key",
       fetchImpl: fetchViaInject
     });
 

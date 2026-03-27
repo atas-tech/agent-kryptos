@@ -15,7 +15,8 @@ export * from "./x402.js";
 
 export interface AgentSecretRuntimeOptions {
   spsBaseUrl: string;
-  gatewayBearerToken: string;
+  gatewayBearerToken?: string;
+  apiKey?: string;
   fetchImpl?: typeof fetch;
   agentId?: string;
   x402PaymentProvider?: import("./sps-client.js").X402PaymentProvider;
@@ -49,6 +50,7 @@ export class AgentSecretRuntime {
     this.client = new SpsClient({
       baseUrl: options.spsBaseUrl,
       gatewayBearerToken: options.gatewayBearerToken,
+      bootstrapApiKey: options.apiKey,
       fetchImpl: options.fetchImpl,
       x402PaymentProvider: options.x402PaymentProvider,
       x402BudgetProvider: options.x402BudgetProvider

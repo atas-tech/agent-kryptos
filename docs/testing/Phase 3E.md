@@ -47,7 +47,7 @@ Useful companion commands:
 
 ## Milestone 2: Analytics, SDKs, Documentation & Community
 
-- [ ] **Business-event analytics**
+- [x] **Business-event analytics**
   - [x] Analytics API request-volume series reflects `request_created` audit events
   - [x] Analytics API exchange-outcome series groups successful vs failed/expired vs denied terminal business events
   - [x] Analytics API active-agent count reflects distinct recent agent token-mint actors over the configured window
@@ -56,11 +56,11 @@ Useful companion commands:
   - [x] Exchange outcome chart reflects requested/submitted/retrieved/denied/rejected business events
   - [x] Active agent count reflects distinct agent actors over the configured window
   - [x] Analytics never exposes secret names, ciphertext, token values, or per-agent identities
-
-- [ ] **Node.js SDK**
-  - [ ] Bootstrap API key to JWT minting works against a local hosted SPS
-  - [ ] Secret request and retrieval flow succeeds end-to-end
-  - [ ] Exchange request, fulfill, submit, and retrieve flow succeeds end-to-end
+ 
+- [x] **Node.js SDK**
+  - [x] Bootstrap API key to JWT minting works against a local hosted SPS
+  - [x] Secret request and retrieval flow succeeds end-to-end
+  - [x] Exchange request, fulfill, submit, and retrieve flow succeeds end-to-end
 
 - [ ] **Python and Go SDKs**
   - [ ] Both SDKs complete the same hosted bootstrap and secret delivery flow

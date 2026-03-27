@@ -389,4 +389,134 @@ describe("SpsClient", () => {
 
     expect(paymentAttempts).toBe(1);
   });
+
+  describe("Automatic Authentication & Refresh", () => {
+    it("performs lazy authentication on the first request", async () => {
+      let tokenMinted = false;
+      const fetchImpl: typeof fetch = async (input) => {
+        const url = String(input);
+        if (url.endsWith("/api/v2/agents/token")) {
+          tokenMinted = true;
+          return new Response(JSON.stringify({
+            access_token: "jwt-1",
+            access_token_expires_at: new Date(Date.now() + 3600000).toISOString(),
+            agent: { id: "a1", workspace_id: "w1", agent_id: "agent-1", status: "active", created_at: new Date().toISOString() }
+          }), { status: 200, headers: { "content-type": "application/json" } });
+        }
+        if (url.endsWith("/api/v2/secret/request")) {
+          return new Response(JSON.stringify({ request_id: "r1" }), { status: 201, headers: { "content-type": "application/json" } });
+        }
+        return new Response("not found", { status: 404 });
+      };
+
+      const client = new SpsClient({
+        baseUrl: "http://localhost:3100",
+        bootstrapApiKey: "bootstrap-1",
+        fetchImpl
+      });
+
+      expect(tokenMinted).toBe(false);
+      await client.requestSecret({ description: "x", publicKey: "p" });
+      expect(tokenMinted).toBe(true);
+    });
+
+    it("proactively refreshes token before expiry", async () => {
+      let mintCount = 0;
+      const fetchImpl: typeof fetch = async (input) => {
+        const url = String(input);
+        if (url.endsWith("/api/v2/agents/token")) {
+          mintCount++;
+          const expiresAt = mintCount === 1 
+            ? new Date(Date.now() + 30000).toISOString() // Expires in 30s (within 60s threshold)
+            : new Date(Date.now() + 3600000).toISOString();
+          return new Response(JSON.stringify({
+            access_token: `jwt-${mintCount}`,
+            access_token_expires_at: expiresAt,
+            agent: { id: "a1" }
+          }), { status: 200, headers: { "content-type": "application/json" } });
+        }
+        if (url.endsWith("/api/v2/secret/request")) {
+          return new Response(JSON.stringify({ request_id: "r1" }), { status: 201, headers: { "content-type": "application/json" } });
+        }
+        return new Response("not found", { status: 404 });
+      };
+
+      const client = new SpsClient({
+        baseUrl: "http://localhost:3100",
+        bootstrapApiKey: "bootstrap-1",
+        fetchImpl
+      });
+
+      await client.requestSecret({ description: "x", publicKey: "p" });
+      expect(mintCount).toBe(1);
+
+      // Second call should trigger another mint because the first one is within threshold
+      await client.requestSecret({ description: "x", publicKey: "p" });
+      expect(mintCount).toBe(2);
+    });
+
+    it("retries on 401 by refreshing token", async () => {
+      let mintCount = 0;
+      let requestCount = 0;
+      const fetchImpl: typeof fetch = async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/api/v2/agents/token")) {
+          mintCount++;
+          return new Response(JSON.stringify({
+            access_token: `jwt-${mintCount}`,
+            access_token_expires_at: new Date(Date.now() + 3600000).toISOString()
+          }), { status: 200 });
+        }
+        if (url.endsWith("/api/v2/secret/request")) {
+          requestCount++;
+          const auth = (init?.headers as any)?.authorization || (init?.headers as Headers).get("authorization");
+          if (auth === "Bearer jwt-1") {
+            return new Response("unauthorized", { status: 401 });
+          }
+          return new Response(JSON.stringify({ request_id: "r1" }), { status: 201 });
+        }
+        return new Response("not found", { status: 404 });
+      };
+
+      const client = new SpsClient({
+        baseUrl: "http://localhost:3100",
+        bootstrapApiKey: "bootstrap-1",
+        fetchImpl
+      });
+
+      await client.requestSecret({ description: "x", publicKey: "p" });
+      expect(mintCount).toBe(2); // Initial mint + refresh after 401
+      expect(requestCount).toBe(2); // Failed attempt + retry
+    });
+
+    it("prevents concurrent token minting", async () => {
+      let mintCount = 0;
+      const fetchImpl: typeof fetch = async (input) => {
+        if (String(input).endsWith("/api/v2/agents/token")) {
+          mintCount++;
+          await new Promise(r => setTimeout(r, 10)); // Artificial delay
+          return new Response(JSON.stringify({
+            access_token: "jwt-1",
+            access_token_expires_at: new Date(Date.now() + 3600000).toISOString()
+          }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      };
+
+      const client = new SpsClient({
+        baseUrl: "http://localhost:3100",
+        bootstrapApiKey: "bootstrap-1",
+        fetchImpl
+      });
+
+      // Fire multiple requests simultaneously
+      await Promise.all([
+        client.requestSecret({ description: "1", publicKey: "p" }),
+        client.requestSecret({ description: "2", publicKey: "p" }),
+        client.requestSecret({ description: "3", publicKey: "p" })
+      ]);
+
+      expect(mintCount).toBe(1);
+    });
+  });
 });

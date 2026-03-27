@@ -101,7 +101,8 @@ export interface FulfillExchangeResult {
 
 interface SpsClientOptions {
   baseUrl: string;
-  gatewayBearerToken: string;
+  gatewayBearerToken?: string;
+  bootstrapApiKey?: string;
   fetchImpl?: typeof fetch;
   x402PaymentProvider?: X402PaymentProvider;
   x402BudgetProvider?: X402BudgetProvider;
@@ -114,7 +115,13 @@ function sleep(ms: number): Promise<void> {
 export class SpsClient {
   private readonly baseUrl: string;
 
-  private readonly token: string;
+  private accessToken: string | null;
+
+  private accessTokenExpiresAt: number;
+
+  private readonly bootstrapApiKey: string | null;
+
+  private tokenPromise: Promise<string> | null = null;
 
   private readonly fetchImpl: typeof fetch;
 
@@ -124,20 +131,87 @@ export class SpsClient {
 
   constructor(options: SpsClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
-    this.token = options.gatewayBearerToken;
+    this.accessToken = options.gatewayBearerToken ?? null;
+    this.accessTokenExpiresAt = 0;
+    this.bootstrapApiKey = options.bootstrapApiKey ?? null;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.x402PaymentProvider = options.x402PaymentProvider;
     this.x402BudgetProvider = options.x402BudgetProvider;
+  }
+
+  private async ensureToken(): Promise<string> {
+    if (this.tokenPromise) {
+      return this.tokenPromise;
+    }
+
+    const now = Date.now();
+    const needsRefresh =
+      !this.accessToken || (this.accessTokenExpiresAt > 0 && now + 60_000 >= this.accessTokenExpiresAt);
+
+    if (needsRefresh && this.bootstrapApiKey) {
+      this.tokenPromise = this.mintToken();
+      try {
+        return await this.tokenPromise;
+      } finally {
+        this.tokenPromise = null;
+      }
+    }
+
+    if (!this.accessToken) {
+      throw new Error("SpsClient is not authenticated. Provide gatewayBearerToken or bootstrapApiKey.");
+    }
+
+    return this.accessToken;
+  }
+
+  private async mintToken(): Promise<string> {
+    if (!this.bootstrapApiKey) {
+      throw new Error("Cannot mint token: bootstrapApiKey is missing.");
+    }
+
+    const response = await this.fetchImpl(`${this.baseUrl}/api/v2/agents/token`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${this.bootstrapApiKey}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to mint agent token: ${response.status}`);
+    }
+
+    const payload = await response.json();
+    this.accessToken = payload.access_token;
+    this.accessTokenExpiresAt = new Date(payload.access_token_expires_at).getTime();
+
+    return this.accessToken as string;
+  }
+
+  private async fetchWithAuth(url: string, init: RequestInit = {}): Promise<Response> {
+    const token = await this.ensureToken();
+    const headers = new Headers(init.headers);
+    headers.set("authorization", `Bearer ${token}`);
+
+    let response = await this.fetchImpl(url, { ...init, headers });
+
+    if (response.status === 401 && this.bootstrapApiKey) {
+      // Force refresh on 401
+      this.accessToken = null;
+      const newToken = await this.ensureToken();
+      headers.set("authorization", `Bearer ${newToken}`);
+      response = await this.fetchImpl(url, { ...init, headers });
+    }
+
+    return response;
   }
 
   private async exchangeRequest(
     params: CreateExchangeRequestParams,
     extraHeaders: Record<string, string> = {}
   ): Promise<Response> {
-    return this.fetchImpl(`${this.baseUrl}/api/v2/secret/exchange/request`, {
+    return this.fetchWithAuth(`${this.baseUrl}/api/v2/secret/exchange/request`, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${this.token}`,
         "content-type": "application/json",
         ...extraHeaders
       },
@@ -156,10 +230,9 @@ export class SpsClient {
   }
 
   async requestSecret(params: RequestSecretParams): Promise<RequestSecretResult> {
-    const response = await this.fetchImpl(`${this.baseUrl}/api/v2/secret/request`, {
+    const response = await this.fetchWithAuth(`${this.baseUrl}/api/v2/secret/request`, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${this.token}`,
         "content-type": "application/json"
       },
       body: JSON.stringify({
@@ -181,11 +254,8 @@ export class SpsClient {
   }
 
   async getStatus(requestId: string): Promise<"pending" | "submitted" | "expired"> {
-    const response = await this.fetchImpl(`${this.baseUrl}/api/v2/secret/status/${requestId}`, {
-      method: "GET",
-      headers: {
-        authorization: `Bearer ${this.token}`
-      }
+    const response = await this.fetchWithAuth(`${this.baseUrl}/api/v2/secret/status/${requestId}`, {
+      method: "GET"
     });
 
     if (response.status === 410) {
@@ -229,11 +299,8 @@ export class SpsClient {
   }
 
   async retrieveSecret(requestId: string): Promise<{ enc: string; ciphertext: string }> {
-    const response = await this.fetchImpl(`${this.baseUrl}/api/v2/secret/retrieve/${requestId}`, {
-      method: "GET",
-      headers: {
-        authorization: `Bearer ${this.token}`
-      }
+    const response = await this.fetchWithAuth(`${this.baseUrl}/api/v2/secret/retrieve/${requestId}`, {
+      method: "GET"
     });
 
     if (response.status === 410) {
@@ -311,11 +378,8 @@ export class SpsClient {
   }
 
   async getExchangeStatus(exchangeId: string): Promise<ExchangeStatus> {
-    const response = await this.fetchImpl(`${this.baseUrl}/api/v2/secret/exchange/status/${exchangeId}`, {
-      method: "GET",
-      headers: {
-        authorization: `Bearer ${this.token}`
-      }
+    const response = await this.fetchWithAuth(`${this.baseUrl}/api/v2/secret/exchange/status/${exchangeId}`, {
+      method: "GET"
     });
 
     if (response.status === 410) {
@@ -331,11 +395,8 @@ export class SpsClient {
   }
 
   async revokeExchange(exchangeId: string): Promise<boolean> {
-    const response = await this.fetchImpl(`${this.baseUrl}/api/v2/secret/exchange/revoke/${exchangeId}`, {
-      method: "DELETE",
-      headers: {
-        authorization: `Bearer ${this.token}`
-      }
+    const response = await this.fetchWithAuth(`${this.baseUrl}/api/v2/secret/exchange/revoke/${exchangeId}`, {
+      method: "DELETE"
     });
 
     if (response.status === 410) {
@@ -389,10 +450,9 @@ export class SpsClient {
   }
 
   async fulfillExchange(fulfillmentToken: string): Promise<FulfillExchangeResult> {
-    const response = await this.fetchImpl(`${this.baseUrl}/api/v2/secret/exchange/fulfill`, {
+    const response = await this.fetchWithAuth(`${this.baseUrl}/api/v2/secret/exchange/fulfill`, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${this.token}`,
         "content-type": "application/json"
       },
       body: JSON.stringify({
@@ -418,10 +478,9 @@ export class SpsClient {
   }
 
   async submitExchange(exchangeId: string, params: { enc: string; ciphertext: string }): Promise<{ status: "submitted"; retrieveBy: number }> {
-    const response = await this.fetchImpl(`${this.baseUrl}/api/v2/secret/exchange/submit/${exchangeId}`, {
+    const response = await this.fetchWithAuth(`${this.baseUrl}/api/v2/secret/exchange/submit/${exchangeId}`, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${this.token}`,
         "content-type": "application/json"
       },
       body: JSON.stringify({
@@ -442,11 +501,8 @@ export class SpsClient {
   }
 
   async retrieveExchange(exchangeId: string): Promise<{ enc: string; ciphertext: string; secretName: string; fulfilledBy: string | null }> {
-    const response = await this.fetchImpl(`${this.baseUrl}/api/v2/secret/exchange/retrieve/${exchangeId}`, {
-      method: "GET",
-      headers: {
-        authorization: `Bearer ${this.token}`
-      }
+    const response = await this.fetchWithAuth(`${this.baseUrl}/api/v2/secret/exchange/retrieve/${exchangeId}`, {
+      method: "GET"
     });
 
     if (response.status === 410) {
