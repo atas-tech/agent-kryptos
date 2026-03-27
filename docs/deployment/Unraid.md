@@ -10,10 +10,12 @@ This is the simplest deployment shape for the project: one SPS server, one brows
 - `ghcr.io/tuthan/blindpass-browser-ui`
 - `ghcr.io/tuthan/blindpass-dashboard`
 - `redis:7-alpine`
+- `postgres:16-alpine`
 
 The Unraid templates for these containers are in:
 
 - [`deploy/unraid/blindpass-redis.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-redis.xml)
+- [`deploy/unraid/blindpass-postgres.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-postgres.xml)
 - [`deploy/unraid/blindpass-sps-server.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-sps-server.xml)
 - [`deploy/unraid/blindpass-browser-ui.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-browser-ui.xml)
 - [`deploy/unraid/blindpass-dashboard.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-dashboard.xml)
@@ -60,19 +62,25 @@ Recommended values:
    Use [`deploy/unraid/blindpass-redis.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-redis.xml).
    In the Unraid Docker UI, use the template URL or copy the XML into your templates directory.
 
-3. Add the SPS template.
+3. Add the Postgres template.
+   Use [`deploy/unraid/blindpass-postgres.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-postgres.xml).
+   Set `POSTGRES_PASSWORD` to a strong value.
+
+4. Add the SPS template.
    Use [`deploy/unraid/blindpass-sps-server.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-sps-server.xml).
 
-4. Add the Browser UI template.
+5. Add the Browser UI template.
    Use [`deploy/unraid/blindpass-browser-ui.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-browser-ui.xml).
 
-5. Add the Dashboard template.
+6. Add the Dashboard template.
    Use [`deploy/unraid/blindpass-dashboard.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-dashboard.xml).
 
-6. For Redis and SPS, set the network to the same custom network.
-   The default `REDIS_URL` in the template assumes the Redis container name is `blindpass-redis`.
+7. For Redis, Postgres, and SPS, set the network to the same custom network.
+   - The default `REDIS_URL` assumes the Redis container name is `blindpass-redis`.
+   - The default `DATABASE_URL` assumes the Postgres container name is `blindpass-postgres`.
 
-7. Fill in the SPS template values:
+8. Fill in the SPS template values:
+   - `DATABASE_URL`: required, format `postgresql://user:password@blindpass-postgres:5432/blindpass`. Ensure the password matches what you set in the Postgres container.
    - `SPS_HMAC_SECRET`: required, strong random value
    - `SPS_UI_BASE_URL`: your public browser UI URL, for example `https://secret.atas.tech`
    - `SPS_CORS_ALLOWED_ORIGINS`: comma-separated browser origins allowed to call the SPS API. Include every deployed first-party frontend origin, for example `https://app.atas.tech,https://secret.atas.tech`
@@ -174,10 +182,13 @@ If the SPS container cannot validate gateway tokens:
 
 - validate the `SPS_AGENT_AUTH_PROVIDERS_JSON` structure and confirm each `issuer`, `audience`, and reachability of `jwks_url` or path to `jwks_file`.
 
-If the SPS container cannot reach Redis:
-
-- make sure Redis and SPS are on the same custom Docker network
 - confirm `REDIS_URL=redis://blindpass-redis:6379`
+
+If the SPS container cannot reach Postgres:
+
+- make sure Postgres and SPS are on the same custom Docker network
+- confirm the `DATABASE_URL` hostname matches the Postgres container name (`blindpass-postgres`)
+- verify `POSTGRES_USER` and `POSTGRES_PASSWORD` match between both containers
 
 ## Hosted vs self-hosted policy configuration
 
