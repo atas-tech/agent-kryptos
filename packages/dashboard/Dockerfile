@@ -17,14 +17,15 @@ WORKDIR /app
 ARG VITE_SPS_API_URL
 ENV VITE_SPS_API_URL=${VITE_SPS_API_URL}
 
-COPY packages/browser-ui packages/browser-ui
+COPY tsconfig.base.json ./
+COPY packages/dashboard packages/dashboard
 
-RUN npm run build --workspace=packages/browser-ui
+RUN npm run build --workspace=packages/dashboard
 
 FROM nginx:1.29-alpine AS runtime
 
-COPY packages/browser-ui/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/packages/browser-ui/dist /usr/share/nginx/html
+COPY packages/dashboard/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/packages/dashboard/dist /usr/share/nginx/html
 
 EXPOSE 8080
 

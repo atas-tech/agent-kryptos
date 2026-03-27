@@ -57,13 +57,17 @@ blindpass/
 ## Documentation
 
 Detailed documentation and planning can be found in the `docs/` folder:
-- **Core Strategy**: [Implementation Plan](docs/architecture/Implementation%20Plan.md) | [Security Audit](docs/security/Security%20Audit.md) | [Licensing Proposal](docs/architecture/Licensing_Proposal.md)
+- **Core Strategy**: [Implementation Plan](docs/architecture/Implementation%20Plan.md) | [Security Audit](docs/security/Security%20Audit%20v2.md) | [Licensing Proposal](docs/archive/Licensing_Proposal.md)
+- **Getting Started**: [Quick Start](docs/guides/quickstart.md) | [Self-Hosting](docs/guides/self-hosting.md) | [API Reference](docs/api/README.md) | [Policy Guide](docs/guides/policy.md) | [Unraid Deployment](docs/deployment/Unraid.md)
 - **Roadmap & Phases**:
     - [Phase 1: Core MVP](docs/architecture/Phase%201%20-%20Core%20MVP.md)
     - [Phase 2A: Agent to Agent Exchange](docs/architecture/Phase%202A%20-%20Agent%20to%20Agent%20Exchange.md)
     - [Phase 2B: Production A2A](docs/architecture/Phase%202B%20-%20Production%20A2A.md)
     - [Phase 3A: Hosted Platform](docs/architecture/Phase%203A%20-%20Hosted%20Platform.md)
     - [Phase 3B: UI & Operations](docs/architecture/Phase%203B%20-%20UI%20&%20Operations.md)
+    - [Phase 3C: Paid Guest Secret Exchange](docs/architecture/Phase%203C%20-%20Paid%20Guest%20Secret%20Exchange.md)
+    - [Phase 3D: Autonomous Payments & Crypto Billing](docs/architecture/Phase%203D%20-%20Autonomous%20Payments%20%26%20Crypto%20Billing.md)
+    - [Phase 3E: Hosted Hardening, Ecosystem & Launch](docs/architecture/Phase%203E%20-%20Hosted%20Hardening,%20Ecosystem%20%26%20Launch.md)
 - **Maintenance**: [Dashboard Maintainability](docs/architecture/dashboard-maintainability.md)
 
 ## Licensing
@@ -91,4 +95,11 @@ See `LICENSES.md` for the package licensing matrix and rollout notes.
 
 ## Getting Started
 
-*(Instructions for local development and deployment to be added as implementation progresses)*
+Start with [docs/guides/quickstart.md](docs/guides/quickstart.md) for a local source-based run, or [docs/guides/self-hosting.md](docs/guides/self-hosting.md) for the supported self-hosted setup. The packaged Unraid path is documented in [docs/deployment/Unraid.md](docs/deployment/Unraid.md).
+
+The local developer baseline now includes:
+
+- [`.env.example`](.env.example) for source-based local and self-hosted configuration
+- [`docker-compose.test.yml`](docker-compose.test.yml) for PostgreSQL and Redis
+- [`Makefile`](Makefile) for `up`, `down`, `logs`, `migrate`, and dev workflows
+- [docs/api/openapi.yaml](docs/api/openapi.yaml) as the maintained OpenAPI snapshot for the stable hosted/dev API surface

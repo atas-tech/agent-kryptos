@@ -7,7 +7,7 @@ This document defines the End-to-End (E2E), integration, and operational verific
 Phase 3E spans `packages/sps-server`, `packages/dashboard`, SDK packaging work, and deployment artifacts.
 
 1. Start local dependencies:
-   `docker compose up -d redis postgres`
+   `make up`
 2. Export the PostgreSQL connection string and enable hosted integration coverage:
    `export DATABASE_URL=postgresql://blindpass:localdev@127.0.0.1:5433/blindpass`
    `export SPS_PG_INTEGRATION=1`
@@ -18,6 +18,7 @@ Phase 3E spans `packages/sps-server`, `packages/dashboard`, SDK packaging work, 
 
 Useful companion commands:
 
+- `make migrate`
 - `npm run dev --workspace=packages/sps-server`
 - `npm run dev --workspace=packages/dashboard`
 - `npm run test:e2e --workspace=packages/sps-server`
@@ -71,17 +72,17 @@ Useful companion commands:
   - [ ] Both SDKs complete the same hosted bootstrap and secret delivery flow
   - [ ] Both SDKs document in-memory-only secret handling expectations
 
-- [ ] **Docs and community artifacts**
-  - [ ] Quickstart guide works from a clean machine
-  - [ ] OpenAPI references match real route contracts
-  - [ ] Policy guide explains the hosted workspace policy model and the self-hosted env bootstrap/default path
-  - [ ] Provide a standard SDK integration harness such as `docker-compose.test.yml` or an equivalent mock container setup
+- [x] **Docs and community artifacts**
+  - [x] Quickstart guide works from a clean machine
+  - [x] OpenAPI references match real route contracts
+  - [x] Policy guide explains the hosted workspace policy model and the self-hosted env bootstrap/default path
+  - [x] Provide a standard SDK integration harness such as `docker-compose.test.yml` or an equivalent mock container setup
 
 ## Milestone 3: Hosted Deployment & Domain Cutover
 
-- [ ] `GET /healthz` returns `200`
-- [ ] `GET /readyz` returns `200` only when PostgreSQL and Redis are reachable
-- [ ] `GET /readyz` returns `503` if Redis is down but PostgreSQL is up, and vice versa
+- [x] `GET /healthz` returns `200`
+- [x] `GET /readyz` returns `200` only when PostgreSQL and Redis are reachable
+- [x] `GET /readyz` returns `503` if Redis is down but PostgreSQL is up, and vice versa
 - [ ] Production dashboard, browser UI, and API images build successfully
 - [ ] `app.atas.tech`, `secret.atas.tech`, and `sps.atas.tech` serve over valid HTTPS
 - [ ] Hosted register → enroll agent → deliver secret flow succeeds at production URLs

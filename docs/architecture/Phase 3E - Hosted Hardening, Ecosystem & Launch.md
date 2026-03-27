@@ -19,6 +19,21 @@ This phase is intentionally separate from:
 
 **Development strategy**: land hosted session hardening and abuse controls first, then analytics and ecosystem packaging/documentation, with production deployment and domain cutover left for the final milestone.
 
+## Current Repo State
+
+As of `2026-03-27`, the repository already contains a substantial portion of this phase:
+
+- Milestone 1 is implemented in code and tests: hosted refresh cookies, access-token-in-memory dashboard auth, Turnstile support, and workspace burst throttling are present in `packages/sps-server` and `packages/dashboard`
+- Milestone 2 analytics is implemented: analytics routes, aggregation services, dashboard analytics UI, and regression coverage are present
+- Milestone 2 docs/community artifacts are present in-repo: `docs/guides/quickstart.md`, `docs/guides/self-hosting.md`, `docs/api/openapi.yaml`, `.env.example`, `docker-compose.test.yml`, and `Makefile`
+- Milestone 3 launch-readiness foundation has started: `GET /readyz`, dashboard containerization, image-publishing workflow updates, and Unraid deployment artifacts are in place
+
+The biggest remaining gaps in this phase are:
+
+- Python and Go SDK implementation and hosted-flow validation
+- live production image publishing and domain cutover verification
+- final production HTTPS, DNS, and reverse-proxy rollout checks
+
 > [!IMPORTANT]
 > This plan is divided into **3 incremental milestones**. The order is: Session Hardening & Abuse Controls → Analytics, SDKs, Docs & Community → Hosted Deployment & Domain Cutover.
 
@@ -130,11 +145,11 @@ All SDKs must support:
 
 | Document | Location | Content |
 |----------|----------|---------|
-| API Reference | `docs/api/` | OpenAPI 3.0 spec for all SPS routes, auto-generated from route schemas where possible |
+| API Reference | `docs/api/` | Maintained OpenAPI 3.1 snapshot for the stable hosted/dev SPS routes, plus usage notes |
 | Quick Start | `docs/guides/quickstart.md` | 5-minute guide: register workspace → enroll agent → deliver first secret |
-| Identity Bootstrap | `docs/guides/identity.md` | How to get an `ak_` key, mint JWTs, configure agent-skill |
+| Identity Bootstrap | Planned follow-on guide | How to get an `ak_` key, mint JWTs, and configure `agent-skill` |
 | Policy Configuration | `docs/guides/policy.md` | Hosted workspace policy editor model, trust rings, secret registry, exchange policies, approval workflows, and self-hosted env bootstrap/default behavior |
-| Self-Hosting | `docs/guides/self-hosting.md` | Docker Compose guide with env var reference and reverse proxy setup |
+| Self-Hosting | `docs/guides/self-hosting.md` | Docker Compose guide with env var reference, local harness, and reverse proxy setup |
 
 ### Docker Compose Community Guide
 
@@ -142,10 +157,11 @@ Sanitize and publish the production Docker Compose setup:
 
 - Remove operator-specific details
 - Add `.env.example` with all required variables and sensible defaults
+- Add `docker-compose.test.yml` as the standard local PostgreSQL/Redis harness
 - Add `Makefile` with `make up`, `make down`, `make logs`, `make migrate` targets
 - Include clear README with prerequisites (Docker, domain, DNS)
 
-**Acceptance**: Node.js SDK publishes to npm. Python and Go SDKs install and complete the bootstrap → secret delivery flow against a running SPS instance. API documentation covers all hosted routes through Phase 3E, including workspace policy-management routes and guidance. Docker Compose community guide brings up a working stack from scratch.
+**Current status**: analytics, Node.js SDK-hosted flow coverage, API/docs/community artifacts, and the standard local compose harness are now present in-repo. The main Milestone 2 work still open is Python and Go SDK completion plus their hosted-flow verification.
 
 ---
 
@@ -258,6 +274,7 @@ npm test --workspace=packages/dashboard
 - Analytics endpoints return only caller-workspace data
 
 - Node.js SDK bootstrap → request secret → retrieve flow succeeds
+- Quick Start, self-hosting, env-template, Makefile, and OpenAPI reference artifacts exist and match the current hosted/local setup
 - Python SDK succeeds with the same hosted bootstrap and delivery flow
 - Go SDK succeeds with the same hosted bootstrap and delivery flow
 - OpenAPI spec validates against running server responses
@@ -288,7 +305,7 @@ npm test --workspace=packages/dashboard
 - **Analytics scope** → business-event counts and timestamps only; no secret names, ciphertext, token values, specific agent identifiers, or HTTP response-class telemetry
 - **Hosted policy foundation** → workspace-scoped PostgreSQL policy lives in the separate Hosted Workspace Policy Foundation milestone and is a prerequisite for later hosted phases
 - **SDK priority** → Node.js first, then Python, then Go
-- **API documentation** → OpenAPI 3.0 spec; hand-written initially, auto-generation deferred
+- **API documentation** → maintained OpenAPI 3.1 snapshot; hand-written initially, auto-generation deferred
 - **Reverse proxy** → operator-managed; no bundled reverse proxy
 - **Domain strategy** → `app.atas.tech` for dashboard, `secret.atas.tech` for sandbox, `sps.atas.tech` for API
 - **Launch ordering** → local hardening and ecosystem work land before production cutover

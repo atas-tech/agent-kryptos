@@ -4,6 +4,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/sps-server/package.json packages/sps-server/package.json
 COPY packages/browser-ui/package.json packages/browser-ui/package.json
+COPY packages/dashboard/package.json packages/dashboard/package.json
 COPY packages/agent-skill/package.json packages/agent-skill/package.json
 COPY packages/gateway/package.json packages/gateway/package.json
 COPY packages/openclaw-plugin/package.json packages/openclaw-plugin/package.json
@@ -29,6 +30,7 @@ ENV SPS_HOST=0.0.0.0
 COPY package.json package-lock.json ./
 COPY packages/sps-server/package.json packages/sps-server/package.json
 COPY packages/browser-ui/package.json packages/browser-ui/package.json
+COPY packages/dashboard/package.json packages/dashboard/package.json
 COPY packages/agent-skill/package.json packages/agent-skill/package.json
 COPY packages/gateway/package.json packages/gateway/package.json
 COPY packages/openclaw-plugin/package.json packages/openclaw-plugin/package.json

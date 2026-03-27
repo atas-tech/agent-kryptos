@@ -31,6 +31,9 @@ import {
 import { HttpX402Provider, type X402Provider, x402ConfigFromEnv } from "./services/x402.js";
 import type { RequestStore } from "./types.js";
 import { resolveRequiredSecret } from "./utils/secrets.js";
+
+type ReadinessStatus = "up" | "down" | "skipped";
+
 export interface BuildAppOptions {
   store?: RequestStore;
   quotaService?: QuotaService;
@@ -48,6 +51,10 @@ export interface BuildAppOptions {
   runMigrations?: boolean;
   closeDbOnClose?: boolean;
   trustProxy?: boolean;
+  readinessChecks?: {
+    db?: () => Promise<void>;
+    redis?: () => Promise<void>;
+  };
 }
 
 function trustProxyFromEnv(): boolean {
@@ -209,15 +216,20 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   let store = options.store;
   let quotaService = options.quotaService;
   let rateLimitService = options.rateLimitService;
+  let storeMode: "in-memory" | "redis" | "custom" = store
+    ? (store instanceof RedisRequestStore ? "redis" : "custom")
+    : "custom";
   if (!store) {
     if (shouldUseInMemoryStore || process.env.NODE_ENV === "test") {
       store = new InMemoryRequestStore();
+      storeMode = "in-memory";
       quotaService ??= new InMemoryQuotaService();
       rateLimitService ??= new InMemoryRateLimitService();
     } else {
       const client = createRedisClient();
       await client.connect();
       store = new RedisRequestStore(client);
+      storeMode = "redis";
       quotaService ??= new RedisQuotaService(client);
       rateLimitService ??= new RedisRateLimitService(client);
       app.addHook("onClose", async () => {
@@ -228,6 +240,17 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   quotaService ??= new InMemoryQuotaService();
   rateLimitService ??= new InMemoryRateLimitService();
+
+  const dbReadinessCheck = options.readinessChecks?.db ?? (options.db
+    ? async () => {
+        await options.db!.query("SELECT 1");
+      }
+    : undefined);
+  const redisReadinessCheck = options.readinessChecks?.redis ?? (store instanceof RedisRequestStore
+    ? async () => {
+        await store.ping();
+      }
+    : undefined);
 
   const bootstrapWorkspacePolicy = loadBootstrapWorkspacePolicyFromEnv();
   if (options.db && isHostedModeEnabled()) {
@@ -375,6 +398,49 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   }
 
   app.get("/healthz", async () => ({ ok: true }));
+
+  app.get("/readyz", async (_req, reply) => {
+    const checks: Record<"database" | "redis", ReadinessStatus> = {
+      database: "skipped",
+      redis: "skipped"
+    };
+
+    if (dbReadinessCheck) {
+      try {
+        await dbReadinessCheck();
+        checks.database = "up";
+      } catch (error) {
+        checks.database = "down";
+        app.log.warn({ err: error }, "database readiness check failed");
+      }
+    }
+
+    if (redisReadinessCheck) {
+      try {
+        await redisReadinessCheck();
+        checks.redis = "up";
+      } catch (error) {
+        checks.redis = "down";
+        app.log.warn({ err: error }, "redis readiness check failed");
+      }
+    } else if (storeMode === "in-memory") {
+      checks.redis = "skipped";
+    }
+
+    const isReady = checks.database !== "down" && checks.redis !== "down";
+    if (!isReady) {
+      return reply.code(503).send({
+        ok: false,
+        code: "service_unavailable",
+        checks
+      });
+    }
+
+    return {
+      ok: true,
+      checks
+    };
+  });
 
   return app;
 }

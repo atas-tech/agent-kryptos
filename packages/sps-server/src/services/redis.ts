@@ -28,6 +28,10 @@ export class RedisRequestStore implements RequestStore {
     this.redis = redis;
   }
 
+  async ping(): Promise<void> {
+    await this.redis.ping();
+  }
+
   async setRequest(data: StoredRequest, ttlSeconds: number): Promise<void> {
     await this.redis.set(keyForRequest(data.requestId), JSON.stringify(data), "EX", ttlSeconds);
   }
