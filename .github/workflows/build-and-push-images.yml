@@ -106,7 +106,7 @@ jobs:
           file: packages/browser-ui/Dockerfile
           push: true
           build-args: |
-            VITE_SPS_API_URL=${{ env.PRODUCTION_VITE_SPS_API_URL }}
+            VITE_SPS_API_URL=${{ vars.VITE_SPS_API_URL || env.PRODUCTION_VITE_SPS_API_URL }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=ui-image
@@ -146,7 +146,8 @@ jobs:
           file: packages/dashboard/Dockerfile
           push: true
           build-args: |
-            VITE_SPS_API_URL=${{ env.PRODUCTION_VITE_SPS_API_URL }}
+            VITE_SPS_API_URL=${{ vars.VITE_SPS_API_URL || env.PRODUCTION_VITE_SPS_API_URL }}
+            VITE_TURNSTILE_SITE_KEY=${{ vars.VITE_TURNSTILE_SITE_KEY || secrets.VITE_TURNSTILE_SITE_KEY }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=dashboard-image
