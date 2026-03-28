@@ -2,6 +2,19 @@ name: Build And Push Images
 
 on:
   workflow_dispatch:
+    inputs:
+      api:
+        description: 'Build and push API image'
+        type: boolean
+        default: true
+      ui:
+        description: 'Build and push UI image'
+        type: boolean
+        default: true
+      dashboard:
+        description: 'Build and push Dashboard image'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -37,6 +50,7 @@ jobs:
   build-api:
     runs-on: ubuntu-latest
     needs: prepare
+    if: inputs.api == true
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -75,6 +89,7 @@ jobs:
   build-ui:
     runs-on: ubuntu-latest
     needs: prepare
+    if: inputs.ui == true
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -115,6 +130,7 @@ jobs:
   build-dashboard:
     runs-on: ubuntu-latest
     needs: prepare
+    if: inputs.dashboard == true
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
