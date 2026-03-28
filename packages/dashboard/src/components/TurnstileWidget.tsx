@@ -50,6 +50,7 @@ export function TurnstileWidget({ onTokenChange }: TurnstileWidgetProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
     if (!enabled || !siteKey || !containerRef.current) {
@@ -79,6 +80,7 @@ export function TurnstileWidget({ onTokenChange }: TurnstileWidgetProps) {
             onTokenChange(null);
           }
         });
+        setIsInitialized(true);
       } catch {
         if (!cancelled) {
           onTokenChange(null);
@@ -123,11 +125,15 @@ export function TurnstileWidget({ onTokenChange }: TurnstileWidgetProps) {
 
   return (
     <div className="turnstile-placeholder">
-      <div aria-hidden="true" className="checkbox-proxy" />
-      <div className="turnstile-placeholder__copy">
-        <strong>Verify you are human</strong>
-        <span>Complete the Turnstile challenge before continuing.</span>
-      </div>
+      {!isInitialized && (
+        <>
+          <div aria-hidden="true" className="checkbox-proxy" />
+          <div className="turnstile-placeholder__copy">
+            <strong>Verify you are human</strong>
+            <span>Complete the Turnstile challenge before continuing.</span>
+          </div>
+        </>
+      )}
       <div className="turnstile-widget" ref={containerRef} />
     </div>
   );
