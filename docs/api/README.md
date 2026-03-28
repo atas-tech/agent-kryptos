@@ -2,7 +2,7 @@
 
 BlindPass now ships a maintained OpenAPI snapshot for the stable hosted and local-development surfaces used by the dashboard, browser UI, and agent bootstrap flows.
 
-- OpenAPI document: [openapi.yaml](/home/hvo/Projects/blindpass/docs/api/openapi.yaml)
+- OpenAPI document: [openapi.yaml](../../docs/api/openapi.yaml)
 
 ## Coverage
 
@@ -27,6 +27,6 @@ It is a manual snapshot derived from the route registrations and request schemas
 
 ## Companion docs
 
-- Quick start: [quickstart.md](/home/hvo/Projects/blindpass/docs/guides/quickstart.md)
-- Self-hosting: [self-hosting.md](/home/hvo/Projects/blindpass/docs/guides/self-hosting.md)
-- Policy guide: [policy.md](/home/hvo/Projects/blindpass/docs/guides/policy.md)
+- Quick start: [quickstart.md](../../docs/guides/quickstart.md)
+- Self-hosting: [self-hosting.md](../../docs/guides/self-hosting.md)
+- Policy guide: [policy.md](../../docs/guides/policy.md)

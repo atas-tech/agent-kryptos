@@ -4,8 +4,8 @@ Date: 2026-03-24
 
 ### Related Documents
 
-- [Security Audit v2](file:///home/hvo/Projects/blindpass/docs/security/Security%20Audit%20v2.md) — canonical audit report (SBP-DELTA-001 elevated there as C-4)
-- [Threat Model](file:///home/hvo/Projects/blindpass/docs/security/blindpass-threat-model.md) — formal threat model (SBP-DELTA-001 maps to TM-002/TM-003; SBP-DELTA-002 maps to TM-004)
+- [Security Audit v2](../../docs/security/Security%20Audit%20v2.md) — canonical audit report (SBP-DELTA-001 elevated there as C-4)
+- [Threat Model](../../docs/security/blindpass-threat-model.md) — formal threat model (SBP-DELTA-001 maps to TM-002/TM-003; SBP-DELTA-002 maps to TM-004)
 
 ## Executive summary
 
@@ -13,7 +13,7 @@ This note is intentionally aligned with `docs/security/Security Audit v2.md` and
 
 ## Delta findings
 
-### SBP-DELTA-001 → Elevated to [C-4 in Security Audit v2](file:///home/hvo/Projects/blindpass/docs/security/Security%20Audit%20v2.md)
+### SBP-DELTA-001 → Elevated to [C-4 in Security Audit v2](../../docs/security/Security%20Audit%20v2.md)
 
 - Current status: ✅ Fixed on 2026-03-24
 - Rule ID: JS-XSS-001 / REACT-XSS-002

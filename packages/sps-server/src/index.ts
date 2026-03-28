@@ -450,7 +450,7 @@ async function start(): Promise<void> {
   const app = await buildApp({
     db,
     closeDbOnClose: true,
-    runMigrations: process.env.NODE_ENV !== "production"
+    runMigrations: process.env.SPS_RUN_MIGRATIONS === "1" || (process.env.NODE_ENV !== "production" && process.env.SPS_RUN_MIGRATIONS !== "0")
   });
   const host = process.env.SPS_HOST ?? "127.0.0.1";
   const port = Number(process.env.PORT ?? 3100);

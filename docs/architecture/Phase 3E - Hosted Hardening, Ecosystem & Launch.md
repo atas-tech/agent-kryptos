@@ -131,7 +131,7 @@ Publish officially supported SDK packages that wrap the SPS API. **Node.js first
 |-----|-------------|-----------------|
 | **Node.js** | `@blindpass/sdk` | Published from existing `packages/agent-skill` with documentation, types, and npm release |
 | **Python** | `blindpass` (PyPI) | HPKE keygen, secret request/retrieve, exchange request/fulfill/retrieve, bootstrap auth |
-| **Go** | `github.com/tuthan/blindpass-go` | Same capabilities as Python SDK |
+| **Go** | `github.com/atas-tech/blindpass-go` | Same capabilities as Python SDK |
 
 All SDKs must support:
 
@@ -173,9 +173,9 @@ Stand up the production deployment with proper domains and TLS. This is the fina
 
 | Subdomain | Service | Container |
 |-----------|---------|-----------|
-| `sps.atas.tech` | SPS API | `ghcr.io/tuthan/blindpass-sps-server` |
-| `secret.atas.tech` | Browser UI (zero-knowledge sandbox) | `ghcr.io/tuthan/blindpass-browser-ui` |
-| `app.atas.tech` | Operator Dashboard | `ghcr.io/tuthan/blindpass-dashboard` |
+| `sps.atas.tech` | SPS API | `ghcr.io/atas-tech/blindpass-sps-server` |
+| `secret.atas.tech` | Browser UI (zero-knowledge sandbox) | `ghcr.io/atas-tech/blindpass-browser-ui` |
+| `app.atas.tech` | Operator Dashboard | `ghcr.io/atas-tech/blindpass-dashboard` |
 
 Reverse proxy and TLS are handled by the operator's existing Unraid reverse proxy (for example Nginx Proxy Manager or Traefik). No bundled reverse proxy is included.
 
@@ -190,7 +190,7 @@ Health checks are used by Docker `HEALTHCHECK` and by the reverse proxy for upst
 
 ### [MODIFY] `.github/workflows/build-and-push-images.yml`
 
-- Add `dashboard` image build target (`ghcr.io/tuthan/blindpass-dashboard`)
+- Add `dashboard` image build target (`ghcr.io/atas-tech/blindpass-dashboard`)
 - Pin `VITE_SPS_API_URL=https://sps.atas.tech` for production browser-ui and dashboard builds
 
 ### [MODIFY] `docs/deployment/Unraid.md`
@@ -226,9 +226,9 @@ Update the SPS egress URL filter allowlist to match the production domains:
 
 | Image | Source | Notes |
 |-------|--------|-------|
-| `ghcr.io/tuthan/blindpass-sps-server` | Existing | Add health check endpoints + analytics routes |
-| `ghcr.io/tuthan/blindpass-browser-ui` | Existing | Rebuild with production `VITE_SPS_API_URL` |
-| `ghcr.io/tuthan/blindpass-dashboard` | New | Vite build, served via lightweight static server |
+| `ghcr.io/atas-tech/blindpass-sps-server` | Existing | Add health check endpoints + analytics routes |
+| `ghcr.io/atas-tech/blindpass-browser-ui` | Existing | Rebuild with production `VITE_SPS_API_URL` |
+| `ghcr.io/atas-tech/blindpass-dashboard` | New | Vite build, served via lightweight static server |
 | `postgres:16-alpine` | Upstream | Production credentials via env |
 | `redis:7-alpine` | Upstream | Unchanged |
 

@@ -26,6 +26,7 @@ TypeScript uses `strict` mode with ESM (`NodeNext`). Follow existing file style:
 - Use `camelCase` for variables/functions, `PascalCase` for types/interfaces, `UPPER_SNAKE_CASE` for env vars.
 - Prefer descriptive, kebab-case file names (for example `secret-store.ts`, `egress-filter.ts`).
 - Match surrounding indentation and quote style instead of reformatting unrelated lines.
+- **Documentation Paths**: Always use relative paths (e.g., `../packages/..`) in documentation files. Never use absolute paths (e.g., `/home/hvo/Projects/blindpass/..`) which are environment-specific.
 
 No dedicated lint script is currently enforced; use `npm run build` and `npm test` as the quality gate.
 

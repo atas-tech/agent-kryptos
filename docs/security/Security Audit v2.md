@@ -4,12 +4,12 @@
 **Remediation status updated through**: 2026-03-24 implementation pass
 **Scope**: Full codebase review of `blindpass` — all packages and features through Phase 3D  
 **Packages reviewed**: `sps-server`, `gateway`, `agent-skill`, `browser-ui`, `dashboard`, `openclaw-plugin`  
-**Compared against**: [Security Audit v1 (2026-03-04)](file:///home/hvo/Projects/blindpass/docs/security/Security%20Audit.md)
+**Compared against**: [Security Audit v1 (2026-03-04)](../../docs/security/Security%20Audit.md)
 
 ### Related Documents
 
-- [Threat Model](file:///home/hvo/Projects/blindpass/docs/security/blindpass-threat-model.md) — formal threat model with attacker capabilities, abuse paths, and threat table
-- [Security Best Practices Supplement](file:///home/hvo/Projects/blindpass/docs/security/security_best_practices_report.md) — delta findings from targeted review (SBP-DELTA-001 elevated here as C-4; SBP-DELTA-002 on log hygiene)
+- [Threat Model](../../docs/security/blindpass-threat-model.md) — formal threat model with attacker capabilities, abuse paths, and threat table
+- [Security Best Practices Supplement](../../docs/security/security_best_practices_report.md) — delta findings from targeted review (SBP-DELTA-001 elevated here as C-4; SBP-DELTA-002 on log hygiene)
 
 ---
 
@@ -86,10 +86,10 @@ Since the March 4 audit (v1), the BlindPass codebase has grown approximately 4×
 **Status (2026-03-24)**: ✅ Resolved.
 
 **Files**:
-- [crypto.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/crypto.ts)
-- [crypto.test.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/tests/crypto.test.ts)
-- [routes.test.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/tests/routes.test.ts)
-- [routes-adversarial.test.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/tests/routes-adversarial.test.ts)
+- [crypto.ts](../../packages/sps-server/src/services/crypto.ts)
+- [crypto.test.ts](../../packages/sps-server/tests/crypto.test.ts)
+- [routes.test.ts](../../packages/sps-server/tests/routes.test.ts)
+- [routes-adversarial.test.ts](../../packages/sps-server/tests/routes-adversarial.test.ts)
 
 ```typescript
 return timingSafeEqual(Buffer.from(expected), Buffer.from(actual));
@@ -112,11 +112,11 @@ The HMAC continues to protect:
 **Status (2026-03-24)**: ✅ Resolved for current runtime code paths.
 
 **Files**:
-- [index.ts L79-L88](file:///home/hvo/Projects/blindpass/packages/sps-server/src/index.ts#L79): startup secret validation
-- [index.ts L113](file:///home/hvo/Projects/blindpass/packages/sps-server/src/index.ts#L113): HMAC secret resolution
-- [utils/crypto.ts L4-L6](file:///home/hvo/Projects/blindpass/packages/sps-server/src/utils/crypto.ts#L4): user JWT secret now required
-- [agent.ts L64-L67](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/agent.ts#L64): agent JWT secret now required
-- [secret-config.test.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/tests/secret-config.test.ts): regression coverage
+- [index.ts L79-L88](../../packages/sps-server/src/index.ts#L79): startup secret validation
+- [index.ts L113](../../packages/sps-server/src/index.ts#L113): HMAC secret resolution
+- [utils/crypto.ts L4-L6](../../packages/sps-server/src/utils/crypto.ts#L4): user JWT secret now required
+- [agent.ts L64-L67](../../packages/sps-server/src/services/agent.ts#L64): agent JWT secret now required
+- [secret-config.test.ts](../../packages/sps-server/tests/secret-config.test.ts): regression coverage
 The original issue was that user JWT, agent JWT, and HMAC signing material silently fell back to repo-known defaults. That path has now been removed: startup fails closed outside test mode, and the token helpers themselves require configured secrets.
 
 **Residual risk**:
@@ -134,7 +134,7 @@ The original issue was that user JWT, agent JWT, and HMAC signing material silen
 
 **Status (2026-03-24)**: ✅ Resolved.
 
-**File**: [crypto.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/crypto.ts), [requester-auth.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/requester-auth.ts)
+**File**: [crypto.ts](../../packages/sps-server/src/services/crypto.ts), [requester-auth.ts](../../packages/sps-server/src/services/requester-auth.ts)
 
 The original issue was that one shared HMAC secret directly signed:
 1. Browser URL metadata/submit signatures
@@ -161,10 +161,10 @@ This keeps configuration surface low while isolating token classes so one derive
 **Status (2026-03-24)**: ✅ Resolved.
 
 **Files**:
-- [request-context.js](file:///home/hvo/Projects/blindpass/packages/browser-ui/src/request-context.js)
-- [app.js](file:///home/hvo/Projects/blindpass/packages/browser-ui/src/app.js)
-- [request-context.test.mjs](file:///home/hvo/Projects/blindpass/packages/browser-ui/tests/request-context.test.mjs)
-- [vite.config.ts](file:///home/hvo/Projects/blindpass/packages/browser-ui/vite.config.ts)
+- [request-context.js](../../packages/browser-ui/src/request-context.js)
+- [app.js](../../packages/browser-ui/src/app.js)
+- [request-context.test.mjs](../../packages/browser-ui/tests/request-context.test.mjs)
+- [vite.config.ts](../../packages/browser-ui/vite.config.ts)
 
 The original issue was that the browser UI read `api_url` directly from the query string and used it for metadata fetches, secret submission, and refresh. That query-controlled origin has now been removed from parsing and preview-link generation. The UI now uses only the configured API origin.
 
@@ -181,7 +181,7 @@ The original issue was that the browser UI read `api_url` directly from the quer
 > [!CAUTION]
 > This was the most immediately exploitable finding in the original audit. The direct exploit path reviewed here is now closed.
 
-*Cross-reference: [SBP-DELTA-001](file:///home/hvo/Projects/blindpass/docs/security/security_best_practices_report.md), [TM-002 / TM-003](file:///home/hvo/Projects/blindpass/docs/security/blindpass-threat-model.md)*
+*Cross-reference: [SBP-DELTA-001](../../docs/security/security_best_practices_report.md), [TM-002 / TM-003](../../docs/security/blindpass-threat-model.md)*
 
 ---
 
@@ -192,10 +192,10 @@ The original issue was that the browser UI read `api_url` directly from the quer
 **Status (2026-03-24)**: ✅ Resolved.
 
 **Files**:
-- [index.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/index.ts)
-- [cors.test.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/tests/cors.test.ts)
-- [.env.test.example](file:///home/hvo/Projects/blindpass/packages/sps-server/.env.test.example)
-- [Unraid.md](file:///home/hvo/Projects/blindpass/docs/deployment/Unraid.md)
+- [index.ts](../../packages/sps-server/src/index.ts)
+- [cors.test.ts](../../packages/sps-server/tests/cors.test.ts)
+- [.env.test.example](../../packages/sps-server/.env.test.example)
+- [Unraid.md](../../docs/deployment/Unraid.md)
 
 `origin: true` formerly reflected any requesting origin. With the addition of user authentication, the dashboard SPA, billing endpoints, and workspace admin APIs, the impact had become materially higher:
 - Any malicious website can make authenticated API calls using the user's access token (if it can extract it from browser storage via XSS or another same-origin compromise)
@@ -218,8 +218,8 @@ The implementation now:
 **Status (2026-03-24)**: ⚠️ Partially resolved.
 
 **Files**:
-- [AuthContext.tsx](file:///home/hvo/Projects/blindpass/packages/dashboard/src/auth/AuthContext.tsx)
-- [auth-storage.js](file:///home/hvo/Projects/blindpass/packages/browser-ui/src/auth-storage.js)
+- [AuthContext.tsx](../../packages/dashboard/src/auth/AuthContext.tsx)
+- [auth-storage.js](../../packages/browser-ui/src/auth-storage.js)
 
 ```typescript
 const REFRESH_TOKEN_KEY = "sps_refresh_token";
@@ -242,10 +242,10 @@ However, the token remains JavaScript-readable on the first-party origin. Combin
 **Status (2026-03-24)**: ✅ Resolved.
 
 **Files**:
-- [user.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/user.ts)
-- [auth-routes.test.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/tests/auth-routes.test.ts)
-- [.env.test.example](file:///home/hvo/Projects/blindpass/packages/sps-server/.env.test.example)
-- [Unraid.md](file:///home/hvo/Projects/blindpass/docs/deployment/Unraid.md)
+- [user.ts](../../packages/sps-server/src/services/user.ts)
+- [auth-routes.test.ts](../../packages/sps-server/tests/auth-routes.test.ts)
+- [.env.test.example](../../packages/sps-server/.env.test.example)
+- [Unraid.md](../../docs/deployment/Unraid.md)
 
 The session issuer now revokes overflow refresh sessions before inserting a new one, using `SPS_AUTH_MAX_ACTIVE_SESSIONS` with a default cap of `10`. Password change now revokes every other refresh session for that user inside the same transaction.
 
@@ -260,10 +260,10 @@ The session issuer now revokes overflow refresh sessions before inserting a new 
 **Status (2026-03-24)**: ✅ Resolved.
 
 **Files**:
-- [redis.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/redis.ts)
-- [secrets.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/routes/secrets.ts)
-- [exchange.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/routes/exchange.ts)
-- [redis-integration.test.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/tests/redis-integration.test.ts)
+- [redis.ts](../../packages/sps-server/src/services/redis.ts)
+- [secrets.ts](../../packages/sps-server/src/routes/secrets.ts)
+- [exchange.ts](../../packages/sps-server/src/routes/exchange.ts)
+- [redis-integration.test.ts](../../packages/sps-server/tests/redis-integration.test.ts)
 
 Redis-backed request submission and approval decision updates now use Lua scripts that:
 1. load the current record
@@ -284,9 +284,9 @@ The affected routes now also distinguish stale-state conflicts from true expirat
 **Status (2026-03-24)**: ✅ Resolved.
 
 **Files**:
-- [agents.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/routes/agents.ts)
-- [rate-limit.test.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/tests/rate-limit.test.ts)
-- [e2e.test.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/tests/e2e.test.ts)
+- [agents.ts](../../packages/sps-server/src/routes/agents.ts)
+- [rate-limit.test.ts](../../packages/sps-server/tests/rate-limit.test.ts)
+- [e2e.test.ts](../../packages/sps-server/tests/e2e.test.ts)
 
 The current route is `POST /api/v2/agents/token`, and it already enforces per-IP rate limiting before API-key authentication. Existing integration coverage also asserts `429` responses and `Retry-After` headers on repeated token mint attempts.
 
@@ -301,8 +301,8 @@ The current route is `POST /api/v2/agents/token`, and it already enforces per-IP
 **Status (2026-03-24)**: ✅ Resolved.
 
 **Files**:
-- [guest-payment.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/guest-payment.ts)
-- [guest-payment.test.ts](file:///home/hvo/Projects/blindpass/packages/sps-server/tests/guest-payment.test.ts)
+- [guest-payment.ts](../../packages/sps-server/src/services/guest-payment.ts)
+- [guest-payment.test.ts](../../packages/sps-server/tests/guest-payment.test.ts)
 
 The settlement path no longer performs a standalone pre-read to claim ownership of provider work. Instead, the pending-row insert now returns the inserted row only for the winner, and any conflicting caller re-reads the existing payment row and exits with `payment_in_progress`, `payment_failed`, or cached settled output as appropriate.
 
@@ -318,7 +318,7 @@ The settlement path no longer performs a standalone pre-read to claim ownership 
 
 **Status (2026-03-24)**: ⚠️ Partially resolved.
 
-**Files**: [browser-ui/index.html](file:///home/hvo/Projects/blindpass/packages/browser-ui/index.html), [dashboard/index.html](file:///home/hvo/Projects/blindpass/packages/dashboard/index.html)
+**Files**: [browser-ui/index.html](../../packages/browser-ui/index.html), [dashboard/index.html](../../packages/dashboard/index.html)
 
 Both frontends now have CSP coverage in repo-visible code, but not all deployment paths are equally strong:
 
@@ -340,7 +340,7 @@ Both frontends now have CSP coverage in repo-visible code, but not all deploymen
 
 ### M-2: Verification Token Stored as Plaintext in DB (NEW)
 
-**File**: [user.ts L174-175](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/user.ts#L173-L178)
+**File**: [user.ts L174-175](../../packages/sps-server/src/services/user.ts#L173-L178)
 
 Email verification tokens are stored in the `users.verification_token` column as plaintext strings. The `hashToken` function exists and is used for refresh tokens, but verification tokens bypass it.
 
@@ -352,7 +352,7 @@ An attacker with read-only DB access (e.g., SQL injection, backup leak) can dire
 
 ### M-3: Email Verification Does Not Expire (NEW)
 
-**File**: [user.ts L757-800](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/user.ts#L757-L800)
+**File**: [user.ts L757-800](../../packages/sps-server/src/services/user.ts#L757-L800)
 
 The `verifyEmail` function checks only that the token matches — there is no expiry. A verification token issued during registration remains valid indefinitely.
 
@@ -362,7 +362,7 @@ The `verifyEmail` function checks only that the token matches — there is no ex
 
 ### M-4: No Webhook Signature Validation for x402/Facilitator Responses (NEW)
 
-**File**: [x402.ts L475-543](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/x402.ts#L475-L543)
+**File**: [x402.ts L475-543](../../packages/sps-server/src/services/x402.ts#L475-L543)
 
 The `HttpX402Provider` calls the facilitator's `/verify` and `/settle` endpoints without authenticating the facilitator's identity. It trusts the response bodies at face value:
 
@@ -379,7 +379,7 @@ A DNS hijack or MITM on the facilitator URL could make the SPS believe any payme
 
 ### M-5: Password Strength Validation Is Minimal (NEW)
 
-**File**: [user.ts L139-145](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/user.ts#L139-L145)
+**File**: [user.ts L139-145](../../packages/sps-server/src/services/user.ts#L139-L145)
 
 Password validation only checks minimum length (8 chars). No checks for:
 - Common password lists (beyond the 4 weak temporary passwords)
@@ -394,7 +394,7 @@ Password validation only checks minimum length (8 chars). No checks for:
 
 **Status (2026-03-24)**: ⚠️ Partially resolved.
 
-**File**: [index.ts L99-102](file:///home/hvo/Projects/blindpass/packages/sps-server/src/index.ts#L99-L102)
+**File**: [index.ts L99-102](../../packages/sps-server/src/index.ts#L99-L102)
 
 The browser-ui runtime now sends:
 - `X-Content-Type-Options: nosniff`
@@ -420,7 +420,7 @@ The remaining recommended headers are still missing or unverified on all product
 
 ### M-7: Gateway `Math.random()` for Confirmation Codes (v1 — STILL OPEN)
 
-**File**: [code-generator.ts](file:///home/hvo/Projects/blindpass/packages/gateway/src/code-generator.ts)
+**File**: [code-generator.ts](../../packages/gateway/src/code-generator.ts)
 
 Unchanged from v1. The gateway-side code generator uses `Math.random()` instead of `crypto.randomBytes()`.
 
@@ -428,7 +428,7 @@ Unchanged from v1. The gateway-side code generator uses `Math.random()` instead 
 
 ### M-8: Guest Subject Hash Uses IP Address as Identity Anchor (NEW)
 
-**File**: [guest-intent.ts L313-315](file:///home/hvo/Projects/blindpass/packages/sps-server/src/services/guest-intent.ts#L313-L315)
+**File**: [guest-intent.ts L313-315](../../packages/sps-server/src/services/guest-intent.ts#L313-L315)
 
 ```typescript
 function buildGuestSubjectHash(sourceIp: string, requesterPublicKey: string, ...): string {
@@ -446,7 +446,7 @@ IP addresses are unreliable identifiers — they can be spoofed, shared (NAT), o
 
 ### L-1: `.gitignore` Missing `gateway-key.json` (v1 — STILL OPEN)
 
-**File**: [.gitignore](file:///home/hvo/Projects/blindpass/.gitignore)
+**File**: [.gitignore](../../.gitignore)
 
 Still not excluding `gateway-key.json` or `jwks.json`. Also not excluding the numerous `*.log` files in the root directory (`sps.log`, `payer-output*.log`, `test-output*.log`).
 
@@ -476,7 +476,7 @@ The original stdout leak paths have now been removed or gated:
 
 **Remaining note**: if `db` is null, audit durability is still reduced, but the specific sensitive-data leak documented here is no longer present by default.
 
-*Cross-reference: [SBP-DELTA-002](file:///home/hvo/Projects/blindpass/docs/security/security_best_practices_report.md), [TM-004](file:///home/hvo/Projects/blindpass/docs/security/blindpass-threat-model.md)*
+*Cross-reference: [SBP-DELTA-002](../../docs/security/security_best_practices_report.md), [TM-004](../../docs/security/blindpass-threat-model.md)*
 
 ---
 
@@ -496,7 +496,7 @@ Rate limiting is applied per-IP for login attempts (10/min), but there is no acc
 
 ### L-6: Dashboard API Client Lacks Request Timeouts (NEW)
 
-**File**: [client.ts](file:///home/hvo/Projects/blindpass/packages/dashboard/src/api/client.ts#L66-L101)
+**File**: [client.ts](../../packages/dashboard/src/api/client.ts#L66-L101)
 
 The `apiRequest` function uses `fetch()` without an `AbortController` timeout. A slow or unresponsive API server could cause the dashboard to hang indefinitely.
 

@@ -2,8 +2,8 @@
 
 ### Related Documents
 
-- [Security Audit v2](file:///home/hvo/Projects/blindpass/docs/security/Security%20Audit%20v2.md) — canonical audit report with 24 findings and prioritized remediation plan
-- [Security Best Practices Supplement](file:///home/hvo/Projects/blindpass/docs/security/security_best_practices_report.md) — delta findings on `api_url` injection (TM-002/TM-003) and log leak (TM-004)
+- [Security Audit v2](../../docs/security/Security%20Audit%20v2.md) — canonical audit report with 24 findings and prioritized remediation plan
+- [Security Best Practices Supplement](../../docs/security/security_best_practices_report.md) — delta findings on `api_url` injection (TM-002/TM-003) and log leak (TM-004)
 
 Assumptions used for this review because no deployment-specific clarifications were provided:
 
@@ -221,4 +221,4 @@ flowchart TD
 - Runtime behavior was separated from test/demo/tooling code.
 - No user clarification was available, so assumptions are explicit.
 - Risk ranking is conditional on hosted internet exposure and deployment secret hygiene.
-- TM-007 now tracks residual facilitator/payment-integrity risk after the guest payment TOCTOU issue was remediated, cross-referenced with [H-6 in Security Audit v2](file:///home/hvo/Projects/blindpass/docs/security/Security%20Audit%20v2.md) and [M-4 in Security Audit v2](file:///home/hvo/Projects/blindpass/docs/security/Security%20Audit%20v2.md).
+- TM-007 now tracks residual facilitator/payment-integrity risk after the guest payment TOCTOU issue was remediated, cross-referenced with [H-6 in Security Audit v2](../../docs/security/Security%20Audit%20v2.md) and [M-4 in Security Audit v2](../../docs/security/Security%20Audit%20v2.md).

@@ -1,13 +1,13 @@
 # Self-Hosting
 
-This guide covers the supported self-hosted path for BlindPass from source. For the packaged Unraid deployment path, use [Unraid.md](/home/hvo/Projects/blindpass/docs/deployment/Unraid.md).
+This guide covers the supported self-hosted path for BlindPass from source. For the packaged Unraid deployment path, use [Unraid.md](../../docs/deployment/Unraid.md).
 
 ## Deployment shapes
 
 - Source-based local or VM deployment:
   Run `packages/sps-server`, `packages/dashboard`, and `packages/browser-ui` from this repository and back them with PostgreSQL and Redis.
 - Packaged container deployment:
-  Use the GHCR images and the deployment templates documented in [Unraid.md](/home/hvo/Projects/blindpass/docs/deployment/Unraid.md).
+  Use the GHCR images and the deployment templates documented in [Unraid.md](../../docs/deployment/Unraid.md).
 
 ## What you need
 
@@ -47,7 +47,7 @@ For hosted-style cookie auth behind a reverse proxy, also set:
 make up
 ```
 
-The standard integration harness is [docker-compose.test.yml](/home/hvo/Projects/blindpass/docker-compose.test.yml).
+The standard integration harness is [docker-compose.test.yml](../../docker-compose.test.yml).
 
 ## 3. Run database migrations
 
@@ -78,7 +78,7 @@ make dev-browser
 
 Container deployment:
 
-- build and publish the images from [/.github/workflows/build-and-push-images.yml](/home/hvo/Projects/blindpass/.github/workflows/build-and-push-images.yml)
+- build and publish the images from [/.github/workflows/build-and-push-images.yml](../../.github/workflows/build-and-push-images.yml)
 - deploy them with your platform-specific tooling
 
 ## 5. Public routing model
@@ -110,7 +110,7 @@ Two valid models exist:
 - Self-hosted bootstrap/default policy:
   Set `SPS_SECRET_REGISTRY_JSON` and `SPS_EXCHANGE_POLICY_JSON` in the environment to seed a default policy model.
 
-See [policy.md](/home/hvo/Projects/blindpass/docs/guides/policy.md) for the document format and operational model.
+See [policy.md](../../docs/guides/policy.md) for the document format and operational model.
 
 ## 8. Health checks
 

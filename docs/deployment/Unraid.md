@@ -6,27 +6,27 @@ This is the simplest deployment shape for the project: one SPS server, one brows
 
 ## What gets deployed
 
-- `ghcr.io/tuthan/blindpass-sps-server`
-- `ghcr.io/tuthan/blindpass-browser-ui`
-- `ghcr.io/tuthan/blindpass-dashboard`
+- `ghcr.io/atas-tech/blindpass-sps-server`
+- `ghcr.io/atas-tech/blindpass-browser-ui`
+- `ghcr.io/atas-tech/blindpass-dashboard`
 - `redis:7-alpine`
 - `postgres:16-alpine`
 
 The Unraid templates for these containers are in:
 
-- [`deploy/unraid/blindpass-redis.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-redis.xml)
-- [`deploy/unraid/blindpass-postgres.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-postgres.xml)
-- [`deploy/unraid/blindpass-sps-server.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-sps-server.xml)
-- [`deploy/unraid/blindpass-browser-ui.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-browser-ui.xml)
-- [`deploy/unraid/blindpass-dashboard.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-dashboard.xml)
+- [`deploy/unraid/blindpass-redis.xml`](../../deploy/unraid/blindpass-redis.xml)
+- [`deploy/unraid/blindpass-postgres.xml`](../../deploy/unraid/blindpass-postgres.xml)
+- [`deploy/unraid/blindpass-sps-server.xml`](../../deploy/unraid/blindpass-sps-server.xml)
+- [`deploy/unraid/blindpass-browser-ui.xml`](../../deploy/unraid/blindpass-browser-ui.xml)
+- [`deploy/unraid/blindpass-dashboard.xml`](../../deploy/unraid/blindpass-dashboard.xml)
 
-The template `Repository` fields currently point at `ghcr.io/tuthan/...`.
+The template `Repository` fields currently point at `ghcr.io/atas-tech/...`.
 If you publish the images under a different GitHub owner or organization, edit the `Repository` value in the Unraid UI before deploying.
 
 ## Before you deploy
 
 1. Publish the images manually from GitHub Actions.
-   The workflow is manual-only in [`/.github/workflows/build-and-push-images.yml`](/home/hvo/Projects/blindpass/.github/workflows/build-and-push-images.yml).
+   The workflow is manual-only in [`/.github/workflows/build-and-push-images.yml`](../../.github/workflows/build-and-push-images.yml).
 
 2. The hosted GitHub Actions workflow now bakes `VITE_SPS_API_URL=https://sps.atas.tech` into the published browser UI and dashboard images.
    If you are self-hosting under a different API domain, build your own images or adjust the workflow before publishing.
@@ -59,21 +59,21 @@ Recommended values:
    Use a name such as `blindpass`.
 
 2. Add the Redis template.
-   Use [`deploy/unraid/blindpass-redis.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-redis.xml).
+   Use [`deploy/unraid/blindpass-redis.xml`](../../deploy/unraid/blindpass-redis.xml).
    In the Unraid Docker UI, use the template URL or copy the XML into your templates directory.
 
 3. Add the Postgres template.
-   Use [`deploy/unraid/blindpass-postgres.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-postgres.xml).
+   Use [`deploy/unraid/blindpass-postgres.xml`](../../deploy/unraid/blindpass-postgres.xml).
    Set `POSTGRES_PASSWORD` to a strong value.
 
 4. Add the SPS template.
-   Use [`deploy/unraid/blindpass-sps-server.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-sps-server.xml).
+   Use [`deploy/unraid/blindpass-sps-server.xml`](../../deploy/unraid/blindpass-sps-server.xml).
 
 5. Add the Browser UI template.
-   Use [`deploy/unraid/blindpass-browser-ui.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-browser-ui.xml).
+   Use [`deploy/unraid/blindpass-browser-ui.xml`](../../deploy/unraid/blindpass-browser-ui.xml).
 
 6. Add the Dashboard template.
-   Use [`deploy/unraid/blindpass-dashboard.xml`](/home/hvo/Projects/blindpass/deploy/unraid/blindpass-dashboard.xml).
+   Use [`deploy/unraid/blindpass-dashboard.xml`](../../deploy/unraid/blindpass-dashboard.xml).
 
 7. For Redis, Postgres, and SPS, set the network to the same custom network.
    - The default `REDIS_URL` assumes the Redis container name is `blindpass-redis`.

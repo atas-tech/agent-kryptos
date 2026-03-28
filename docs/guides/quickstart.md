@@ -106,10 +106,10 @@ npm run e2e:human
 
 ## 8. Useful follow-ups
 
-- Policy editing guide: [policy.md](/home/hvo/Projects/blindpass/docs/guides/policy.md)
-- Self-hosting guide: [self-hosting.md](/home/hvo/Projects/blindpass/docs/guides/self-hosting.md)
-- API reference: [docs/api/README.md](/home/hvo/Projects/blindpass/docs/api/README.md)
-- Unraid deployment: [Unraid.md](/home/hvo/Projects/blindpass/docs/deployment/Unraid.md)
+- Policy editing guide: [policy.md](../../docs/guides/policy.md)
+- Self-hosting guide: [self-hosting.md](../../docs/guides/self-hosting.md)
+- API reference: [docs/api/README.md](../../docs/api/README.md)
+- Unraid deployment: [Unraid.md](../../docs/deployment/Unraid.md)
 
 ## Shutdown
 
