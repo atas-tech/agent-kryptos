@@ -68,6 +68,9 @@ export function LoginPage() {
       }
     >
       <form className="auth-form" onSubmit={handleSubmit}>
+        {typeof (location.state as { notice?: string } | null)?.notice === "string"
+          ? <div className="turnstile-placeholder turnstile-placeholder--info">{(location.state as { notice: string }).notice}</div>
+          : null}
         {error ? <div className="error-banner">{error}</div> : null}
         <FormField
           autoComplete="email"

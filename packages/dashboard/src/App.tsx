@@ -15,6 +15,7 @@ import { MembersPage } from "./pages/Members.js";
 import { PolicyPage } from "./pages/Policy.js";
 import { PublicOffersPage } from "./pages/PublicOffers.js";
 import { RegisterPage } from "./pages/Register.js";
+import { ResetPasswordPage } from "./pages/ResetPassword.js";
 import { SettingsPage } from "./pages/Settings.js";
 
 export function App() {
@@ -49,6 +50,14 @@ export function App() {
         element={
           <PublicOnlyRoute>
             <ForgotPasswordPage />
+          </PublicOnlyRoute>
+        }
+      />
+      <Route
+        path="/reset-password"
+        element={
+          <PublicOnlyRoute>
+            <ResetPasswordPage />
           </PublicOnlyRoute>
         }
       />

@@ -1,26 +1,50 @@
 import { AlertTriangle, BadgeDollarSign, Bot, KeyRound, ShieldCheck, Users, Mail, CheckCircle2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../auth/useAuth.js";
 import { QuotaMeter } from "../components/QuotaMeter.js";
 import { StatusBadge } from "../components/StatusBadge.js";
+import { TurnstileWidget } from "../components/TurnstileWidget.js";
 import { useDashboardSummary } from "../hooks/useDashboardSummary.js";
 import { apiRequest } from "../api/client.js";
+import { turnstileEnabled } from "../security/turnstile.js";
 
 export function DashboardPage() {
   const { workspace, user, setWorkspaceSummary } = useAuth();
   const { summary, loading, error, refresh } = useDashboardSummary();
   const [resending, setResending] = useState(false);
-  const [resendStatus, setResendStatus] = useState<"idle" | "success" | "error">("idle");
+  const [resendStatus, setResendStatus] = useState<"idle" | "success" | "logged" | "error">("idle");
+  const [resendError, setResendError] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const requiresTurnstile = turnstileEnabled();
+  const handleTurnstileChange = useCallback((token: string | null) => {
+    setTurnstileToken(token);
+    setResendError((current) => (current === "Complete human verification to continue." ? null : current));
+  }, []);
 
   const handleResendVerification = async () => {
+    if (requiresTurnstile && !turnstileToken) {
+      setResendError("Complete human verification to continue.");
+      return;
+    }
+
     setResending(true);
     setResendStatus("idle");
+    setResendError(null);
     try {
-      await apiRequest("/api/v2/auth/retrigger-verification", { method: "POST" });
-      setResendStatus("success");
+      const response = await apiRequest<{ delivery?: { mode?: "sent" | "logged" } }>(
+        "/api/v2/auth/retrigger-verification",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            cf_turnstile_response: turnstileToken ?? undefined
+          })
+        }
+      );
+      setResendStatus(response.delivery?.mode === "logged" ? "logged" : "success");
     } catch (err) {
       console.error("Failed to resend verification email:", err);
       setResendStatus("error");
+      setResendError(err instanceof Error ? err.message : "Verification delivery failed");
     } finally {
       setResending(false);
     }
@@ -72,12 +96,16 @@ export function DashboardPage() {
       {user && !user.email_verified && (
         <div className="verification-banner">
           <div className="verification-banner__text">
-            {resendStatus === "success" ? (
+            {resendStatus === "success" || resendStatus === "logged" ? (
               <>
                 <CheckCircle2 size={20} className="text-success" />
                 <div>
-                  <strong>Verification email sent!</strong>
-                  <p className="hero-card__body">Please check your inbox for the new link.</p>
+                  <strong>{resendStatus === "logged" ? "Verification link issued locally" : "Verification email sent"}</strong>
+                  <p className="hero-card__body">
+                    {resendStatus === "logged"
+                      ? "Check the server output for the verification link in this local environment."
+                      : "Please check your inbox for the new link."}
+                  </p>
                 </div>
               </>
             ) : (
@@ -90,16 +118,20 @@ export function DashboardPage() {
               </>
             )}
           </div>
-          {resendStatus !== "success" && (
-            <button
-              className="primary-button"
-              disabled={resending}
-              onClick={handleResendVerification}
-              type="button"
-            >
-              {resending ? "Sending..." : resendStatus === "error" ? "Try again" : "Resend verification email"}
-            </button>
-          )}
+          <div>
+            {resendError ? <div className="error-banner">{resendError}</div> : null}
+            {requiresTurnstile ? <TurnstileWidget onTokenChange={handleTurnstileChange} /> : null}
+            {resendStatus !== "success" && resendStatus !== "logged" ? (
+              <button
+                className="primary-button"
+                disabled={resending}
+                onClick={handleResendVerification}
+                type="button"
+              >
+                {resending ? "Sending..." : resendStatus === "error" ? "Try again" : "Resend verification email"}
+              </button>
+            ) : null}
+          </div>
         </div>
       )}
 

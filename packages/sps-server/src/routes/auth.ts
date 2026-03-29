@@ -7,12 +7,15 @@ import {
   changePassword,
   getUserContext,
   logoutSession,
+  requestPasswordReset,
   refreshSession,
   registerUser,
+  resetPasswordWithToken,
   retriggerEmailVerification,
   UserServiceError,
   verifyEmail
 } from "../services/user.js";
+import { MailerServiceError } from "../services/mailer.js";
 import { TurnstileServiceError, verifyTurnstileToken } from "../services/turnstile.js";
 import type { AuthResult, UserRecord } from "../services/user.js";
 import type { WorkspaceRecord } from "../services/workspace.js";
@@ -226,20 +229,27 @@ function buildAuthResponse(
     refresh_token_expires_at: number;
     user: ReturnType<typeof toUserResponse>;
     workspace: ReturnType<typeof toWorkspaceResponse>;
+    verification_email_delivery?: AuthResult["verificationEmailDelivery"];
   };
 
   if (isHostedModeEnabled()) {
     setRefreshTokenCookie(req, reply, result.tokens.refreshToken, result.tokens.refreshTokenExpiresAt);
+    payload.verification_email_delivery = result.verificationEmailDelivery;
     return payload;
   }
 
   payload.refresh_token = result.tokens.refreshToken;
+  payload.verification_email_delivery = result.verificationEmailDelivery;
   return payload;
 }
 
 function sendServiceError(reply: FastifyReply, error: unknown) {
   if (error instanceof UserServiceError) {
     return reply.code(error.statusCode).send({ error: error.message, code: error.code });
+  }
+
+  if (error instanceof MailerServiceError) {
+    return reply.code(error.statusCode).send({ error: error.message, code: error.code, retryable: error.retryable });
   }
 
   if (error instanceof TurnstileServiceError) {
@@ -259,6 +269,68 @@ function sendServiceError(reply: FastifyReply, error: unknown) {
 
 async function requireCurrentUser(req: FastifyRequest, reply: FastifyReply): Promise<AuthenticatedUserClaims | null> {
   return requireUserAuth(req, reply, { allowForcePasswordChange: true });
+}
+
+function authRateLimitFromEnv(name: string, fallback: number): number {
+  const raw = Number.parseInt(process.env[name] ?? "", 10);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return fallback;
+  }
+
+  return raw;
+}
+
+function authDurationFromEnv(name: string, fallbackMs: number): number {
+  const raw = Number.parseInt(process.env[name] ?? "", 10);
+  if (!Number.isFinite(raw) || raw < 0) {
+    return fallbackMs;
+  }
+
+  return raw;
+}
+
+async function enforceIpRateLimit(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  service: RateLimitService | undefined,
+  key: string,
+  limit: number,
+  windowMs: number,
+  message: string
+): Promise<boolean> {
+  if (!service) {
+    return true;
+  }
+
+  const rateLimit = await service.consume(rateLimitKeyByIp(req, key), limit, windowMs);
+  if (rateLimit.allowed) {
+    return true;
+  }
+
+  await sendRateLimited(reply, rateLimit, message);
+  return false;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function withMinimumDuration<T>(fn: () => Promise<T>, minimumMs: number): Promise<T> {
+  const startedAt = Date.now();
+  try {
+    return await fn();
+  } finally {
+    const elapsed = Date.now() - startedAt;
+    if (elapsed < minimumMs) {
+      await delay(minimumMs - elapsed);
+    }
+  }
+}
+
+function forgotPasswordMinimumResponseMs(): number {
+  return authDurationFromEnv("SPS_AUTH_MIN_RESET_RESPONSE_MS", 300);
 }
 
 export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesOptions): Promise<void> {
@@ -281,12 +353,16 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
       }
     },
     async (req, reply) => {
-      if (opts.rateLimitService) {
-        const limit = Number(process.env.SPS_AUTH_REGISTRATION_LIMIT) || 3;
-        const rateLimit = await opts.rateLimitService.consume(rateLimitKeyByIp(req, "auth:register"), limit, 60_000);
-        if (!rateLimit.allowed) {
-          return sendRateLimited(reply, rateLimit, "Too many registration attempts");
-        }
+      if (!await enforceIpRateLimit(
+        req,
+        reply,
+        opts.rateLimitService,
+        "auth:register",
+        authRateLimitFromEnv("SPS_AUTH_REGISTRATION_LIMIT", 3),
+        60_000,
+        "Too many registration attempts"
+      )) {
+        return;
       }
 
       try {
@@ -324,12 +400,16 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
       }
     },
     async (req, reply) => {
-      if (opts.rateLimitService) {
-        const limit = Number(process.env.SPS_AUTH_LOGIN_LIMIT) || 10;
-        const rateLimit = await opts.rateLimitService.consume(rateLimitKeyByIp(req, "auth:login"), limit, 60_000);
-        if (!rateLimit.allowed) {
-          return sendRateLimited(reply, rateLimit, "Too many login attempts");
-        }
+      if (!await enforceIpRateLimit(
+        req,
+        reply,
+        opts.rateLimitService,
+        "auth:login",
+        authRateLimitFromEnv("SPS_AUTH_LOGIN_LIMIT", 10),
+        60_000,
+        "Too many login attempts"
+      )) {
+        return;
       }
 
       try {
@@ -448,6 +528,75 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
     }
   );
 
+  app.post<{ Body: { email: string; cf_turnstile_response?: string } }>(
+    "/forgot-password",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["email"],
+          properties: {
+            email: { type: "string", minLength: 3, maxLength: 320 },
+            cf_turnstile_response: { type: "string", minLength: 1, maxLength: 4096 }
+          }
+        }
+      }
+    },
+    async (req, reply) => {
+      if (!await enforceIpRateLimit(
+        req,
+        reply,
+        opts.rateLimitService,
+        "auth:forgot-password",
+        authRateLimitFromEnv("SPS_AUTH_FORGOT_PASSWORD_LIMIT", 3),
+        15 * 60_000,
+        "Too many password reset requests"
+      )) {
+        return;
+      }
+
+      try {
+        await withMinimumDuration(async () => {
+          await verifyTurnstileToken(req.body.cf_turnstile_response, req.ip);
+          await requestPasswordReset(opts.db, req.body.email);
+        }, forgotPasswordMinimumResponseMs());
+
+        return reply.code(200).send({
+          message: "If the account exists, password reset instructions have been issued."
+        });
+      } catch (error) {
+        return sendServiceError(reply, error);
+      }
+    }
+  );
+
+  app.post<{ Body: { token: string; next_password: string } }>(
+    "/reset-password",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["token", "next_password"],
+          properties: {
+            token: { type: "string", minLength: 10, maxLength: 4096 },
+            next_password: { type: "string", minLength: 8, maxLength: 200 }
+          }
+        }
+      }
+    },
+    async (req, reply) => {
+      try {
+        await resetPasswordWithToken(opts.db, req.body.token, req.body.next_password);
+        clearRefreshTokenCookie(req, reply);
+        return reply.code(200).send({ message: "Password reset complete" });
+      } catch (error) {
+        return sendServiceError(reply, error);
+      }
+    }
+  );
+
   app.get<{ Params: { token: string } }>("/verify-email/:token", async (req, reply) => {
     try {
       const result = await verifyEmail(opts.db, req.params.token);
@@ -460,15 +609,52 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
     }
   });
 
-  app.post("/retrigger-verification", async (req, reply) => {
+  app.post<{ Body: { cf_turnstile_response?: string } }>("/retrigger-verification", {
+    schema: {
+      body: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          cf_turnstile_response: { type: "string", minLength: 1, maxLength: 4096 }
+        }
+      }
+    }
+  }, async (req, reply) => {
     const currentUser = await requireCurrentUser(req, reply);
     if (!currentUser) {
       return;
     }
 
+    if (!await enforceIpRateLimit(
+      req,
+      reply,
+      opts.rateLimitService,
+      "auth:retrigger-verification",
+      authRateLimitFromEnv("SPS_AUTH_RETRIGGER_VERIFICATION_LIMIT", 3),
+      15 * 60_000,
+      "Too many verification resend requests"
+    )) {
+      return;
+    }
+
+    if (opts.rateLimitService) {
+      const userLimit = await opts.rateLimitService.consume(
+        `auth:retrigger-verification:user:${currentUser.sub}`,
+        authRateLimitFromEnv("SPS_AUTH_RETRIGGER_VERIFICATION_PER_USER_LIMIT", 3),
+        15 * 60_000
+      );
+      if (!userLimit.allowed) {
+        return sendRateLimited(reply, userLimit, "Too many verification resend requests");
+      }
+    }
+
     try {
-      await retriggerEmailVerification(opts.db, currentUser.sub);
-      return reply.code(200).send({ message: "Verification email re-triggered" });
+      await verifyTurnstileToken(req.body?.cf_turnstile_response, req.ip);
+      const delivery = await retriggerEmailVerification(opts.db, currentUser.sub);
+      return reply.code(200).send({
+        message: delivery.mode === "sent" ? "Verification email sent" : "Verification link logged for local delivery",
+        delivery
+      });
     } catch (error) {
       return sendServiceError(reply, error);
     }

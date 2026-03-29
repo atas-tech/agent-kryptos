@@ -1,16 +1,21 @@
 import type { Pool } from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { createDbPool } from "../src/db/index.js";
 import { runMigrations } from "../src/db/migrate.js";
 import { buildApp } from "../src/index.js";
 
 const runPgIntegration = process.env.SPS_PG_INTEGRATION === "1";
 const describePg = runPgIntegration ? describe : describe.skip;
+
+const shouldMockEmail = process.env.SPS_EMAIL_MOCK !== "0" && process.env.SPS_EMAIL_MOCK?.toLowerCase() !== "false";
 const migrationsDir = new URL("../src/db/migrations/", import.meta.url);
 
 let adminPool: Pool | null = null;
 const originalMaxActiveSessions = process.env.SPS_AUTH_MAX_ACTIVE_SESSIONS;
 const originalTurnstileSecret = process.env.SPS_TURNSTILE_SECRET;
+const originalVerificationLogFlag = process.env.SPS_LOG_VERIFICATION_URLS;
+const originalPasswordResetLogFlag = process.env.SPS_LOG_PASSWORD_RESET_URLS;
+const originalUiBaseUrl = process.env.SPS_UI_BASE_URL;
 
 function restoreMaxActiveSessionsEnv(): void {
   if (originalMaxActiveSessions === undefined) {
@@ -29,6 +34,58 @@ function extractCookiePair(setCookieHeader: string | string[] | undefined): stri
   }
 
   return cookiePair;
+}
+
+function extractTokenFromLoggedUrl(info: MockInstance, marker: string): string {
+  const matchingMessages = info.mock.calls
+    .map((call) => call[0])
+    .filter((value): value is string => typeof value === "string" && value.includes(marker));
+  const matchingMessage = matchingMessages.at(-1);
+
+  if (typeof matchingMessage !== "string") {
+    throw new Error(`Expected log message containing ${marker}`);
+  }
+
+  const token = matchingMessage.split(marker)[1]?.trim();
+  if (!token) {
+    throw new Error(`Could not extract token from ${matchingMessage}`);
+  }
+
+  return decodeURIComponent(token);
+}
+
+function extractTokenFromFetch(fetchMock: ReturnType<typeof vi.fn>, marker: string): string {
+  const lastCall = fetchMock.mock.calls.at(-1);
+  if (!lastCall) {
+    throw new Error("No fetch calls recorded");
+  }
+
+  const body = JSON.parse(lastCall[1].body as string);
+  const content = body.html || body.text;
+  if (typeof content !== "string") {
+    throw new Error("Fetch body missing html or text");
+  }
+
+  const parts = content.split(marker);
+  if (parts.length < 2) {
+    throw new Error(`Marker ${marker} not found in fetch body`);
+  }
+
+  // Extract token until next delimiter (quote, space, or newline)
+  const token = parts[1].split(/[" \n]/)[0];
+  return decodeURIComponent(token);
+}
+
+function extractToken(info: MockInstance, fetchMock: ReturnType<typeof vi.fn>, marker: string): string {
+  try {
+    return extractTokenFromLoggedUrl(info, marker);
+  } catch (logError) {
+    try {
+      return extractTokenFromFetch(fetchMock, marker);
+    } catch (fetchError) {
+      throw new Error(`Could not extract token from log (${(logError as Error).message}) or fetch (${(fetchError as Error).message})`);
+    }
+  }
 }
 
 function randomSchema(prefix: string): string {
@@ -66,19 +123,60 @@ async function disposeIsolatedPool(pool: Pool, schema: string): Promise<void> {
 describePg("auth routes", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.includes("resend.com")) {
+        if (!shouldMockEmail) {
+          // Fall through to real fetch for Resend
+          return await (globalThis as any)._originalFetch(url, init);
+        }
+        return new Response(JSON.stringify({ id: "mock-email-id" }), { status: 200 });
+      }
+      if (url.includes("cloudflare.com") || url.includes("turnstile")) {
+        return new Response(JSON.stringify({ success: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
     if (originalTurnstileSecret === undefined) {
       delete process.env.SPS_TURNSTILE_SECRET;
     } else {
       process.env.SPS_TURNSTILE_SECRET = originalTurnstileSecret;
     }
+
+    if (originalVerificationLogFlag === undefined) {
+      delete process.env.SPS_LOG_VERIFICATION_URLS;
+    } else {
+      process.env.SPS_LOG_VERIFICATION_URLS = originalVerificationLogFlag;
+    }
+
+    if (originalPasswordResetLogFlag === undefined) {
+      delete process.env.SPS_LOG_PASSWORD_RESET_URLS;
+    } else {
+      process.env.SPS_LOG_PASSWORD_RESET_URLS = originalPasswordResetLogFlag;
+    }
+
+    if (originalUiBaseUrl === undefined) {
+      delete process.env.SPS_UI_BASE_URL;
+    } else {
+      process.env.SPS_UI_BASE_URL = originalUiBaseUrl;
+    }
   });
 
   beforeAll(() => {
+    (globalThis as any)._originalFetch = globalThis.fetch;
     if (!process.env.DATABASE_URL) {
-      throw new Error("DATABASE_URL must be set for PostgreSQL integration tests");
+      process.env.DATABASE_URL = "postgresql://blindpass:localdev@localhost:5433/blindpass";
     }
 
     process.env.SPS_USER_JWT_SECRET = "test-user-jwt-secret";
+    process.env.SPS_HMAC_SECRET = process.env.SPS_HMAC_SECRET || "test-hmac-secret";
+    process.env.SPS_AGENT_JWT_SECRET = process.env.SPS_AGENT_JWT_SECRET || "test-agent-jwt-secret";
+    
+    // Ensure Resend and From are available for mailer tests to use mock
+    process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || "re_mock_key";
+    process.env.SPS_EMAIL_FROM = process.env.SPS_EMAIL_FROM || "no-reply@blindpass.test";
+
     adminPool = createDbPool({
       connectionString: process.env.DATABASE_URL,
       max: 1
@@ -244,7 +342,9 @@ describePg("auth routes", () => {
       });
 
       expect(registerResponse.statusCode).toBe(201);
-      expect(fetchMock).not.toHaveBeenCalled();
+      // Verify no turnstile calls
+      const turnstileCalls = fetchMock.mock.calls.filter(call => call[0].includes("turnstile") || call[0].includes("cloudflare"));
+      expect(turnstileCalls).toHaveLength(0);
 
       await app.close();
     } finally {
@@ -769,6 +869,8 @@ describePg("auth routes", () => {
     const { pool, schema } = await createIsolatedPool();
 
     try {
+      process.env.SPS_LOG_VERIFICATION_URLS = "1";
+      const info = vi.spyOn(console, "info").mockImplementation(() => {});
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true });
 
@@ -784,12 +886,8 @@ describePg("auth routes", () => {
       });
 
       expect(registerResponse.statusCode).toBe(201);
-      const tokenResult = await pool.query<{ verification_token: string }>(
-        "SELECT verification_token FROM users WHERE email = $1",
-        ["verify@example.com"]
-      );
-      const token = tokenResult.rows[0]?.verification_token;
-      expect(token).toBeTruthy();
+      const fetchMock = vi.mocked(fetch);
+      const token = extractToken(info, fetchMock, "/verify-email/");
 
       const verifyResponse = await app.inject({
         method: "GET",
@@ -813,6 +911,8 @@ describePg("auth routes", () => {
     const { pool, schema } = await createIsolatedPool();
 
     try {
+      process.env.SPS_LOG_VERIFICATION_URLS = "1";
+      const info = vi.spyOn(console, "info").mockImplementation(() => {});
       await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
       const app = await buildApp({ db: pool, useInMemoryStore: true });
 
@@ -829,30 +929,20 @@ describePg("auth routes", () => {
 
       expect(registerResponse.statusCode).toBe(201);
       const registered = registerResponse.json() as { access_token: string };
-
-      const firstTokenResult = await pool.query<{ verification_token: string }>(
-        "SELECT verification_token FROM users WHERE email = $1",
-        ["retrigger@example.com"]
-      );
-      const firstToken = firstTokenResult.rows[0]?.verification_token;
-      expect(firstToken).toBeTruthy();
+      const fetchMock = vi.mocked(fetch);
+      const firstToken = extractToken(info, fetchMock, "/verify-email/");
 
       const retriggerResponse = await app.inject({
         method: "POST",
         url: "/api/v2/auth/retrigger-verification",
         headers: {
           authorization: `Bearer ${registered.access_token}`
-        }
+        },
+        payload: {}
       });
 
       expect(retriggerResponse.statusCode).toBe(200);
-
-      const secondTokenResult = await pool.query<{ verification_token: string }>(
-        "SELECT verification_token FROM users WHERE email = $1",
-        ["retrigger@example.com"]
-      );
-      const secondToken = secondTokenResult.rows[0]?.verification_token;
-      expect(secondToken).toBeTruthy();
+      const secondToken = extractToken(info, fetchMock, "/verify-email/");
       expect(secondToken).not.toBe(firstToken);
 
       // Attempt to re-trigger for already verified user
@@ -863,12 +953,107 @@ describePg("auth routes", () => {
         url: "/api/v2/auth/retrigger-verification",
         headers: {
           authorization: `Bearer ${registered.access_token}`
-        }
+        },
+        payload: {}
       });
 
       expect(alreadyVerifiedResponse.statusCode).toBe(400);
       expect(alreadyVerifiedResponse.json()).toMatchObject({
         code: "already_verified"
+      });
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("issues generic forgot-password responses and resets passwords with single-use tokens", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      process.env.SPS_LOG_PASSWORD_RESET_URLS = "1";
+      process.env.SPS_UI_BASE_URL = "https://app.example.com";
+      const info = vi.spyOn(console, "info").mockImplementation(() => {});
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const app = await buildApp({ db: pool, useInMemoryStore: true });
+
+      const registerResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/register",
+        payload: {
+          email: "reset@example.com",
+          password: "Password123!",
+          workspace_slug: "reset-space",
+          display_name: "Reset Space"
+        }
+      });
+      expect(registerResponse.statusCode).toBe(201);
+
+      const missingResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/forgot-password",
+        payload: {
+          email: "missing@example.com"
+        }
+      });
+      expect(missingResponse.statusCode).toBe(200);
+      expect(missingResponse.json()).toMatchObject({
+        message: "If the account exists, password reset instructions have been issued."
+      });
+
+      const requestResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/forgot-password",
+        payload: {
+          email: "reset@example.com"
+        }
+      });
+      expect(requestResponse.statusCode).toBe(200);
+
+      const fetchMock = vi.mocked(fetch);
+      const resetToken = extractToken(info, fetchMock, "token=");
+      const resetResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/reset-password",
+        payload: {
+          token: resetToken,
+          next_password: "NewPassword123!"
+        }
+      });
+      expect(resetResponse.statusCode).toBe(200);
+
+      const oldPasswordLogin = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/login",
+        payload: {
+          email: "reset@example.com",
+          password: "Password123!"
+        }
+      });
+      expect(oldPasswordLogin.statusCode).toBe(401);
+
+      const newPasswordLogin = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/login",
+        payload: {
+          email: "reset@example.com",
+          password: "NewPassword123!"
+        }
+      });
+      expect(newPasswordLogin.statusCode).toBe(200);
+
+      const reusedToken = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/reset-password",
+        payload: {
+          token: resetToken,
+          next_password: "AnotherPassword123!"
+        }
+      });
+      expect(reusedToken.statusCode).toBe(400);
+      expect(reusedToken.json()).toMatchObject({
+        code: "invalid_reset_token"
       });
 
       await app.close();

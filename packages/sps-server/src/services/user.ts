@@ -6,6 +6,7 @@ import { userJwtSecret } from "../utils/crypto.js";
 import type { Pool, PoolClient } from "pg";
 import { decodePageCursor, encodePageCursor } from "./pagination.js";
 import { isUserRole, type UserRole } from "./rbac.js";
+import { MailerServiceError, type MailDeliveryResult, sendPasswordResetEmail, sendVerificationEmail } from "./mailer.js";
 import { initializeWorkspacePolicy, loadBootstrapWorkspacePolicyFromEnv } from "./workspace-policy.js";
 import type { WorkspaceRecord } from "./workspace.js";
 import { createWorkspace, getWorkspace } from "./workspace.js";
@@ -17,6 +18,10 @@ const PASSWORD_MIN_LENGTH = 8;
 const TEMPORARY_PASSWORD_MIN_LENGTH = 12;
 const WEAK_TEMPORARY_PASSWORDS = new Set(["password123", "password123!", "changeme123", "temporary123"]);
 const DEFAULT_MAX_ACTIVE_SESSIONS = 10;
+const EMAIL_VERIFICATION_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
+const PASSWORD_RESET_TOKEN_TTL_SECONDS = 60 * 60;
+
+type UserTokenType = "email_verification" | "password_reset";
 
 export type UserStatus = "active" | "suspended" | "deleted";
 
@@ -36,7 +41,6 @@ interface UserRow {
   password_hash: string;
   force_password_change: boolean;
   email_verified: boolean;
-  verification_token: string | null;
   workspace_id: string;
   role: UserRole;
   status: UserStatus;
@@ -56,7 +60,6 @@ export interface UserRecord {
   email: string;
   forcePasswordChange: boolean;
   emailVerified: boolean;
-  verificationToken: string | null;
   workspaceId: string;
   role: UserRole;
   status: UserStatus;
@@ -105,11 +108,20 @@ export interface AuthTokens {
 
 export interface AuthResult extends UserWithWorkspace {
   tokens: AuthTokens;
+  verificationEmailDelivery?: MailDeliveryResult | null;
 }
 
 export interface SessionContext {
   userAgent?: string | null;
   ipAddress?: string | null;
+}
+
+export interface PasswordResetRequestResult {
+  requested: boolean;
+}
+
+export interface PasswordResetResult {
+  user: UserRecord;
 }
 
 export class UserServiceError extends Error {
@@ -189,6 +201,10 @@ function generateVerificationToken(): string {
   return `ver_${randomBytes(24).toString("hex")}`;
 }
 
+function generatePasswordResetToken(): string {
+  return `rst_${randomBytes(24).toString("hex")}`;
+}
+
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -207,19 +223,98 @@ export function logVerificationUrl(email: string, verificationToken: string): vo
   console.info(`Email verification URL for ${email}: ${baseUrl}/api/v2/auth/verify-email/${verificationToken}`);
 }
 
+export function logPasswordResetUrl(email: string, resetToken: string): void {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  if (!isEnvFlagEnabled("SPS_LOG_PASSWORD_RESET_URLS")) {
+    console.info(`Password reset issued for ${email}. Set SPS_LOG_PASSWORD_RESET_URLS=1 to print the reset URL in non-production.`);
+    return;
+  }
+
+  const baseUrl = process.env.SPS_UI_BASE_URL?.trim() || "http://localhost:5173";
+  console.info(`Password reset URL for ${email}: ${baseUrl}/reset-password?token=${encodeURIComponent(resetToken)}`);
+}
+
+function logEmailDeliveryFailure(action: string, email: string, error: unknown): void {
+  const code = error instanceof MailerServiceError ? error.code : "unknown";
+  const retryable = error instanceof MailerServiceError ? error.retryable : false;
+  console.warn(`Email delivery failed for ${action} (${email}): code=${code} retryable=${retryable}`);
+}
+
 function toUserRecord(row: UserRow): UserRecord {
   return {
     id: row.id,
     email: row.email,
     forcePasswordChange: row.force_password_change,
     emailVerified: row.email_verified,
-    verificationToken: row.verification_token,
     workspaceId: row.workspace_id,
     role: row.role,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+}
+
+async function replaceUserToken(
+  client: PoolClient,
+  userId: string,
+  tokenType: UserTokenType,
+  ttlSeconds: number
+): Promise<string> {
+  const token = tokenType === "email_verification" ? generateVerificationToken() : generatePasswordResetToken();
+  const expiresAt = toDateFromEpoch(nowSeconds() + ttlSeconds);
+  await client.query(
+    `
+      DELETE FROM user_tokens
+      WHERE user_id = $1
+        AND token_type = $2
+        AND consumed_at IS NULL
+    `,
+    [userId, tokenType]
+  );
+  await client.query(
+    `
+      INSERT INTO user_tokens (user_id, token_type, token_hash, expires_at)
+      VALUES ($1, $2, $3, $4)
+    `,
+    [userId, tokenType, hashToken(token), expiresAt]
+  );
+
+  return token;
+}
+
+async function consumeUserToken(
+  client: PoolClient,
+  tokenType: UserTokenType,
+  token: string
+): Promise<string | null> {
+  const result = await client.query<{ user_id: string }>(
+    `
+      UPDATE user_tokens
+      SET consumed_at = now()
+      WHERE token_type = $1
+        AND token_hash = $2
+        AND consumed_at IS NULL
+        AND expires_at > now()
+      RETURNING user_id
+    `,
+    [tokenType, hashToken(token)]
+  );
+
+  return result.rows[0]?.user_id ?? null;
+}
+
+async function clearUserTokens(client: PoolClient, userId: string, tokenType: UserTokenType): Promise<void> {
+  await client.query(
+    `
+      DELETE FROM user_tokens
+      WHERE user_id = $1
+        AND token_type = $2
+    `,
+    [userId, tokenType]
+  );
 }
 
 function requireWorkspaceRecord(row: UserRow): WorkspaceRecord {
@@ -248,7 +343,6 @@ async function queryUserWithWorkspaceByEmail(client: PoolClient, email: string):
         u.password_hash,
         u.force_password_change,
         u.email_verified,
-        u.verification_token,
         u.workspace_id,
         u.role,
         u.status,
@@ -281,7 +375,6 @@ async function queryUserWithWorkspaceById(client: PoolClient, userId: string): P
         u.password_hash,
         u.force_password_change,
         u.email_verified,
-        u.verification_token,
         u.workspace_id,
         u.role,
         u.status,
@@ -496,8 +589,8 @@ export async function registerUser(
   validateEmail(normalizedEmail);
   const normalizedPassword = normalizePassword(password);
   const passwordHash = await bcrypt.hash(normalizedPassword, PASSWORD_HASH_ROUNDS);
-  const verificationToken = generateVerificationToken();
   const client = await db.connect();
+  let verificationToken: string | null = null;
 
   try {
     await client.query("BEGIN");
@@ -511,13 +604,14 @@ export async function registerUser(
 
     const insertedUser = await client.query<UserRow>(
       `
-        INSERT INTO users (email, password_hash, verification_token, workspace_id, role)
-        VALUES ($1, $2, $3, $4, 'workspace_admin')
-        RETURNING id, email, password_hash, force_password_change, email_verified, verification_token, workspace_id, role, status, created_at, updated_at
+        INSERT INTO users (email, password_hash, workspace_id, role)
+        VALUES ($1, $2, $3, 'workspace_admin')
+        RETURNING id, email, password_hash, force_password_change, email_verified, workspace_id, role, status, created_at, updated_at
       `,
-      [normalizedEmail, passwordHash, verificationToken, workspace.id]
+      [normalizedEmail, passwordHash, workspace.id]
     );
     const user = toUserRecord(insertedUser.rows[0]);
+    verificationToken = await replaceUserToken(client, user.id, "email_verification", EMAIL_VERIFICATION_TOKEN_TTL_SECONDS);
 
     await client.query(
       `
@@ -536,13 +630,20 @@ export async function registerUser(
       ...workspace,
       ownerUserId: user.id
     };
-
-    logVerificationUrl(normalizedEmail, verificationToken);
+    let verificationEmailDelivery: MailDeliveryResult | null = null;
+    if (verificationToken) {
+      try {
+        verificationEmailDelivery = await sendVerificationEmail(normalizedEmail, verificationToken);
+      } catch (error) {
+        logEmailDeliveryFailure("registration verification", normalizedEmail, error);
+      }
+    }
 
     return {
       user,
       workspace: latestWorkspace,
-      tokens
+      tokens,
+      verificationEmailDelivery
     };
   } catch (error) {
     await client.query("ROLLBACK");
@@ -640,7 +741,6 @@ export async function refreshSession(
           u.password_hash,
           u.force_password_change,
           u.email_verified,
-          u.verification_token,
           u.workspace_id,
           u.role,
           u.status,
@@ -771,7 +871,7 @@ export async function changePassword(
             force_password_change = false,
             updated_at = now()
         WHERE id = $1
-        RETURNING id, email, password_hash, force_password_change, email_verified, verification_token, workspace_id, role, status, created_at, updated_at
+        RETURNING id, email, password_hash, force_password_change, email_verified, workspace_id, role, status, created_at, updated_at
       `,
       [userId, passwordHash]
     );
@@ -813,21 +913,26 @@ export async function verifyEmail(db: Pool, token: string): Promise<UserWithWork
   const client = await db.connect();
   try {
     await client.query("BEGIN");
+    const userId = await consumeUserToken(client, "email_verification", normalizedToken);
+    if (!userId) {
+      throw new UserServiceError(404, "verification_not_found", "Verification token not found");
+    }
+
+    await clearUserTokens(client, userId, "email_verification");
     const updated = await client.query<UserRow>(
       `
         UPDATE users
         SET email_verified = true,
-            verification_token = NULL,
             updated_at = now()
-        WHERE verification_token = $1
-        RETURNING id, email, password_hash, force_password_change, email_verified, verification_token, workspace_id, role, status, created_at, updated_at
+        WHERE id = $1
+        RETURNING id, email, password_hash, force_password_change, email_verified, workspace_id, role, status, created_at, updated_at
       `,
-      [normalizedToken]
+      [userId]
     );
 
     const row = updated.rows[0];
     if (!row) {
-      throw new UserServiceError(404, "verification_not_found", "Verification token not found");
+      throw new UserServiceError(404, "user_not_found", "User not found");
     }
 
     const workspace = await getWorkspace(client, row.workspace_id);
@@ -849,13 +954,15 @@ export async function verifyEmail(db: Pool, token: string): Promise<UserWithWork
   }
 }
 
-export async function retriggerEmailVerification(db: Pool, userId: string): Promise<boolean> {
+export async function retriggerEmailVerification(db: Pool, userId: string): Promise<MailDeliveryResult> {
   const client = await db.connect();
+  let email: string | null = null;
+  let verificationToken: string | null = null;
   try {
     await client.query("BEGIN");
     const result = await client.query<UserRow>(
       `
-        SELECT id, email, email_verified, verification_token
+        SELECT id, email, email_verified
         FROM users
         WHERE id = $1
         FOR UPDATE
@@ -872,20 +979,123 @@ export async function retriggerEmailVerification(db: Pool, userId: string): Prom
       throw new UserServiceError(400, "already_verified", "Email is already verified");
     }
 
-    const verificationToken = generateVerificationToken();
-    await client.query(
+    email = row.email;
+    verificationToken = await replaceUserToken(client, userId, "email_verification", EMAIL_VERIFICATION_TOKEN_TTL_SECONDS);
+
+    await client.query("COMMIT");
+
+    if (!email || !verificationToken) {
+      throw new UserServiceError(500, "verification_not_issued", "Verification email could not be issued");
+    }
+
+    return await sendVerificationEmail(email, verificationToken);
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function requestPasswordReset(db: Pool, email: string): Promise<PasswordResetRequestResult> {
+  const normalizedEmail = normalizeEmail(email);
+  validateEmail(normalizedEmail);
+  const client = await db.connect();
+  let userEmail: string | null = null;
+  let resetToken: string | null = null;
+
+  try {
+    await client.query("BEGIN");
+    const row = await queryUserWithWorkspaceByEmail(client, normalizedEmail);
+    if (!row) {
+      await client.query("COMMIT");
+      return { requested: false };
+    }
+
+    const user = toUserRecord(row);
+    const workspace = requireWorkspaceRecord(row);
+    if (user.status !== "active" || workspace.status !== "active") {
+      await client.query("COMMIT");
+      return { requested: false };
+    }
+
+    userEmail = row.email;
+    resetToken = await replaceUserToken(client, row.id, "password_reset", PASSWORD_RESET_TOKEN_TTL_SECONDS);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  if (!userEmail || !resetToken) {
+    return { requested: false };
+  }
+
+  try {
+    await sendPasswordResetEmail(userEmail, resetToken);
+  } catch (error) {
+    logEmailDeliveryFailure("password reset", userEmail, error);
+  }
+
+  return { requested: true };
+}
+
+export async function resetPasswordWithToken(db: Pool, token: string, nextPassword: string): Promise<PasswordResetResult> {
+  const normalizedToken = token.trim();
+  if (!normalizedToken) {
+    throw new UserServiceError(400, "invalid_reset_token", "Password reset token is required");
+  }
+
+  const normalizedNextPassword = normalizePassword(nextPassword);
+  const passwordHash = await bcrypt.hash(normalizedNextPassword, PASSWORD_HASH_ROUNDS);
+  const client = await db.connect();
+
+  try {
+    await client.query("BEGIN");
+    const userId = await consumeUserToken(client, "password_reset", normalizedToken);
+    if (!userId) {
+      throw new UserServiceError(400, "invalid_reset_token", "Password reset token is invalid or expired");
+    }
+
+    const row = await queryUserWithWorkspaceById(client, userId);
+    if (!row) {
+      throw new UserServiceError(404, "user_not_found", "User not found");
+    }
+
+    const user = toUserRecord(row);
+    const workspace = requireWorkspaceRecord(row);
+    enforceActiveAccess(user, workspace);
+
+    const updated = await client.query<UserRow>(
       `
         UPDATE users
-        SET verification_token = $2, updated_at = now()
+        SET password_hash = $2,
+            force_password_change = false,
+            updated_at = now()
         WHERE id = $1
+        RETURNING id, email, password_hash, force_password_change, email_verified, workspace_id, role, status, created_at, updated_at
       `,
-      [userId, verificationToken]
+      [userId, passwordHash]
+    );
+
+    await clearUserTokens(client, userId, "password_reset");
+    await client.query(
+      `
+        UPDATE user_sessions
+        SET revoked_at = now()
+        WHERE user_id = $1
+          AND revoked_at IS NULL
+      `,
+      [userId]
     );
 
     await client.query("COMMIT");
 
-    logVerificationUrl(row.email, verificationToken);
-    return true;
+    return {
+      user: toUserRecord(updated.rows[0])
+    };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw error;
@@ -915,7 +1125,7 @@ export async function getUserContext(db: Pool, userId: string): Promise<UserWith
 export async function listWorkspaceUsers(db: Pool, workspaceId: string): Promise<UserRecord[]> {
   const result = await db.query<UserRow>(
     `
-      SELECT id, email, password_hash, force_password_change, email_verified, verification_token, workspace_id, role, status, created_at, updated_at
+      SELECT id, email, password_hash, force_password_change, email_verified, workspace_id, role, status, created_at, updated_at
       FROM users
       WHERE workspace_id = $1
       ORDER BY created_at DESC, id DESC
@@ -986,7 +1196,7 @@ export async function listWorkspaceUsersPage(
   values.push(limit + 1);
   const result = await db.query<UserRow>(
     `
-      SELECT id, email, password_hash, force_password_change, email_verified, verification_token, workspace_id, role, status, created_at, updated_at
+      SELECT id, email, password_hash, force_password_change, email_verified, workspace_id, role, status, created_at, updated_at
       FROM users
       WHERE ${conditions.join(" AND ")}
       ORDER BY created_at DESC, id DESC
@@ -1069,20 +1279,38 @@ export async function createWorkspaceMember(
 
   const normalizedPassword = normalizeTemporaryPassword(input.temporaryPassword);
   const passwordHash = await bcrypt.hash(normalizedPassword, PASSWORD_HASH_ROUNDS);
-  const verificationToken = generateVerificationToken();
+  let verificationToken: string | null = null;
 
   try {
-    const inserted = await db.query<UserRow>(
-      `
-        INSERT INTO users (email, password_hash, force_password_change, verification_token, workspace_id, role, status)
-        VALUES ($1, $2, true, $3, $4, $5, 'active')
-        RETURNING id, email, password_hash, force_password_change, email_verified, verification_token, workspace_id, role, status, created_at, updated_at
-      `,
-      [normalizedEmail, passwordHash, verificationToken, workspaceId, input.role]
-    );
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const inserted = await client.query<UserRow>(
+        `
+          INSERT INTO users (email, password_hash, force_password_change, workspace_id, role, status)
+          VALUES ($1, $2, true, $3, $4, 'active')
+          RETURNING id, email, password_hash, force_password_change, email_verified, workspace_id, role, status, created_at, updated_at
+        `,
+        [normalizedEmail, passwordHash, workspaceId, input.role]
+      );
+      verificationToken = await replaceUserToken(client, inserted.rows[0].id, "email_verification", EMAIL_VERIFICATION_TOKEN_TTL_SECONDS);
+      await client.query("COMMIT");
 
-    logVerificationUrl(normalizedEmail, verificationToken);
-    return toUserRecord(inserted.rows[0]);
+      if (verificationToken) {
+        try {
+          await sendVerificationEmail(normalizedEmail, verificationToken);
+        } catch (error) {
+          logEmailDeliveryFailure("member verification", normalizedEmail, error);
+        }
+      }
+
+      return toUserRecord(inserted.rows[0]);
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     mapPgError(error);
   }
@@ -1111,7 +1339,7 @@ export async function updateWorkspaceMember(
     await client.query("BEGIN");
     const current = await client.query<UserRow>(
       `
-        SELECT id, email, password_hash, force_password_change, email_verified, verification_token, workspace_id, role, status, created_at, updated_at
+        SELECT id, email, password_hash, force_password_change, email_verified, workspace_id, role, status, created_at, updated_at
         FROM users
         WHERE id = $1
           AND workspace_id = $2
@@ -1147,7 +1375,7 @@ export async function updateWorkspaceMember(
             updated_at = now()
         WHERE id = $1
           AND workspace_id = $2
-        RETURNING id, email, password_hash, force_password_change, email_verified, verification_token, workspace_id, role, status, created_at, updated_at
+        RETURNING id, email, password_hash, force_password_change, email_verified, workspace_id, role, status, created_at, updated_at
       `,
       [userId, workspaceId, nextRole, nextStatus]
     );

@@ -26,16 +26,17 @@ As of `2026-03-27`, the repository already contains a substantial portion of thi
 - Milestone 1 is implemented in code and tests: hosted refresh cookies, access-token-in-memory dashboard auth, Turnstile support, and workspace burst throttling are present in `packages/sps-server` and `packages/dashboard`
 - Milestone 2 analytics is implemented: analytics routes, aggregation services, dashboard analytics UI, and regression coverage are present
 - Milestone 2 docs/community artifacts are present in-repo: `docs/guides/quickstart.md`, `docs/guides/self-hosting.md`, `docs/api/openapi.yaml`, `.env.example`, `docker-compose.test.yml`, and `Makefile`
-- Milestone 3 launch-readiness foundation has started: `GET /readyz`, dashboard containerization, image-publishing workflow updates, and Unraid deployment artifacts are in place
+- Milestone 4 launch-readiness foundation has started: `GET /readyz`, dashboard containerization, image-publishing workflow updates, and Unraid deployment artifacts are in place
 
 The biggest remaining gaps in this phase are:
 
 - Python and Go SDK implementation and hosted-flow validation
+- transactional email delivery for verification and recovery flows
 - live production image publishing and domain cutover verification
 - final production HTTPS, DNS, and reverse-proxy rollout checks
 
 > [!IMPORTANT]
-> This plan is divided into **3 incremental milestones**. The order is: Session Hardening & Abuse Controls → Analytics, SDKs, Docs & Community → Hosted Deployment & Domain Cutover.
+> This plan is divided into **4 incremental milestones**. The order is: Session Hardening & Abuse Controls → Analytics, SDKs, Docs & Community → Transactional Email With Resend → Hosted Deployment & Domain Cutover.
 
 ## Milestone 1: Dashboard Session Hardening & Advanced Abuse Controls
 
@@ -165,7 +166,64 @@ Sanitize and publish the production Docker Compose setup:
 
 ---
 
-## Milestone 3: Hosted Deployment & Domain Cutover
+## Milestone 3: Transactional Email With Resend
+
+Finish the hosted account email flows by introducing a real transactional email provider instead of the current manual/operator-assisted verification path.
+
+### Goals
+
+- deliver verification emails in hosted mode through Resend
+- support password-reset email flows end-to-end
+- keep development and self-hosted setups usable without requiring a live mail provider
+- avoid sending passwords, bootstrap API keys, verification tokens, or reset tokens to logs
+
+### [NEW] `packages/sps-server/src/services/mailer.ts`
+
+Add a small mailer abstraction with a Resend-backed implementation and a safe local/dev fallback:
+
+- `sendVerificationEmail(input)` sends the hosted verification link
+- `sendPasswordResetEmail(input)` sends the hosted password-reset link
+- local/dev may continue to log delivery guidance when explicitly opted in, but hosted/prod must fail closed if Resend is required and misconfigured
+- provider responses are normalized into retryable vs non-retryable failures so routes can return coherent errors and emit audit events
+
+### [MODIFY] `packages/sps-server/src/services/user.ts`
+
+- replace direct verification-link logging as the primary hosted behavior with mailer calls
+- keep verification token issuance separate from email transport so retries do not mint unbounded extra state
+- move verification and password-reset tokens onto a shared database model such as `user_tokens`
+- store only token hashes at rest using a fast token hash such as SHA-256 or HMAC-SHA-256, with `type`, `expires_at`, and `consumed_at` fields
+- enforce single active token semantics per user and token type so re-triggering verification or reset invalidates older links cleanly
+- store password-reset tokens with TTL/expiry and single-use semantics
+
+### [MODIFY] `packages/sps-server/src/routes/auth.ts`
+
+- registration triggers a verification email send in hosted mode
+- `POST /api/v2/auth/retrigger-verification` reflects actual delivery success/failure instead of implying email delivery unconditionally
+- add forgot-password request and reset endpoints with generic responses that do not reveal whether an email address exists
+- apply endpoint-specific abuse controls for `POST /api/v2/auth/forgot-password` and `POST /api/v2/auth/retrigger-verification`
+- require optional Cloudflare Turnstile checks for these email-triggering routes in hosted mode, just as login and registration already do
+- add dedicated per-IP rate limits for these routes rather than relying only on workspace burst throttling
+- equalize observable behavior for existing vs missing emails by returning the same body and enforcing a minimum response duration on both paths
+
+### [MODIFY] `packages/dashboard`
+
+- replace the current forgot-password placeholder with a real request/reset flow
+- update the verification banner copy so it accurately reflects queued/sent vs failed delivery states
+- surface retryable delivery errors without leaking provider internals
+
+### Delivery Rules
+
+- use Resend for the hosted production path
+- do not email temporary passwords or bootstrap API keys
+- member onboarding emails may include a sign-in link or operator instructions, but any secret/bootstrap credential remains out-of-band
+- all emailed links must use the configured hosted base URLs and expire
+- local/dev without `RESEND_API_KEY` may log the constructed verification or reset URL to server stdout for developer convenience, but this fallback must stay disabled in production
+
+**Acceptance**: Hosted registration sends a verification email through Resend. Resending verification invalidates prior links and reports delivery failures correctly. Forgot-password works end-to-end with generic request responses, minimum-duration enumeration resistance, hashed expiring single-use tokens stored outside the `users` table, and endpoint-specific Turnstile plus per-IP rate limiting. Local/dev still works without a live Resend account.
+
+---
+
+## Milestone 4: Hosted Deployment & Domain Cutover
 
 Stand up the production deployment with proper domains and TLS. This is the final hosted-launch milestone.
 
@@ -238,6 +296,9 @@ Update the SPS egress URL filter allowlist to match the production domains:
 |----------|---------|---------|
 | `SPS_TURNSTILE_SECRET` | sps-server | Cloudflare Turnstile server-side validation key |
 | `SPS_AUTH_COOKIE_DOMAIN` | sps-server | Cookie domain for hosted refresh-session cookies |
+| `RESEND_API_KEY` | sps-server | API key for hosted transactional email delivery |
+| `SPS_EMAIL_FROM` | sps-server | Verified sender used for verification and password-reset emails |
+| `SPS_EMAIL_REPLY_TO` | sps-server | Optional reply-to address for support and operator contact |
 | `VITE_TURNSTILE_SITE_KEY` | dashboard | Turnstile widget site key baked into the build |
 | `BILLING_PORTAL_RETURN_URL` | sps-server | URL to redirect after billing portal session (default: `https://app.atas.tech/billing`) |
 | `VITE_SPS_API_URL` | dashboard, browser-ui | SPS API base URL baked at build time |

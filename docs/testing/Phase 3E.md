@@ -78,7 +78,40 @@ Useful companion commands:
   - [x] Policy guide explains the hosted workspace policy model and the self-hosted env bootstrap/default path
   - [x] Provide a standard SDK integration harness such as `docker-compose.test.yml` or an equivalent mock container setup
 
-## Milestone 3: Hosted Deployment & Domain Cutover
+## Milestone 3: Transactional Email With Resend
+
+- [x] **Verification email delivery**
+  - [x] Hosted registration sends a verification email through Resend with the correct workspace/app URL
+  - [x] Retrying verification invalidates prior verification links so only the newest link succeeds
+  - [x] Delivery failures are surfaced as retryable errors without logging raw tokens or provider secrets
+  - [x] Local/dev mode still supports a no-provider fallback without blocking local signup flows
+  - [x] Verification tokens are stored only as hashes and not in plaintext on the `users` table
+
+- [x] **Forgot-password**
+  - [x] Forgot-password request returns the same generic response for existing and unknown email addresses
+  - [x] Existing and unknown email paths have comparable observable latency through a minimum-response-duration guard
+  - [x] Existing accounts receive a password-reset email through Resend
+  - [x] Reset tokens are hashed at rest, expire, are single-use, and live in a shared token table rather than ad hoc user columns
+  - [x] Reset completion rotates credentials without reviving revoked or expired reset tokens
+
+- [x] **Abuse controls**
+  - [x] `POST /api/v2/auth/forgot-password` enforces dedicated per-IP rate limits
+  - [x] `POST /api/v2/auth/retrigger-verification` enforces dedicated per-user or per-IP rate limits
+  - [x] Hosted mode can require Turnstile for both email-triggering endpoints
+  - [x] These protections work independently of workspace-level burst throttling
+
+- [x] **Dashboard UX**
+  - [x] The forgot-password page is no longer a placeholder and completes the request flow
+  - [x] Verification resend UI distinguishes successful delivery from backend/provider failure
+  - [x] UI messages do not leak account-existence or provider-specific internals
+
+- [x] **Operational coverage**
+  - [x] Provider outages or rate limits produce actionable server logs and audit events without exposing recipient-specific secret material
+  - [x] Mailer integration tests cover provider success, transient failure, and permanent failure branches
+  - [x] Fully automated un-mocked E2E test (`scripts/e2e-real-email.mjs`) verifies end-to-end integration and delivery via Mail.tm
+
+
+## Milestone 4: Hosted Deployment & Domain Cutover
 
 - [x] `GET /healthz` returns `200`
 - [x] `GET /readyz` returns `200` only when PostgreSQL and Redis are reachable

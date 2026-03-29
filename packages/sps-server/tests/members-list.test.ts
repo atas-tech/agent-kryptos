@@ -62,19 +62,7 @@ async function registerOwner(app: Awaited<ReturnType<typeof buildApp>>, identity
 }
 
 async function verifyOwner(app: Awaited<ReturnType<typeof buildApp>>, pool: Pool, email: string): Promise<void> {
-  const result = await pool.query<{ verification_token: string }>(
-    "SELECT verification_token FROM users WHERE email = $1 LIMIT 1",
-    [email]
-  );
-  const token = result.rows[0]?.verification_token;
-  expect(token).toEqual(expect.any(String));
-
-  const response = await app.inject({
-    method: "GET",
-    url: `/api/v2/auth/verify-email/${token}`
-  });
-
-  expect(response.statusCode).toBe(200);
+  await pool.query("UPDATE users SET email_verified = true WHERE email = $1", [email]);
 }
 
 describePg("members list pagination & lockout", () => {
