@@ -24,6 +24,8 @@
   "verified": "Đã xác minh",
   "unverified": "Chưa xác minh",
   "ready": "Sẵn sàng",
+  "system": "Hệ thống",
+  "notAvailable": "Không có",
   "rowsLoaded": "{{count}} dòng đã tải",
   "noDisplayName": "Không có tên hiển thị",
   "allStatuses": "Tất cả trạng thái",

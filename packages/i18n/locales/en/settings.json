@@ -1,28 +1,37 @@
 {
   "hero": {
     "sectionLabel": "Workspace configuration",
-    "title": "Settings",
-    "body": "View and manage your workspace identity and display labels."
+    "title": "Workspace identity and verification",
+    "body": "Manage your workspace name and review the platform details that govern hosted access.",
+    "ownerVerification": "Owner verification",
+    "verified": "Verified",
+    "pending": "Pending"
   },
   "displayName": {
     "sectionLabel": "Workspace identity",
     "title": "Display name",
     "body": "Update the display name shown across the dashboard.",
     "label": "Display name",
-    "submitButton": "Save changes",
+    "placeholder": "My Secure Workspace",
+    "helper": "Changes update the header and workspace label after saving.",
+    "submitButton": "Save workspace",
     "submitting": "Saving...",
-    "successNote": "Changes apply immediately after saving."
+    "successNote": "Changes apply immediately after saving.",
+    "successMessage": "Workspace display name updated."
   },
   "readOnly": {
     "sectionLabel": "Platform details",
-    "title": "Workspace details",
+    "title": "Hosted configuration",
     "body": "Read-only fields managed by the platform.",
     "slug": "Workspace slug",
     "tier": "Account tier",
     "status": "Workspace status",
-    "ownerId": "Owner user ID",
     "createdAt": "Created at",
-    "updatedAt": "Updated at"
+    "verificationTitle": "Owner verification status",
+    "verifiedBody": "The workspace owner email is verified. Enrollment, member creation, and billing actions remain available.",
+    "pendingBody": "The workspace owner email is not verified yet. Higher-risk hosted actions remain gated until verification completes.",
+    "badgeVerified": "owner verified",
+    "badgePending": "verification pending"
   },
   "errors": {
     "loadFailed": "Unable to load settings",

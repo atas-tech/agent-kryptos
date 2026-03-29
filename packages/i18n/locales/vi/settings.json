@@ -1,31 +1,40 @@
 {
   "hero": {
-    "sectionLabel": "Workspace configuration",
-    "title": "Settings",
-    "body": "View and manage your workspace identity and display labels."
+    "sectionLabel": "Cấu hình không gian làm việc",
+    "title": "Định danh và xác minh không gian làm việc",
+    "body": "Quản lý tên không gian làm việc và xem các chi tiết nền tảng điều phối quyền truy cập dạng hosted.",
+    "ownerVerification": "Xác minh chủ sở hữu",
+    "verified": "Đã xác minh",
+    "pending": "Đang chờ"
   },
   "displayName": {
-    "sectionLabel": "Workspace identity",
-    "title": "Display name",
-    "body": "Update the display name shown across the dashboard.",
-    "label": "Display name",
-    "submitButton": "Save changes",
-    "submitting": "Saving...",
-    "successNote": "Changes apply immediately after saving."
+    "sectionLabel": "Định danh không gian làm việc",
+    "title": "Tên hiển thị",
+    "body": "Cập nhật tên hiển thị trên toàn bộ bảng điều khiển.",
+    "label": "Tên hiển thị",
+    "placeholder": "Không gian làm việc an toàn của tôi",
+    "helper": "Thay đổi sẽ cập nhật tiêu đề và nhãn không gian làm việc sau khi lưu.",
+    "submitButton": "Lưu không gian làm việc",
+    "submitting": "Đang lưu...",
+    "successNote": "Các thay đổi có hiệu lực ngay sau khi lưu.",
+    "successMessage": "Đã cập nhật tên hiển thị không gian làm việc."
   },
   "readOnly": {
-    "sectionLabel": "Platform details",
-    "title": "Workspace details",
-    "body": "Read-only fields managed by the platform.",
-    "slug": "Workspace slug",
-    "tier": "Account tier",
-    "status": "Workspace status",
-    "ownerId": "Owner user ID",
-    "createdAt": "Created at",
-    "updatedAt": "Updated at"
+    "sectionLabel": "Chi tiết nền tảng",
+    "title": "Cấu hình hosted",
+    "body": "Các trường chỉ đọc do nền tảng quản lý.",
+    "slug": "Slug không gian làm việc",
+    "tier": "Gói tài khoản",
+    "status": "Trạng thái không gian làm việc",
+    "createdAt": "Ngày tạo",
+    "verificationTitle": "Trạng thái xác minh chủ sở hữu",
+    "verifiedBody": "Email của chủ sở hữu không gian làm việc đã được xác minh. Các thao tác đăng ký agent, tạo thành viên và thanh toán vẫn khả dụng.",
+    "pendingBody": "Email của chủ sở hữu chưa được xác minh. Các thao tác hosted có rủi ro cao hơn sẽ tiếp tục bị chặn cho đến khi xác minh hoàn tất.",
+    "badgeVerified": "chủ sở hữu đã xác minh",
+    "badgePending": "đang chờ xác minh"
   },
   "errors": {
-    "loadFailed": "Unable to load settings",
-    "saveFailed": "Unable to save settings"
+    "loadFailed": "Không thể tải cài đặt",
+    "saveFailed": "Không thể cập nhật không gian làm việc"
   }
 }

@@ -7,7 +7,12 @@
   "table": {
     "sectionLabel": "Member roster",
     "title": "Workspace members",
-    "body": "Members in this workspace. Roles update inline; suspension requires confirmation."
+    "body": "Members in this workspace. Roles update inline; suspension requires confirmation.",
+    "columnMember": "Member",
+    "columnRole": "Role",
+    "columnStatus": "Status",
+    "columnActions": "Actions",
+    "roleFor": "Role for {{email}}"
   },
   "stats": {
     "activeMembers": "Active members",

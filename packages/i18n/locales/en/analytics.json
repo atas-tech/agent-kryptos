@@ -22,10 +22,16 @@
     "72Hours": "72 hours",
     "7Days": "7 days"
   },
+  "controls": {
+    "analyticsWindow": "Analytics window",
+    "activeAgentWindow": "Active agent window"
+  },
   "requestVolume": {
     "sectionLabel": "Request volume",
     "title": "Daily secret requests",
-    "body": "Each bar shows the number of secret requests created on that day."
+    "body": "Each bar shows the number of secret requests created on that day.",
+    "chartAria": "Request volume chart",
+    "chartPoint": "{{date}}: {{count}} requests"
   },
   "exchangeOutcomes": {
     "sectionLabel": "Exchange outcomes",
@@ -33,7 +39,9 @@
     "body": "Stacked columns show terminal exchange outcomes by day.",
     "legendSuccessful": "Successful",
     "legendFailed": "Failed / expired",
-    "legendDenied": "Denied"
+    "legendDenied": "Denied",
+    "chartAria": "Exchange outcomes chart",
+    "chartPoint": "{{date}}: {{count}} exchanges"
   },
   "insights": {
     "sectionLabel": "Activity summary",
@@ -46,8 +54,8 @@
     "exchangeHealthy": "Successful exchange retrievals currently outweigh failed and denied paths.",
     "exchangeUnhealthy": "Failed or denied exchanges are outpacing successful retrievals in this window.",
     "agentActivityTitle": "Recent agent activity",
-    "agentActivityActive": "{{count}} distinct agents were active in the last {{hours}} hours.",
-    "agentActivityNone": "No agent activity has been recorded in the selected window."
+    "agentActivityActive": "{{count}} distinct agents minted tokens in the last {{hours}} hours.",
+    "agentActivityNone": "No agent token mint activity has been recorded in the selected activity window."
   },
   "loading": {
     "sectionLabel": "Analytics",

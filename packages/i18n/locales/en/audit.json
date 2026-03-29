@@ -14,7 +14,9 @@
     "loadingBody": "Fetching the exchange timeline and approval trail.",
     "emptyTitle": "Timeline unavailable",
     "emptyBody": "No exchange lifecycle events were found for this exchange.",
-    "backToAudit": "Back to audit"
+    "backToAudit": "Back to audit",
+    "actorLabel": "Actor",
+    "resourceLabel": "Resource"
   },
   "stats": {
     "visibleRows": "Visible rows",

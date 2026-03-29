@@ -24,6 +24,8 @@
   "verified": "Verified",
   "unverified": "Unverified",
   "ready": "Ready",
+  "system": "System",
+  "notAvailable": "Not available",
   "rowsLoaded": "{{count}} rows loaded",
   "noDisplayName": "No display name",
   "allStatuses": "All statuses",

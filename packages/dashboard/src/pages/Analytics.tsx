@@ -1,5 +1,6 @@
 import { Activity, BarChart3, Clock3, RefreshCw, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   getAnalyticsActiveAgents,
   getAnalyticsExchangeMetrics,
@@ -23,14 +24,22 @@ function sum(values: number[]): number {
   return values.reduce((total, value) => total + value, 0);
 }
 
-function RequestVolumeChart({ points }: { points: AnalyticsRequestPoint[] }) {
+function RequestVolumeChart({
+  points,
+  ariaLabel,
+  formatPointTitle
+}: {
+  points: AnalyticsRequestPoint[];
+  ariaLabel: string;
+  formatPointTitle: (point: AnalyticsRequestPoint) => string;
+}) {
   const maxValue = Math.max(...points.map((point) => point.count), 1);
 
   return (
     <div className="analytics-chart">
-      <div className="analytics-chart__bars" aria-label="Request volume chart" role="img">
+      <div className="analytics-chart__bars" aria-label={ariaLabel} role="img">
         {points.map((point) => (
-          <div key={point.date} className="analytics-bar-group" title={`${formatDateLabel(point.date)}: ${point.count} requests`}>
+          <div key={point.date} className="analytics-bar-group" title={formatPointTitle(point)}>
             <div
               aria-hidden="true"
               className="analytics-bar analytics-bar--requests"
@@ -48,7 +57,15 @@ function RequestVolumeChart({ points }: { points: AnalyticsRequestPoint[] }) {
   );
 }
 
-function ExchangeOutcomeChart({ points }: { points: AnalyticsExchangePoint[] }) {
+function ExchangeOutcomeChart({
+  points,
+  ariaLabel,
+  formatPointTitle
+}: {
+  points: AnalyticsExchangePoint[];
+  ariaLabel: string;
+  formatPointTitle: (point: AnalyticsExchangePoint) => string;
+}) {
   const maxValue = Math.max(
     ...points.map((point) => point.successful + point.failed_expired + point.denied),
     1
@@ -56,11 +73,11 @@ function ExchangeOutcomeChart({ points }: { points: AnalyticsExchangePoint[] }) 
 
   return (
     <div className="analytics-chart">
-      <div className="analytics-chart__bars" aria-label="Exchange outcomes chart" role="img">
+      <div className="analytics-chart__bars" aria-label={ariaLabel} role="img">
         {points.map((point) => {
           const total = point.successful + point.failed_expired + point.denied;
           return (
-            <div key={point.date} className="analytics-bar-group" title={`${formatDateLabel(point.date)}: ${total} exchanges`}>
+            <div key={point.date} className="analytics-bar-group" title={formatPointTitle(point)}>
               <div className="analytics-stack">
                 {point.successful > 0 ? (
                   <div
@@ -99,6 +116,7 @@ function ExchangeOutcomeChart({ points }: { points: AnalyticsExchangePoint[] }) 
 }
 
 export function AnalyticsPage() {
+  const { t } = useTranslation(["analytics", "common"]);
   const [days, setDays] = useState(30);
   const [hours, setHours] = useState(24);
   const [requestSeries, setRequestSeries] = useState<AnalyticsRequestPoint[]>([]);
@@ -122,7 +140,7 @@ export function AnalyticsPage() {
       setExchangeSeries(exchanges.series);
       setActiveAgents(agents);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to load analytics");
+      setError(requestError instanceof Error ? requestError.message : t("analytics:errors.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -142,81 +160,78 @@ export function AnalyticsPage() {
       <div className="hero-card hero-card--dashboard">
         <div className="toolbar">
           <div>
-            <div className="section-label">Milestone 2</div>
-            <h2 className="hero-card__title">Workspace analytics</h2>
-            <p className="hero-card__body">
-              Review request volume, exchange outcomes, and recent active agents without exposing secret names, token
-              material, or per-agent identities.
-            </p>
+            <div className="section-label">{t("analytics:hero.sectionLabel")}</div>
+            <h2 className="hero-card__title">{t("analytics:hero.title")}</h2>
+            <p className="hero-card__body">{t("analytics:hero.body")}</p>
           </div>
 
           <div className="toolbar__actions">
             <label>
-              <span className="sr-only">Analytics window</span>
+              <span className="sr-only">{t("analytics:controls.analyticsWindow")}</span>
               <select
-                aria-label="Analytics window"
+                aria-label={t("analytics:controls.analyticsWindow")}
                 className="dashboard-select"
                 data-testid="analytics-days-select"
                 onChange={(event) => setDays(Number.parseInt(event.target.value, 10))}
                 value={days}
               >
-                <option value="7">Last 7 days</option>
-                <option value="30">Last 30 days</option>
-                <option value="60">Last 60 days</option>
+                <option value="7">{t("analytics:dateRanges.last7Days")}</option>
+                <option value="30">{t("analytics:dateRanges.last30Days")}</option>
+                <option value="60">{t("analytics:dateRanges.last60Days")}</option>
               </select>
             </label>
             <label>
-              <span className="sr-only">Active agent window</span>
+              <span className="sr-only">{t("analytics:controls.activeAgentWindow")}</span>
               <select
-                aria-label="Active agent window"
+                aria-label={t("analytics:controls.activeAgentWindow")}
                 className="dashboard-select"
                 data-testid="analytics-hours-select"
                 onChange={(event) => setHours(Number.parseInt(event.target.value, 10))}
                 value={hours}
               >
-                <option value="24">24 hours</option>
-                <option value="72">72 hours</option>
-                <option value="168">7 days</option>
+                <option value="24">{t("analytics:dateRanges.24Hours")}</option>
+                <option value="72">{t("analytics:dateRanges.72Hours")}</option>
+                <option value="168">{t("analytics:dateRanges.7Days")}</option>
               </select>
             </label>
             <button className="ghost-button" disabled={loading} onClick={() => void loadAnalytics()} type="button">
               <RefreshCw size={16} />
-              Refresh
+              {t("common:refresh")}
             </button>
           </div>
         </div>
 
         <div className="stats-row">
           <article className="metric-panel">
-            <span>Request volume</span>
+            <span>{t("analytics:stats.requestVolume")}</span>
             <strong>{requestCount}</strong>
             <div className="analytics-metric-copy">
               <BarChart3 size={16} />
-              <small>{days}-day audit-backed request count</small>
+              <small>{t("analytics:stats.requestVolumeHelper", { days })}</small>
             </div>
           </article>
           <article className="metric-panel">
-            <span>Successful exchanges</span>
+            <span>{t("analytics:stats.successfulExchanges")}</span>
             <strong>{successfulExchanges}</strong>
             <div className="analytics-metric-copy">
               <ShieldCheck size={16} />
-              <small>Terminal `exchange_retrieved` outcomes</small>
+              <small>{t("analytics:stats.successfulExchangesHelper")}</small>
             </div>
           </article>
           <article className="metric-panel">
-            <span>Failed or expired</span>
+            <span>{t("analytics:stats.failedExpired")}</span>
             <strong>{failedExchanges}</strong>
             <div className="analytics-metric-copy">
               <ShieldAlert size={16} />
-              <small>Revoked or failed end states</small>
+              <small>{t("analytics:stats.failedExpiredHelper")}</small>
             </div>
           </article>
           <article className="metric-panel">
-            <span>Active agents</span>
+            <span>{t("analytics:stats.activeAgents")}</span>
             <strong>{activeAgents?.active_agents ?? 0}</strong>
             <div className="analytics-metric-copy">
               <Activity size={16} />
-              <small>Distinct token-mint actors in {activeAgents?.hours ?? hours}h</small>
+              <small>{t("analytics:stats.activeAgentsHelper", { hours: activeAgents?.hours ?? hours })}</small>
             </div>
           </article>
         </div>
@@ -228,9 +243,9 @@ export function AnalyticsPage() {
         <div className="panel-card">
           <div className="panel-card__header">
             <div>
-              <div className="section-label">Analytics</div>
-              <h3 className="panel-card__title">Loading workspace telemetry</h3>
-              <p className="panel-card__body">Reading audit-backed aggregates from the hosted control plane.</p>
+              <div className="section-label">{t("analytics:loading.sectionLabel")}</div>
+              <h3 className="panel-card__title">{t("analytics:loading.title")}</h3>
+              <p className="panel-card__body">{t("analytics:loading.body")}</p>
             </div>
           </div>
         </div>
@@ -238,8 +253,8 @@ export function AnalyticsPage() {
 
       {!loading && !error && requestCount === 0 && successfulExchanges === 0 && failedExchanges === 0 && deniedExchanges === 0 ? (
         <EmptyState
-          title="No analytics traffic yet"
-          body="Once this workspace starts creating requests and completing exchanges, the charts will fill with daily activity."
+          title={t("analytics:emptyState.title")}
+          body={t("analytics:emptyState.body")}
         />
       ) : null}
 
@@ -248,38 +263,50 @@ export function AnalyticsPage() {
           <div className="panel-card">
             <div className="panel-card__header">
               <div>
-                <div className="section-label">Request volume</div>
-                <h3 className="panel-card__title">Daily secret requests</h3>
-                <p className="panel-card__body">Each bar shows the number of hosted secret requests created on that day.</p>
+                <div className="section-label">{t("analytics:requestVolume.sectionLabel")}</div>
+                <h3 className="panel-card__title">{t("analytics:requestVolume.title")}</h3>
+                <p className="panel-card__body">{t("analytics:requestVolume.body")}</p>
               </div>
             </div>
 
-            <RequestVolumeChart points={requestSeries} />
+            <RequestVolumeChart
+              ariaLabel={t("analytics:requestVolume.chartAria")}
+              formatPointTitle={(point) => t("analytics:requestVolume.chartPoint", { date: formatDateLabel(point.date), count: point.count })}
+              points={requestSeries}
+            />
           </div>
 
           <div className="panel-card">
             <div className="panel-card__header">
               <div>
-                <div className="section-label">Exchange outcomes</div>
-                <h3 className="panel-card__title">Successful, failed, and denied flows</h3>
-                <p className="panel-card__body">Stacked columns show terminal exchange outcomes without exposing payload metadata.</p>
+                <div className="section-label">{t("analytics:exchangeOutcomes.sectionLabel")}</div>
+                <h3 className="panel-card__title">{t("analytics:exchangeOutcomes.title")}</h3>
+                <p className="panel-card__body">{t("analytics:exchangeOutcomes.body")}</p>
               </div>
             </div>
 
-            <ExchangeOutcomeChart points={exchangeSeries} />
+            <ExchangeOutcomeChart
+              ariaLabel={t("analytics:exchangeOutcomes.chartAria")}
+              formatPointTitle={(point) =>
+                t("analytics:exchangeOutcomes.chartPoint", {
+                  date: formatDateLabel(point.date),
+                  count: point.successful + point.failed_expired + point.denied
+                })}
+              points={exchangeSeries}
+            />
 
             <div className="analytics-legend">
               <div className="analytics-legend__item">
                 <span className="analytics-legend__swatch analytics-legend__swatch--success" />
-                <span>Successful</span>
+                <span>{t("analytics:exchangeOutcomes.legendSuccessful")}</span>
               </div>
               <div className="analytics-legend__item">
                 <span className="analytics-legend__swatch analytics-legend__swatch--warning" />
-                <span>Failed / expired</span>
+                <span>{t("analytics:exchangeOutcomes.legendFailed")}</span>
               </div>
               <div className="analytics-legend__item">
                 <span className="analytics-legend__swatch analytics-legend__swatch--danger" />
-                <span>Denied</span>
+                <span>{t("analytics:exchangeOutcomes.legendDenied")}</span>
               </div>
             </div>
           </div>
@@ -289,9 +316,9 @@ export function AnalyticsPage() {
       <div className="panel-card">
         <div className="panel-card__header">
           <div>
-            <div className="section-label">Activity posture</div>
-            <h3 className="panel-card__title">What this window says</h3>
-            <p className="panel-card__body">Use this readout to distinguish normal workload from repeated failures or policy friction.</p>
+            <div className="section-label">{t("analytics:insights.sectionLabel")}</div>
+            <h3 className="panel-card__title">{t("analytics:insights.title")}</h3>
+            <p className="panel-card__body">{t("analytics:insights.body")}</p>
           </div>
         </div>
 
@@ -299,34 +326,34 @@ export function AnalyticsPage() {
           <article className="analytics-insight">
             <div className="analytics-insight__header">
               <Clock3 size={16} />
-              <strong>{days}-day request pace</strong>
+              <strong>{t("analytics:insights.requestPaceTitle", { days })}</strong>
             </div>
             <p>
               {requestCount === 0
-                ? "No request creation has been recorded in this window."
-                : `${requestCount} requests were created across the selected period.`}
+                ? t("analytics:insights.requestPaceNoRequests")
+                : t("analytics:insights.requestPaceWithRequests", { count: requestCount })}
             </p>
           </article>
           <article className="analytics-insight">
             <div className="analytics-insight__header">
               <ShieldCheck size={16} />
-              <strong>Exchange completion</strong>
+              <strong>{t("analytics:insights.exchangeCompletionTitle")}</strong>
             </div>
             <p>
               {successfulExchanges >= failedExchanges + deniedExchanges
-                ? "Successful exchange retrievals currently outweigh failed and denied paths."
-                : "Failed or denied exchanges are outpacing successful retrievals in this window."}
+                ? t("analytics:insights.exchangeHealthy")
+                : t("analytics:insights.exchangeUnhealthy")}
             </p>
           </article>
           <article className="analytics-insight">
             <div className="analytics-insight__header">
               <Activity size={16} />
-              <strong>Recent agent activity</strong>
+              <strong>{t("analytics:insights.agentActivityTitle")}</strong>
             </div>
             <p>
               {activeAgents?.active_agents
-                ? `${activeAgents.active_agents} distinct agents minted tokens in the last ${activeAgents.hours} hours.`
-                : "No agent token mint activity has been recorded in the selected activity window."}
+                ? t("analytics:insights.agentActivityActive", { count: activeAgents.active_agents, hours: activeAgents.hours })
+                : t("analytics:insights.agentActivityNone")}
             </p>
           </article>
         </div>

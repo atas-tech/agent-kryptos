@@ -7,7 +7,12 @@
   "table": {
     "sectionLabel": "Danh sách thành viên",
     "title": "Thành viên không gian làm việc",
-    "body": "Các thành viên trong không gian làm việc. Thay đổi vai trò trực tiếp; tạm ngưng cần xác nhận."
+    "body": "Các thành viên trong không gian làm việc. Thay đổi vai trò trực tiếp; tạm ngưng cần xác nhận.",
+    "columnMember": "Thành viên",
+    "columnRole": "Vai trò",
+    "columnStatus": "Trạng thái",
+    "columnActions": "Thao tác",
+    "roleFor": "Vai trò của {{email}}"
   },
   "stats": {
     "activeMembers": "Thành viên hoạt động",

@@ -7,7 +7,11 @@
   "table": {
     "sectionLabel": "Fleet overview",
     "title": "Workspace fleet",
-    "body": "Enrolled agents in this workspace. Use the filters to narrow by status."
+    "body": "Enrolled agents in this workspace. Use the filters to narrow by status.",
+    "columnAgent": "Agent",
+    "columnStatus": "Status",
+    "columnCreated": "Created",
+    "columnActions": "Actions"
   },
   "stats": {
     "activeAgents": "Active agents",
@@ -34,6 +38,7 @@
     "body": "No agents have been enrolled in this workspace yet."
   },
   "actions": {
+    "enroll": "Enroll agent",
     "rotate": "Rotate",
     "revoke": "Revoke"
   },

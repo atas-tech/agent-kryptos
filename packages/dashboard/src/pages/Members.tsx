@@ -1,5 +1,6 @@
 import { ShieldAlert, UserPlus, Users } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { apiRequest, ApiError } from "../api/client.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { DataTable } from "../components/DataTable.js";
@@ -46,14 +47,14 @@ function toneForMemberStatus(status: MemberRecord["status"]): "success" | "warni
   return "neutral";
 }
 
-function describePasswordStrength(value: string): { label: string; percent: number; valid: boolean } {
+function describePasswordStrength(value: string): { key: "waiting" | "tooWeak" | "tooShort" | "acceptable" | "strong" | "veryStrong"; percent: number; valid: boolean } {
   if (value.length === 0) {
-    return { label: "waiting for input", percent: 0, valid: false };
+    return { key: "waiting", percent: 0, valid: false };
   }
 
   const normalized = value.trim().toLowerCase();
   if (WEAK_TEMPORARY_PASSWORDS.has(normalized)) {
-    return { label: "too weak", percent: 12, valid: false };
+    return { key: "tooWeak", percent: 12, valid: false };
   }
 
   const checks = [
@@ -66,21 +67,22 @@ function describePasswordStrength(value: string): { label: string; percent: numb
   const score = checks.filter(Boolean).length;
 
   if (value.length < 12) {
-    return { label: "too short", percent: 20, valid: false };
+    return { key: "tooShort", percent: 20, valid: false };
   }
 
   if (score <= 3) {
-    return { label: "acceptable", percent: 58, valid: true };
+    return { key: "acceptable", percent: 58, valid: true };
   }
 
   if (score === 4) {
-    return { label: "strong", percent: 78, valid: true };
+    return { key: "strong", percent: 78, valid: true };
   }
 
-  return { label: "very strong", percent: 100, valid: true };
+  return { key: "veryStrong", percent: 100, valid: true };
 }
 
 export function MembersPage() {
+  const { t } = useTranslation(["members", "common"]);
   const [members, setMembers] = useState<MemberRecord[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "suspended">("all");
@@ -132,7 +134,7 @@ export function MembersPage() {
       });
       setNextCursor(payload.next_cursor);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to load members");
+      setError(requestError instanceof Error ? requestError.message : t("members:errors.loadFailed"));
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -177,7 +179,7 @@ export function MembersPage() {
     setError(null);
 
     if (!passwordStrength.valid) {
-      setError("Temporary password must be at least 12 characters and not obviously weak.");
+      setError(t("members:errors.weakPassword"));
       return;
     }
 
@@ -198,7 +200,7 @@ export function MembersPage() {
       setTemporaryPassword("");
       await Promise.all([loadMembers(true), refreshActiveAdmins()]);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to create member");
+      setError(requestError instanceof Error ? requestError.message : t("members:errors.createFailed"));
     } finally {
       setFormPending(false);
     }
@@ -217,9 +219,9 @@ export function MembersPage() {
       await Promise.all([loadMembers(true), refreshActiveAdmins()]);
     } catch (requestError) {
       if (requestError instanceof ApiError && requestError.code === "last_admin_lockout") {
-        setError("The last active admin cannot be demoted or suspended.");
+        setError(t("members:status.lastAdminError"));
       } else {
-        setError(requestError instanceof Error ? requestError.message : "Unable to update member");
+        setError(requestError instanceof Error ? requestError.message : t("members:errors.updateFailed"));
       }
     } finally {
       setActionPendingId(null);
@@ -234,34 +236,31 @@ export function MembersPage() {
       <div className="hero-card hero-card--dashboard">
         <div className="toolbar">
           <div>
-            <div className="section-label">Milestone 3</div>
-            <h2 className="hero-card__title">Workspace member controls</h2>
-            <p className="hero-card__body">
-              Manage human access from the Stitch member-management layout: create users with temporary passwords,
-              change roles inline, and protect the final active admin from accidental lockout.
-            </p>
+            <div className="section-label">{t("members:hero.sectionLabel")}</div>
+            <h2 className="hero-card__title">{t("members:hero.title")}</h2>
+            <p className="hero-card__body">{t("members:hero.body")}</p>
           </div>
 
           <div className="toolbar__actions">
             <button className="primary-button" onClick={() => setShowAddMember(true)} type="button">
               <UserPlus size={16} />
-              Add member
+              {t("members:actions.addMember")}
             </button>
           </div>
         </div>
 
         <div className="stats-row">
           <article className="metric-panel">
-            <span>Active members</span>
+            <span>{t("members:stats.activeMembers")}</span>
             <strong>{activeCount}</strong>
           </article>
           <article className="metric-panel">
-            <span>Suspended members</span>
+            <span>{t("members:stats.suspendedMembers")}</span>
             <strong>{suspendedCount}</strong>
           </article>
           <article className="metric-panel">
-            <span>Admin safety</span>
-            <strong>{activeAdminIds.size} active admin{activeAdminIds.size === 1 ? "" : "s"}</strong>
+            <span>{t("members:stats.adminSafety")}</span>
+            <strong>{t(activeAdminIds.size === 1 ? "members:stats.activeAdmin" : "members:stats.activeAdmins", { count: activeAdminIds.size })}</strong>
           </article>
         </div>
       </div>
@@ -271,23 +270,21 @@ export function MembersPage() {
       <div className="panel-card">
         <div className="panel-card__header">
           <div>
-            <div className="section-label">Desktop Members Management</div>
-            <h3 className="panel-card__title">Human access roster</h3>
-            <p className="panel-card__body">
-              Roles update inline to match the Stitch table treatment, while suspension stays behind confirmation.
-            </p>
+            <div className="section-label">{t("members:table.sectionLabel")}</div>
+            <h3 className="panel-card__title">{t("members:table.title")}</h3>
+            <p className="panel-card__body">{t("members:table.body")}</p>
           </div>
 
           <div className="toolbar__filters">
             <select
-              aria-label="Filter members by status"
+              aria-label={t("members:filter.label")}
               className="dashboard-select"
               onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
               value={statusFilter}
             >
-              <option value="all">All statuses</option>
-              <option value="active">Active only</option>
-              <option value="suspended">Suspended only</option>
+              <option value="all">{t("common:allStatuses")}</option>
+              <option value="active">{t("common:activeOnly")}</option>
+              <option value="suspended">{t("common:suspendedOnly")}</option>
             </select>
           </div>
         </div>
@@ -296,47 +293,49 @@ export function MembersPage() {
           columns={[
             {
               key: "member",
-              header: "Member",
+              header: t("members:table.columnMember"),
               render: (member) => (
                 <div>
                   <div className="record-title">{member.email}</div>
                   <div className="record-meta">
-                    Added {formatDate(member.created_at)} · {member.email_verified ? "verified" : "unverified"}
+                    {t("members:status.added", { date: formatDate(member.created_at) })} · {member.email_verified ? t("common:verified") : t("common:unverified")}
                   </div>
                 </div>
               )
             },
             {
               key: "role",
-              header: "Role",
+              header: t("members:table.columnRole"),
               render: (member) => (
                 <select
-                  aria-label={`Role for ${member.email}`}
+                  aria-label={t("members:table.roleFor", { email: member.email })}
                   className="inline-select"
                   data-testid={`role-select-${member.email}`}
                   disabled={actionPendingId === member.id || isLastAdmin(member)}
                   onChange={(event) => void updateMember(member.id, { role: event.target.value as UserRole })}
                   value={member.role}
                 >
-                  <option value="workspace_admin">Workspace admin</option>
-                  <option value="workspace_operator">Workspace operator</option>
-                  <option value="workspace_viewer">Workspace viewer</option>
+                  <option value="workspace_admin">{t("members:roles.workspace_admin")}</option>
+                  <option value="workspace_operator">{t("members:roles.workspace_operator")}</option>
+                  <option value="workspace_viewer">{t("members:roles.workspace_viewer")}</option>
                 </select>
               )
             },
             {
               key: "status",
-              header: "Status",
+              header: t("members:table.columnStatus"),
               render: (member) => (
                 <div>
-                  <StatusBadge data-testid={`member-status-${member.email}`} tone={toneForMemberStatus(member.status)}>{member.status}</StatusBadge>
-                  {member.force_password_change ? <div className="record-meta">Password reset required</div> : null}
+                  <StatusBadge data-testid={`member-status-${member.email}`} tone={toneForMemberStatus(member.status)}>
+                    {t(`common:${member.status}`)}
+                  </StatusBadge>
+                  {member.force_password_change ? <div className="record-meta">{t("members:status.passwordResetRequired")}</div> : null}
                 </div>
               )
             },
             {
               key: "actions",
-              header: "Actions",
+              header: t("members:table.columnActions"),
               render: (member) => (
                 <div className="inline-actions">
                   <button
@@ -347,7 +346,7 @@ export function MembersPage() {
                     data-testid={`suspend-btn-${member.email}`}
                   >
                     <ShieldAlert size={16} />
-                    Suspend
+                    {t("members:actions.suspend")}
                   </button>
                 </div>
               )
@@ -358,18 +357,20 @@ export function MembersPage() {
               action={
                 <button className="primary-button" onClick={() => setShowAddMember(true)} type="button">
                   <UserPlus size={16} />
-                  Add first member
+                  {t("members:addMember.addFirstMember")}
                 </button>
               }
-              body="This workspace only has the owner account. Add operators or viewers to distribute access."
-              title="No members yet"
+              body={t("members:emptyState.body")}
+              title={t("members:emptyState.title")}
             />
           }
           footer={
             <>
-              <span className="helper-copy">{loading ? "Loading members..." : `${members.length} rows loaded`}</span>
+              <span className="helper-copy">
+                {loading ? t("members:footer.loadingMembers") : t("common:rowsLoaded", { count: members.length })}
+              </span>
               <button className="ghost-button" disabled={!nextCursor || loadingMore} onClick={() => void loadMembers()} type="button">
-                {loadingMore ? "Loading..." : nextCursor ? "Load more" : "No more rows"}
+                {loadingMore ? t("common:loading") : nextCursor ? t("common:loadMore") : t("common:noMoreRows")}
               </button>
             </>
           }
@@ -380,81 +381,80 @@ export function MembersPage() {
       </div>
 
       {showAddMember ? (
-        <div className="modal-shell" role="dialog" aria-modal="true" aria-label="Add member">
-          <button aria-label="Close dialog" className="modal-shell__backdrop" onClick={() => setShowAddMember(false)} type="button" />
+        <div className="modal-shell" role="dialog" aria-modal="true" aria-label={t("members:actions.addMember")}>
+          <button aria-label={t("common:close")} className="modal-shell__backdrop" onClick={() => setShowAddMember(false)} type="button" />
           <div className="modal-card">
             <div className="modal-card__header">
               <div className="brand-mark">
                 <Users size={18} />
               </div>
               <div>
-                <div className="section-label">Member onboarding</div>
-                <h2 className="modal-card__title">Create workspace member</h2>
+                <div className="section-label">{t("members:addMember.sectionLabel")}</div>
+                <h2 className="modal-card__title">{t("members:addMember.title")}</h2>
               </div>
             </div>
 
-            <p className="modal-card__body">
-              Provision a user with a temporary password. The first login will redirect them into the password change
-              flow automatically.
-            </p>
+            <p className="modal-card__body">{t("members:addMember.body")}</p>
 
             <form onSubmit={(event) => void handleCreateMember(event)}>
               <div className="form-grid">
                 <div className="field-stack">
-                  <label htmlFor="member-email">Email address</label>
+                  <label htmlFor="member-email">{t("members:addMember.emailLabel")}</label>
                   <input
                     className="dashboard-input"
                     id="member-email"
                     onChange={(event) => setEmail(event.target.value)}
-                    placeholder="operator@company.com"
+                    placeholder={t("members:addMember.emailPlaceholder")}
                     required
                     type="email"
                     value={email}
                   />
-                  <small>Each user belongs to this workspace only in Phase 3A/3B.</small>
+                  <small>{t("members:addMember.emailHint")}</small>
                 </div>
 
                 <div className="field-stack">
-                  <label htmlFor="member-role">Role</label>
+                  <label htmlFor="member-role">{t("members:addMember.roleLabel")}</label>
                   <select
                     className="dashboard-select"
                     id="member-role"
                     onChange={(event) => setRole(event.target.value as UserRole)}
                     value={role}
                   >
-                    <option value="workspace_viewer">Workspace viewer</option>
-                    <option value="workspace_operator">Workspace operator</option>
-                    <option value="workspace_admin">Workspace admin</option>
+                    <option value="workspace_viewer">{t("members:roles.workspace_viewer")}</option>
+                    <option value="workspace_operator">{t("members:roles.workspace_operator")}</option>
+                    <option value="workspace_admin">{t("members:roles.workspace_admin")}</option>
                   </select>
-                  <small>Admins can manage billing, settings, members, and agent enrollment.</small>
+                  <small>{t("members:addMember.roleHint")}</small>
                 </div>
               </div>
 
               <div className="form-grid form-grid--single">
                 <div className="field-stack">
-                  <label htmlFor="temporary-password">Temporary password</label>
+                  <label htmlFor="temporary-password">{t("members:addMember.tempPasswordLabel")}</label>
                   <input
                     className="dashboard-input"
                     id="temporary-password"
                     minLength={12}
                     onChange={(event) => setTemporaryPassword(event.target.value)}
-                    placeholder="At least 12 characters"
+                    placeholder={t("members:addMember.tempPasswordPlaceholder")}
                     required
                     value={temporaryPassword}
                   />
                   <div className="strength-meter">
                     <span style={{ width: `${passwordStrength.percent}%` }} />
                   </div>
-                  <div className="strength-copy">Temporary password strength: {passwordStrength.label}</div>
+                  <div className="strength-copy">
+                    {t("members:addMember.tempPasswordStrength", { label: t(`members:passwordStrength.${passwordStrength.key}`) })}
+                  </div>
                 </div>
               </div>
 
               <div className="modal-card__actions">
                 <button className="ghost-button" onClick={() => setShowAddMember(false)} type="button">
-                  Cancel
+                  {t("common:cancel")}
                 </button>
                 <button className="primary-button" disabled={formPending} type="submit">
-                  {formPending ? "Creating..." : "Create member"}
+                  {formPending ? t("members:addMember.submitting") : t("members:addMember.submitButton")}
                 </button>
               </div>
             </form>
@@ -465,15 +465,15 @@ export function MembersPage() {
       <ConfirmDialog
         body={
           confirmSuspend
-            ? `Suspend ${confirmSuspend.email}. They will lose access until an admin reactivates the account via API or a future UI flow.`
+            ? t("members:actions.suspendBody", { email: confirmSuspend.email })
             : ""
         }
-        confirmLabel="Suspend member"
+        confirmLabel={t("members:actions.suspendLabel")}
         onCancel={() => setConfirmSuspend(null)}
         onConfirm={() => (confirmSuspend ? void updateMember(confirmSuspend.id, { status: "suspended" }) : undefined)}
         open={Boolean(confirmSuspend)}
         pending={actionPendingId === confirmSuspend?.id}
-        title={confirmSuspend ? `Suspend ${confirmSuspend.email}` : "Suspend member"}
+        title={confirmSuspend ? t("members:actions.suspendTitle", { email: confirmSuspend.email }) : t("members:actions.suspendLabel")}
       />
     </section>
   );

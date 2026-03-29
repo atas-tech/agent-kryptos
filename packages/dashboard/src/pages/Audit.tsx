@@ -1,5 +1,6 @@
 import { ArrowLeft, ArrowRight, RefreshCw, ScanSearch } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiRequest } from "../api/client.js";
 import { DataTable } from "../components/DataTable.js";
@@ -126,6 +127,7 @@ function metadataPreview(metadata: Record<string, unknown> | null): string {
 }
 
 export function AuditPage() {
+  const { t } = useTranslation(["audit", "common"]);
   const navigate = useNavigate();
   const { exchangeId } = useParams();
   const [filters, setFilters] = useState<AuditFilters>(DEFAULT_FILTERS);
@@ -195,7 +197,7 @@ export function AuditPage() {
         setExpandedRowId(null);
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to load audit records");
+      setError(requestError instanceof Error ? requestError.message : t("audit:errors.loadFailed"));
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -210,7 +212,7 @@ export function AuditPage() {
       const payload = await apiRequest<ExchangeAuditResponse>(`/api/v2/audit/exchange/${id}`);
       setTimelineRecords(payload.records);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to load exchange lifecycle");
+      setError(requestError instanceof Error ? requestError.message : t("audit:errors.timelineFailed"));
       setTimelineRecords([]);
     } finally {
       setTimelineLoading(false);
@@ -229,48 +231,45 @@ export function AuditPage() {
 
   if (exchangeId) {
     const approvalEvents = timelineRecords.filter((record) => record.event_type.includes("approval")).length;
-    const latestEvent = timelineRecords.at(-1)?.event_type ?? "pending";
+    const latestEvent = timelineRecords.at(-1)?.event_type ?? t("common:pending");
 
     return (
       <section className="page-stack">
         <div className="hero-card hero-card--dashboard">
           <div className="toolbar">
             <div>
-              <div className="section-label">Milestone 4</div>
-              <h2 className="hero-card__title">Exchange lifecycle timeline</h2>
-              <p className="hero-card__body">
-                This drill-down follows the Stitch forensic timeline pattern: every exchange state is rendered in
-                sequence, and any approval events are interleaved without exposing ciphertext or tokens.
-              </p>
+              <div className="section-label">{t("audit:timeline.sectionLabel")}</div>
+              <h2 className="hero-card__title">{t("audit:timeline.title")}</h2>
+              <p className="hero-card__body">{t("audit:timeline.body")}</p>
             </div>
 
             <div className="toolbar__actions">
               <button className="ghost-button" onClick={() => navigate("/audit")} type="button">
                 <ArrowLeft size={16} />
-                Back to audit
+                {t("audit:timeline.backToAudit")}
               </button>
               <button className="ghost-button" onClick={() => void loadExchangeTimeline(exchangeId)} type="button">
                 <RefreshCw size={16} />
-                Refresh
+                {t("common:refresh")}
               </button>
             </div>
           </div>
 
           <div className="stats-row">
             <article className="metric-panel">
-              <span>Exchange</span>
+              <span>{t("audit:stats.exchange")}</span>
               <ResourceLabel className="mt-1" truncateAt={8} value={exchangeId} />
             </article>
             <article className="metric-panel">
-              <span>Timeline events</span>
+              <span>{t("audit:stats.timelineEvents")}</span>
               <strong>{timelineRecords.length}</strong>
             </article>
             <article className="metric-panel">
-              <span>Approval events</span>
+              <span>{t("audit:stats.approvalEvents")}</span>
               <strong>{approvalEvents}</strong>
             </article>
             <article className="metric-panel">
-              <span>Latest state</span>
+              <span>{t("audit:stats.latestState")}</span>
               <strong>{latestEvent.replaceAll("_", " ")}</strong>
             </article>
           </div>
@@ -281,25 +280,22 @@ export function AuditPage() {
         <div className="panel-card">
           <div className="panel-card__header">
             <div>
-              <div className="section-label">Exchange Timeline</div>
-              <h3 className="panel-card__title">Interleaved audit history</h3>
-              <p className="panel-card__body">
-                Requested, reserved, submitted, retrieved, and approval decision events are rendered in chronological
-                order from the workspace-scoped audit timeline.
-              </p>
+              <div className="section-label">{t("audit:timeline.sectionLabel")}</div>
+              <h3 className="panel-card__title">{t("audit:timeline.tableTitle")}</h3>
+              <p className="panel-card__body">{t("audit:timeline.tableBody")}</p>
             </div>
           </div>
 
           {timelineLoading ? (
             <div className="empty-state">
-              <div className="empty-state__eyebrow">Loading</div>
-              <h3>Building lifecycle view</h3>
-              <p>Fetching the exchange timeline and approval trail now.</p>
+              <div className="empty-state__eyebrow">{t("common:loading")}</div>
+              <h3>{t("audit:timeline.loadingTitle")}</h3>
+              <p>{t("audit:timeline.loadingBody")}</p>
             </div>
           ) : timelineRecords.length === 0 ? (
             <EmptyState
-              body="No exchange lifecycle events were found for this workspace-scoped exchange id."
-              title="Timeline unavailable"
+              body={t("audit:timeline.emptyBody")}
+              title={t("audit:timeline.emptyTitle")}
             />
           ) : (
             <div className="timeline-list">
@@ -312,17 +308,17 @@ export function AuditPage() {
                         <div className="record-title">{record.event_type.replaceAll("_", " ")}</div>
                         <div className="record-meta">{formatTimestamp(record.created_at)}</div>
                       </div>
-                      <StatusBadge tone={eventTone(record.event_type)}>{record.actor_type ?? "system"}</StatusBadge>
+                      <StatusBadge tone={eventTone(record.event_type)}>{record.actor_type ?? t("common:system")}</StatusBadge>
                     </div>
 
                     <div className="detail-list">
                       <div className="detail-list__item">
-                        <span className="meta-label">Actor</span>
-                        <ResourceLabel value={record.actor_id ?? "system"} />
+                        <span className="meta-label">{t("audit:timeline.actorLabel")}</span>
+                        <ResourceLabel value={record.actor_id ?? t("common:system")} />
                       </div>
                       <div className="detail-list__item">
-                        <span className="meta-label">Resource</span>
-                        <ResourceLabel value={record.resource_id ?? "n/a"} />
+                        <span className="meta-label">{t("audit:timeline.resourceLabel")}</span>
+                        <ResourceLabel value={record.resource_id ?? t("common:notAvailable")} />
                       </div>
                     </div>
 
@@ -345,33 +341,30 @@ export function AuditPage() {
       <div className="hero-card hero-card--dashboard">
         <div className="toolbar">
           <div>
-            <div className="section-label">Milestone 4</div>
-            <h2 className="hero-card__title">Audit log viewer</h2>
-            <p className="hero-card__body">
-              Monitor user, agent, and system activity from the Stitch-aligned audit table. Filters, masked metadata,
-              pagination, and exchange drill-downs stay available to every workspace role.
-            </p>
+            <div className="section-label">{t("audit:hero.sectionLabel")}</div>
+            <h2 className="hero-card__title">{t("audit:hero.title")}</h2>
+            <p className="hero-card__body">{t("audit:hero.body")}</p>
           </div>
 
           <div className="toolbar__actions">
             <button className="ghost-button" onClick={() => void loadAuditRecords(true)} type="button">
               <RefreshCw size={16} />
-              Refresh
+              {t("common:refresh")}
             </button>
           </div>
         </div>
 
         <div className="stats-row">
           <article className="metric-panel">
-            <span>Visible rows</span>
+            <span>{t("audit:stats.visibleRows")}</span>
             <strong>{records.length}</strong>
           </article>
           <article className="metric-panel">
-            <span>Exchange events</span>
+            <span>{t("audit:stats.exchangeEvents")}</span>
             <strong>{exchangeRecords}</strong>
           </article>
           <article className="metric-panel">
-            <span>Approval events</span>
+            <span>{t("audit:stats.approvalEvents")}</span>
             <strong>{approvalRecords}</strong>
           </article>
         </div>
@@ -382,25 +375,22 @@ export function AuditPage() {
       <div className="panel-card">
         <div className="panel-card__header">
           <div>
-            <div className="section-label">Audit Filters</div>
-            <h3 className="panel-card__title">Search and scope</h3>
-            <p className="panel-card__body">
-              Filter by event type, actor class, resource id, or date range before paginating deeper into the audit
-              stream.
-            </p>
+            <div className="section-label">{t("audit:filters.sectionLabel")}</div>
+            <h3 className="panel-card__title">{t("audit:filters.title")}</h3>
+            <p className="panel-card__body">{t("audit:filters.body")}</p>
           </div>
         </div>
 
         <form className="audit-filters" onSubmit={handleApplyFilters}>
           <label className="field-stack">
-            <span>Event type</span>
+            <span>{t("audit:filters.eventType")}</span>
             <select
-              aria-label="Filter audit by event type"
+              aria-label={t("audit:filters.eventType")}
               className="dashboard-select"
               onChange={(event) => setFilters((current) => ({ ...current, eventType: event.target.value }))}
               value={filters.eventType}
             >
-              <option value="">All events</option>
+              <option value="">{t("audit:filters.allEvents")}</option>
               {AUDIT_EVENT_OPTIONS.map((eventType) => (
                 <option key={eventType} value={eventType}>
                   {eventType}
@@ -410,36 +400,36 @@ export function AuditPage() {
           </label>
 
           <label className="field-stack">
-            <span>Actor type</span>
+            <span>{t("audit:filters.actorType")}</span>
             <select
-              aria-label="Filter audit by actor type"
+              aria-label={t("audit:filters.actorType")}
               className="dashboard-select"
               onChange={(event) => setFilters((current) => ({ ...current, actorType: event.target.value as AuditFilters["actorType"] }))}
               value={filters.actorType}
             >
-              <option value="">All actors</option>
-              <option value="user">User</option>
-              <option value="agent">Agent</option>
-              <option value="system">System</option>
+              <option value="">{t("audit:filters.allActors")}</option>
+              <option value="user">{t("audit:filters.user")}</option>
+              <option value="agent">{t("audit:filters.agent")}</option>
+              <option value="system">{t("audit:filters.system")}</option>
             </select>
           </label>
 
           <label className="field-stack">
-            <span>Resource id</span>
+            <span>{t("audit:filters.resourceId")}</span>
             <input
-              aria-label="Filter audit by resource id"
+              aria-label={t("audit:filters.resourceId")}
               className="dashboard-input"
               onChange={(event) => setFilters((current) => ({ ...current, resourceId: event.target.value }))}
-              placeholder="exchange id, member id, or approval ref"
+              placeholder={t("audit:filters.resourceIdPlaceholder")}
               type="text"
               value={filters.resourceId}
             />
           </label>
 
           <label className="field-stack">
-            <span>From date</span>
+            <span>{t("audit:filters.fromDate")}</span>
             <input
-              aria-label="Filter audit from date"
+              aria-label={t("audit:filters.fromDate")}
               className="dashboard-input"
               onChange={(event) => setFilters((current) => ({ ...current, from: event.target.value }))}
               type="date"
@@ -448,9 +438,9 @@ export function AuditPage() {
           </label>
 
           <label className="field-stack">
-            <span>To date</span>
+            <span>{t("audit:filters.toDate")}</span>
             <input
-              aria-label="Filter audit to date"
+              aria-label={t("audit:filters.toDate")}
               className="dashboard-input"
               onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value }))}
               type="date"
@@ -461,10 +451,10 @@ export function AuditPage() {
           <div className="audit-filters__actions">
             <button className="primary-button" type="submit">
               <ScanSearch size={16} />
-              Apply filters
+              {t("audit:filters.applyButton")}
             </button>
             <button className="ghost-button" onClick={handleResetFilters} type="button">
-              Reset
+              {t("audit:filters.resetButton")}
             </button>
           </div>
         </form>
@@ -473,12 +463,9 @@ export function AuditPage() {
       <div className="panel-card">
         <div className="panel-card__header">
           <div>
-            <div className="section-label">Audit Stream</div>
-            <h3 className="panel-card__title">Workspace events</h3>
-            <p className="panel-card__body">
-              Click any row to inspect the sanitized metadata payload. Exchange rows expose a direct forensic drill-down
-              into the full lifecycle timeline.
-            </p>
+            <div className="section-label">{t("audit:table.sectionLabel")}</div>
+            <h3 className="panel-card__title">{t("audit:table.title")}</h3>
+            <p className="panel-card__body">{t("audit:table.body")}</p>
           </div>
         </div>
 
@@ -486,44 +473,44 @@ export function AuditPage() {
           columns={[
             {
               key: "created",
-              header: "Recorded",
+              header: t("audit:table.columnRecorded"),
               render: (record) => (
                 <div>
                   <div className="record-title">{formatTimestamp(record.created_at)}</div>
-                  <div className="record-meta">{record.ip_address ?? "No forwarded IP"}</div>
+                  <div className="record-meta">{record.ip_address ?? t("audit:table.noForwardedIp")}</div>
                 </div>
               )
             },
             {
               key: "event",
-              header: "Event",
+              header: t("audit:table.columnEvent"),
               render: (record) => <StatusBadge tone={eventTone(record.event_type)}>{record.event_type}</StatusBadge>
             },
             {
               key: "actor",
-              header: "Actor",
+              header: t("audit:table.columnActor"),
               render: (record) => (
                 <div>
-                  <div className="record-title">{record.actor_id ?? "system"}</div>
-                  <div className="record-meta">{record.actor_type ?? "system"}</div>
+                  <div className="record-title">{record.actor_id ?? t("common:system")}</div>
+                  <div className="record-meta">{record.actor_type ?? t("common:system")}</div>
                 </div>
               )
             },
             {
               key: "resource",
-              header: "Resource",
+              header: t("audit:table.columnResource"),
               render: (record) => (
                 <div>
-                  <ResourceLabel value={record.resource_id ?? "n/a"} />
+                  <ResourceLabel value={record.resource_id ?? t("common:notAvailable")} />
                   <div className="record-meta">
-                    {getExchangeId(record) ? "Exchange drill-down available" : "Metadata details only"}
+                    {getExchangeId(record) ? t("audit:table.exchangeDrillDown") : t("audit:table.metadataOnly")}
                   </div>
                 </div>
               )
             },
             {
               key: "action",
-              header: "Action",
+              header: t("audit:table.columnAction"),
               render: (record) => {
                 const recordExchangeId = getExchangeId(record);
 
@@ -536,32 +523,32 @@ export function AuditPage() {
                     }}
                     type="button"
                   >
-                    Open exchange
+                    {t("audit:table.openExchange")}
                     <ArrowRight size={16} />
                   </button>
                 ) : (
-                  <span className="record-meta">Inspect metadata</span>
+                  <span className="record-meta">{t("audit:table.inspectMetadata")}</span>
                 );
               }
             }
           ]}
           emptyState={
             <EmptyState
-              body="No audit events matched the current filters. Adjust the search scope or refresh after more workspace activity occurs."
-              title="No audit rows match"
+              body={t("audit:table.emptyBody")}
+              title={t("audit:table.emptyTitle")}
             />
           }
           expandedRowKey={expandedRowId}
           footer={
             <div className="toolbar">
-              <div className="helper-copy">Masked JSON expansion is read-only for every workspace role.</div>
+              <div className="helper-copy">{t("audit:table.footerHint")}</div>
               <button
                 className="ghost-button"
                 disabled={!nextCursor || loadingMore}
                 onClick={() => void loadAuditRecords(false)}
                 type="button"
               >
-                {loadingMore ? "Loading..." : nextCursor ? "Load more" : "No more rows"}
+                {loadingMore ? t("common:loading") : nextCursor ? t("common:loadMore") : t("common:noMoreRows")}
               </button>
             </div>
           }
@@ -574,12 +561,12 @@ export function AuditPage() {
               <div className="audit-expanded">
                 <div className="audit-expanded__header">
                   <div>
-                    <div className="record-title">Sanitized metadata</div>
-                    <div className="record-meta">Sensitive values remain masked at the API boundary.</div>
+                    <div className="record-title">{t("audit:table.sanitizedMetadata")}</div>
+                    <div className="record-meta">{t("audit:table.sanitizedMetadataHint")}</div>
                   </div>
                   {recordExchangeId ? (
                     <button className="ghost-button" onClick={() => navigate(`/audit/exchange/${recordExchangeId}`)} type="button">
-                      Open exchange
+                      {t("audit:table.openExchange")}
                       <ArrowRight size={16} />
                     </button>
                   ) : null}

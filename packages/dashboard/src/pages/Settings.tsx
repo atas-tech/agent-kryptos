@@ -1,5 +1,6 @@
 import { Building2 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { apiRequest } from "../api/client.js";
 import { useAuth } from "../auth/useAuth.js";
 import type { WorkspaceSummary } from "../auth/types.js";
@@ -10,6 +11,7 @@ interface WorkspaceResponse {
 }
 
 export function SettingsPage() {
+  const { t, i18n } = useTranslation(["settings", "common"]);
   const { workspace, setWorkspaceSummary } = useAuth();
   const [workspaceDetails, setWorkspaceDetails] = useState<WorkspaceSummary | null>(workspace);
   const [displayName, setDisplayName] = useState(workspace?.display_name ?? "");
@@ -32,7 +34,7 @@ export function SettingsPage() {
       setDisplayName(payload.workspace.display_name);
       setWorkspaceSummary(payload.workspace);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to load workspace settings");
+      setError(requestError instanceof Error ? requestError.message : t("settings:errors.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -54,9 +56,9 @@ export function SettingsPage() {
 
       setWorkspaceDetails(payload.workspace);
       setWorkspaceSummary(payload.workspace);
-      setSuccess("Workspace display name updated.");
+      setSuccess(t("settings:displayName.successMessage"));
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to update workspace");
+      setError(requestError instanceof Error ? requestError.message : t("settings:errors.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -67,25 +69,22 @@ export function SettingsPage() {
   return (
     <section className="page-stack">
       <div className="hero-card hero-card--dashboard">
-        <div className="section-label">Desktop Workspace Settings Overview</div>
-        <h2 className="hero-card__title">Workspace identity and verification</h2>
-        <p className="hero-card__body">
-          This page follows the Stitch settings overview pattern: operational metadata stays read-only, while the
-          workspace display name remains editable for administrators.
-        </p>
+        <div className="section-label">{t("settings:hero.sectionLabel")}</div>
+        <h2 className="hero-card__title">{t("settings:hero.title")}</h2>
+        <p className="hero-card__body">{t("settings:hero.body")}</p>
 
         <div className="stats-row">
           <article className="metric-panel">
-            <span>Workspace slug</span>
-            <strong>{details?.slug ?? "Loading..."}</strong>
+            <span>{t("settings:readOnly.slug")}</span>
+            <strong>{details?.slug ?? t("common:loading")}</strong>
           </article>
           <article className="metric-panel">
-            <span>Tier</span>
+            <span>{t("settings:readOnly.tier")}</span>
             <strong>{details?.tier ?? "free"}</strong>
           </article>
           <article className="metric-panel">
-            <span>Owner verification</span>
-            <strong>{details?.owner_email_verified ? "Verified" : "Pending"}</strong>
+            <span>{t("settings:hero.ownerVerification")}</span>
+            <strong>{details?.owner_email_verified ? t("settings:hero.verified") : t("settings:hero.pending")}</strong>
           </article>
         </div>
       </div>
@@ -97,33 +96,33 @@ export function SettingsPage() {
         <div className="panel-card">
           <div className="panel-card__header">
             <div>
-              <div className="section-label">Workspace profile</div>
-              <h3 className="panel-card__title">Edit display name</h3>
-              <p className="panel-card__body">Update the operator-facing workspace label used throughout the dashboard shell.</p>
+              <div className="section-label">{t("settings:displayName.sectionLabel")}</div>
+              <h3 className="panel-card__title">{t("settings:displayName.title")}</h3>
+              <p className="panel-card__body">{t("settings:displayName.body")}</p>
             </div>
           </div>
 
           <form onSubmit={(event) => void handleSubmit(event)}>
             <div className="form-grid form-grid--single">
               <div className="field-stack">
-                <label htmlFor="workspace-display-name">Workspace display name</label>
+                <label htmlFor="workspace-display-name">{t("settings:displayName.label")}</label>
                 <input
                   className="dashboard-input"
                   disabled={loading}
                   id="workspace-display-name"
                   onChange={(event) => setDisplayName(event.target.value)}
-                  placeholder="My Secure Workspace"
+                  placeholder={t("settings:displayName.placeholder")}
                   required
                   value={displayName}
                   data-testid="workspace-display-name-input"
                 />
-                <small>Changes here update the header chrome and sidebar workspace labeling immediately after save.</small>
+                <small>{t("settings:displayName.helper")}</small>
               </div>
             </div>
 
             <div className="modal-card__actions">
               <button className="primary-button" data-testid="save-workspace-btn" disabled={saving || loading} type="submit">
-                {saving ? "Saving..." : "Save workspace"}
+                {saving ? t("settings:displayName.submitting") : t("settings:displayName.submitButton")}
               </button>
             </div>
           </form>
@@ -132,28 +131,28 @@ export function SettingsPage() {
         <div className="panel-card">
           <div className="panel-card__header">
             <div>
-              <div className="section-label">Read-only controls</div>
-              <h3 className="panel-card__title">Hosted configuration</h3>
-              <p className="panel-card__body">These fields are fixed for Milestone 3 and reflect the hosted platform contract.</p>
+              <div className="section-label">{t("settings:readOnly.sectionLabel")}</div>
+              <h3 className="panel-card__title">{t("settings:readOnly.title")}</h3>
+              <p className="panel-card__body">{t("settings:readOnly.body")}</p>
             </div>
           </div>
 
           <div className="detail-list">
             <div className="detail-list__item">
-              <div className="meta-label">Workspace slug</div>
-              <strong>{details?.slug ?? "Loading..."}</strong>
+              <div className="meta-label">{t("settings:readOnly.slug")}</div>
+              <strong>{details?.slug ?? t("common:loading")}</strong>
             </div>
             <div className="detail-list__item">
-              <div className="meta-label">Tier</div>
+              <div className="meta-label">{t("settings:readOnly.tier")}</div>
               <strong>{details?.tier ?? "free"}</strong>
             </div>
             <div className="detail-list__item">
-              <div className="meta-label">Status</div>
+              <div className="meta-label">{t("settings:readOnly.status")}</div>
               <strong>{details?.status ?? "active"}</strong>
             </div>
             <div className="detail-list__item">
-              <div className="meta-label">Created</div>
-              <strong>{details?.created_at ? new Date(details.created_at).toLocaleDateString() : "Loading..."}</strong>
+              <div className="meta-label">{t("settings:readOnly.createdAt")}</div>
+              <strong>{details?.created_at ? new Date(details.created_at).toLocaleDateString(i18n.language) : t("common:loading")}</strong>
             </div>
           </div>
 
@@ -161,18 +160,18 @@ export function SettingsPage() {
             <div className="turnstile-placeholder">
               <Building2 size={18} />
               <div>
-                <strong>Owner verification status</strong>
+                <strong>{t("settings:readOnly.verificationTitle")}</strong>
                 <span>
                   {details?.owner_email_verified
-                    ? "The workspace owner email is verified. Enrollment, member creation, and billing actions stay unlocked."
-                    : "The workspace owner email is not verified yet. Higher-risk hosted actions remain gated until verification completes."}
+                    ? t("settings:readOnly.verifiedBody")
+                    : t("settings:readOnly.pendingBody")}
                 </span>
               </div>
             </div>
 
             <div className="inline-actions">
               <StatusBadge tone={details?.owner_email_verified ? "success" : "warning"}>
-                {details?.owner_email_verified ? "owner verified" : "verification pending"}
+                {details?.owner_email_verified ? t("settings:readOnly.badgeVerified") : t("settings:readOnly.badgePending")}
               </StatusBadge>
               <StatusBadge tone="neutral">{details?.status ?? "active"}</StatusBadge>
             </div>

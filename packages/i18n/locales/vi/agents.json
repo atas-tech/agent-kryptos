@@ -7,7 +7,11 @@
   "table": {
     "sectionLabel": "Tổng quan đội",
     "title": "Đội agent",
-    "body": "Các agent đã đăng ký trong không gian làm việc. Sử dụng bộ lọc để thu hẹp theo trạng thái."
+    "body": "Các agent đã đăng ký trong không gian làm việc. Sử dụng bộ lọc để thu hẹp theo trạng thái.",
+    "columnAgent": "Agent",
+    "columnStatus": "Trạng thái",
+    "columnCreated": "Ngày tạo",
+    "columnActions": "Thao tác"
   },
   "stats": {
     "activeAgents": "Agent hoạt động",
@@ -34,6 +38,7 @@
     "body": "Chưa có agent nào được đăng ký trong không gian làm việc."
   },
   "actions": {
+    "enroll": "Đăng ký agent",
     "rotate": "Xoay vòng",
     "revoke": "Thu hồi"
   },

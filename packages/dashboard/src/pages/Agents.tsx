@@ -1,5 +1,6 @@
 import { Bot, KeyRound, Plus, RefreshCw, ShieldBan } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { apiRequest } from "../api/client.js";
 import { ApiKeyReveal } from "../components/ApiKeyReveal.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
@@ -48,6 +49,7 @@ function toneForStatus(status: AgentRecord["status"]): "success" | "warning" | "
 }
 
 export function AgentsPage() {
+  const { t } = useTranslation(["agents", "common"]);
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "revoked">("all");
@@ -95,7 +97,7 @@ export function AgentsPage() {
       });
       setNextCursor(payload.next_cursor);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to load agents");
+      setError(requestError instanceof Error ? requestError.message : t("agents:errors.loadFailed"));
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -122,13 +124,13 @@ export function AgentsPage() {
       if (payload.bootstrap_api_key) {
         setRevealedKey({
           apiKey: payload.bootstrap_api_key,
-          title: `Bootstrap key for ${payload.agent.agent_id}`,
-          description: "Store this API key in the agent runtime now. BlindPass will not reveal it again after dismissal."
+          title: t("agents:reveal.bootstrapTitle", { agentId: payload.agent.agent_id }),
+          description: t("agents:reveal.bootstrapDescription")
         });
       }
       await loadAgents(true);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to enroll agent");
+      setError(requestError instanceof Error ? requestError.message : t("agents:errors.enrollFailed"));
     } finally {
       setFormPending(false);
     }
@@ -152,8 +154,8 @@ export function AgentsPage() {
         if (payload.bootstrap_api_key) {
           setRevealedKey({
             apiKey: payload.bootstrap_api_key,
-            title: `Replacement key for ${payload.agent.agent_id}`,
-            description: "The previous key is now invalid. Store this replacement key before you close the reveal."
+            title: t("agents:reveal.replacementTitle", { agentId: payload.agent.agent_id }),
+            description: t("agents:reveal.replacementDescription")
           });
         }
       } else {
@@ -165,7 +167,7 @@ export function AgentsPage() {
       setConfirmAction(null);
       await loadAgents(true);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to update agent");
+      setError(requestError instanceof Error ? requestError.message : t("agents:errors.updateFailed"));
     } finally {
       setActionPending(false);
     }
@@ -179,38 +181,35 @@ export function AgentsPage() {
       <div className="hero-card hero-card--dashboard">
         <div className="toolbar">
           <div>
-            <div className="section-label">Milestone 3</div>
-            <h2 className="hero-card__title">Agent enrollment and rotation</h2>
-            <p className="hero-card__body">
-              Manage bootstrap credentials from the Stitch-designed operations grid. Keys are revealed once, rotations
-              invalidate prior credentials immediately, and revocations are routed through explicit confirmation.
-            </p>
+            <div className="section-label">{t("agents:hero.sectionLabel")}</div>
+            <h2 className="hero-card__title">{t("agents:hero.title")}</h2>
+            <p className="hero-card__body">{t("agents:hero.body")}</p>
           </div>
 
           <div className="toolbar__actions">
             <button className="ghost-button" onClick={() => void loadAgents(true)} type="button">
               <RefreshCw size={16} />
-              Refresh
+              {t("common:refresh")}
             </button>
             <button className="primary-button" onClick={() => setShowEnroll(true)} type="button">
               <Plus size={16} />
-              Enroll agent
+              {t("agents:actions.enroll")}
             </button>
           </div>
         </div>
 
         <div className="stats-row">
           <article className="metric-panel">
-            <span>Active agents</span>
+            <span>{t("agents:stats.activeAgents")}</span>
             <strong>{activeCount}</strong>
           </article>
           <article className="metric-panel">
-            <span>Revoked agents</span>
+            <span>{t("agents:stats.revokedAgents")}</span>
             <strong>{revokedCount}</strong>
           </article>
           <article className="metric-panel">
-            <span>Reveal policy</span>
-            <strong>One-time only</strong>
+            <span>{t("agents:stats.revealPolicy")}</span>
+            <strong>{t("agents:stats.revealPolicyValue")}</strong>
           </article>
         </div>
       </div>
@@ -220,24 +219,21 @@ export function AgentsPage() {
       <div className="panel-card">
         <div className="panel-card__header">
           <div>
-            <div className="section-label">Desktop Agents Management</div>
-            <h3 className="panel-card__title">Workspace fleet</h3>
-            <p className="panel-card__body">
-              This table follows the Stitch layout reference: filter controls on top, dense operational rows, and
-              destructive actions pushed to explicit modals.
-            </p>
+            <div className="section-label">{t("agents:table.sectionLabel")}</div>
+            <h3 className="panel-card__title">{t("agents:table.title")}</h3>
+            <p className="panel-card__body">{t("agents:table.body")}</p>
           </div>
 
           <div className="toolbar__filters">
             <select
-              aria-label="Filter agents by status"
+              aria-label={t("agents:filter.label")}
               className="dashboard-select"
               onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
               value={statusFilter}
             >
-              <option value="all">All statuses</option>
-              <option value="active">Active only</option>
-              <option value="revoked">Revoked only</option>
+              <option value="all">{t("common:allStatuses")}</option>
+              <option value="active">{t("common:activeOnly")}</option>
+              <option value="revoked">{t("common:revokedOnly")}</option>
             </select>
           </div>
         </div>
@@ -246,32 +242,34 @@ export function AgentsPage() {
           columns={[
             {
               key: "agent",
-              header: "Agent",
+              header: t("agents:table.columnAgent"),
               render: (agent) => (
                 <div>
                   <div className="record-title">{agent.agent_id}</div>
-                  <div className="record-meta">{agent.display_name ?? "No display name"}</div>
+                  <div className="record-meta">{agent.display_name ?? t("common:noDisplayName")}</div>
                 </div>
               )
             },
             {
               key: "status",
-              header: "Status",
-              render: (agent) => <StatusBadge tone={toneForStatus(agent.status)}>{agent.status}</StatusBadge>
+              header: t("agents:table.columnStatus"),
+              render: (agent) => <StatusBadge tone={toneForStatus(agent.status)}>{t(`common:${agent.status}`)}</StatusBadge>
             },
             {
               key: "created",
-              header: "Created",
+              header: t("agents:table.columnCreated"),
               render: (agent) => (
                 <div>
                   <div className="record-title">{formatDate(agent.created_at)}</div>
-                  <div className="record-meta">{agent.revoked_at ? `Revoked ${formatDate(agent.revoked_at)}` : "Ready"}</div>
+                  <div className="record-meta">
+                    {agent.revoked_at ? t("agents:dates.revokedAt", { date: formatDate(agent.revoked_at) }) : t("common:ready")}
+                  </div>
                 </div>
               )
             },
             {
               key: "actions",
-              header: "Actions",
+              header: t("agents:table.columnActions"),
               render: (agent) => (
                 <div className="inline-actions">
                   <button
@@ -281,7 +279,7 @@ export function AgentsPage() {
                     type="button"
                   >
                     <KeyRound size={16} />
-                    Rotate
+                    {t("agents:actions.rotate")}
                   </button>
                   <button
                     className="ghost-button"
@@ -290,7 +288,7 @@ export function AgentsPage() {
                     type="button"
                   >
                     <ShieldBan size={16} />
-                    Revoke
+                    {t("agents:actions.revoke")}
                   </button>
                 </div>
               )
@@ -301,18 +299,20 @@ export function AgentsPage() {
               action={
                 <button className="primary-button" onClick={() => setShowEnroll(true)} type="button">
                   <Plus size={16} />
-                  Enroll first agent
+                  {t("agents:enroll.enrollFirstAgent")}
                 </button>
               }
-              body="The Stitch management table is ready, but this workspace has no enrolled agents yet."
-              title="No agents enrolled"
+              body={t("agents:emptyState.body")}
+              title={t("agents:emptyState.title")}
             />
           }
           footer={
             <>
-              <span className="helper-copy">{loading ? "Loading agents..." : `${agents.length} rows loaded`}</span>
+              <span className="helper-copy">
+                {loading ? t("agents:footer.loadingAgents") : t("common:rowsLoaded", { count: agents.length })}
+              </span>
               <button className="ghost-button" disabled={!nextCursor || loadingMore} onClick={() => void loadAgents()} type="button">
-                {loadingMore ? "Loading..." : nextCursor ? "Load more" : "No more rows"}
+                {loadingMore ? t("common:loading") : nextCursor ? t("common:loadMore") : t("common:noMoreRows")}
               </button>
             </>
           }
@@ -323,57 +323,55 @@ export function AgentsPage() {
       </div>
 
       {showEnroll ? (
-        <div className="modal-shell" role="dialog" aria-modal="true" aria-label="Enroll agent">
-          <button aria-label="Close dialog" className="modal-shell__backdrop" onClick={() => setShowEnroll(false)} type="button" />
+        <div className="modal-shell" role="dialog" aria-modal="true" aria-label={t("agents:enroll.title")}>
+          <button aria-label={t("common:close")} className="modal-shell__backdrop" onClick={() => setShowEnroll(false)} type="button" />
           <div className="modal-card">
             <div className="modal-card__header">
               <div className="brand-mark">
                 <Bot size={18} />
               </div>
               <div>
-                <div className="section-label">Enroll Agent Modal Screen</div>
-                <h2 className="modal-card__title">Enroll a new agent</h2>
+                <div className="section-label">{t("agents:enroll.sectionLabel")}</div>
+                <h2 className="modal-card__title">{t("agents:enroll.title")}</h2>
               </div>
             </div>
 
-            <p className="modal-card__body">
-              Issue a one-time bootstrap API key for a new workload identity. Agent IDs are workspace-scoped.
-            </p>
+            <p className="modal-card__body">{t("agents:enroll.body")}</p>
 
             <form onSubmit={(event) => void handleEnroll(event)}>
               <div className="form-grid">
                 <div className="field-stack">
-                  <label htmlFor="agent-id">Agent ID</label>
+                  <label htmlFor="agent-id">{t("agents:enroll.agentIdLabel")}</label>
                   <input
                     className="dashboard-input"
                     id="agent-id"
                     onChange={(event) => setAgentId(event.target.value)}
-                    placeholder="agent:deploy-bot"
+                    placeholder={t("agents:enroll.agentIdPlaceholder")}
                     required
                     value={agentId}
                   />
-                  <small>Allowed characters: letters, numbers, `.`, `_`, `:`, `@`, `-`.</small>
+                  <small>{t("agents:enroll.agentIdHint")}</small>
                 </div>
 
                 <div className="field-stack">
-                  <label htmlFor="agent-display-name">Agent display name</label>
+                  <label htmlFor="agent-display-name">{t("agents:enroll.displayNameLabel")}</label>
                   <input
                     className="dashboard-input"
                     id="agent-display-name"
                     onChange={(event) => setDisplayName(event.target.value)}
-                    placeholder="Production deploy bot"
+                    placeholder={t("agents:enroll.displayNamePlaceholder")}
                     value={displayName}
                   />
-                  <small>Optional label shown in the operations table.</small>
+                  <small>{t("agents:enroll.displayNameHint")}</small>
                 </div>
               </div>
 
               <div className="modal-card__actions">
                 <button className="ghost-button" onClick={() => setShowEnroll(false)} type="button">
-                  Cancel
+                  {t("common:cancel")}
                 </button>
                 <button className="primary-button" disabled={formPending} type="submit">
-                  {formPending ? "Enrolling..." : "Create bootstrap key"}
+                  {formPending ? t("agents:enroll.submitting") : t("agents:enroll.submitButton")}
                 </button>
               </div>
             </form>
@@ -384,15 +382,15 @@ export function AgentsPage() {
       <ConfirmDialog
         body={
           confirmAction?.type === "rotate"
-            ? `Rotate the API key for ${confirmAction.agent.agent_id}. The previous key will stop working immediately.`
-            : `Revoke ${confirmAction?.agent.agent_id}. This agent will no longer be able to mint hosted access tokens.`
+            ? t("agents:confirm.rotateBody", { agentId: confirmAction.agent.agent_id })
+            : t("agents:confirm.revokeBody", { agentId: confirmAction?.agent.agent_id ?? "" })
         }
-        confirmLabel={confirmAction?.type === "rotate" ? "Rotate key" : "Revoke agent"}
+        confirmLabel={confirmAction?.type === "rotate" ? t("agents:confirm.rotateLabel") : t("agents:confirm.revokeLabel")}
         onCancel={() => setConfirmAction(null)}
         onConfirm={() => void handleConfirmAction()}
         open={Boolean(confirmAction)}
         pending={actionPending}
-        title={confirmAction?.type === "rotate" ? "Rotate bootstrap API key" : "Revoke enrolled agent"}
+        title={confirmAction?.type === "rotate" ? t("agents:confirm.rotateTitle") : t("agents:confirm.revokeTitle")}
       />
 
       <ApiKeyReveal
@@ -400,7 +398,7 @@ export function AgentsPage() {
         description={revealedKey?.description ?? ""}
         onClose={() => setRevealedKey(null)}
         open={Boolean(revealedKey)}
-        title={revealedKey?.title ?? "Bootstrap key"}
+        title={revealedKey?.title ?? ""}
       />
     </section>
   );
