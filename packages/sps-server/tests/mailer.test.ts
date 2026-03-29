@@ -38,21 +38,25 @@ describe("MailerService", () => {
       provider: "resend"
     });
 
-    expect(fetchMock).toHaveBeenCalledWith("https://api.resend.com/emails", {
+    expect(fetchMock).toHaveBeenCalledWith("https://api.resend.com/emails", expect.objectContaining({
       method: "POST",
       headers: {
         authorization: "Bearer re_test_key",
         "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        from: "verify@blindpass.test",
-        to: ["user@example.com"],
-        reply_to: undefined,
-        subject: "Verify your BlindPass email",
-        html: `<p>Verify your BlindPass email address.</p><p><a href="https://sps.test/api/v2/auth/verify-email/ver_token">Verify email</a></p><p>If you did not request this, you can ignore this email.</p>`,
-        text: "Verify your BlindPass email address: https://sps.test/api/v2/auth/verify-email/ver_token\n\nIf you did not request this, you can ignore this email."
-      })
+      }
+    }));
+
+    const lastCall = fetchMock.mock.calls.at(-1)!;
+    const body = JSON.parse(lastCall[1]!.body as string);
+    expect(body).toMatchObject({
+      from: "verify@blindpass.test",
+      to: ["user@example.com"],
+      subject: "Verify your BlindPass email",
+      text: expect.stringContaining("https://sps.test/api/v2/auth/verify-email/ver_token")
     });
+    expect(body.html).toContain("https://sps.test/api/v2/auth/verify-email/ver_token");
+    expect(body.html).toContain("BLIND");
+    expect(body.html).toContain("PASS");
   });
 
   it("sends a password reset email when RESEND_API_KEY is set", async () => {
@@ -70,21 +74,25 @@ describe("MailerService", () => {
       provider: "resend"
     });
 
-    expect(fetchMock).toHaveBeenCalledWith("https://api.resend.com/emails", {
+    expect(fetchMock).toHaveBeenCalledWith("https://api.resend.com/emails", expect.objectContaining({
       method: "POST",
       headers: {
         authorization: "Bearer re_test_key",
         "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        from: "verify@blindpass.test",
-        to: ["user@example.com"],
-        reply_to: undefined,
-        subject: "Reset your BlindPass password",
-        html: `<p>Reset your BlindPass password.</p><p><a href="https://app.test/reset-password?token=rst_token">Reset password</a></p><p>If you did not request this, you can ignore this email.</p>`,
-        text: "Reset your BlindPass password: https://app.test/reset-password?token=rst_token\n\nIf you did not request this, you can ignore this email."
-      })
+      }
+    }));
+
+    const lastCall = fetchMock.mock.calls.at(-1)!;
+    const body = JSON.parse(lastCall[1]!.body as string);
+    expect(body).toMatchObject({
+      from: "verify@blindpass.test",
+      to: ["user@example.com"],
+      subject: "Reset your BlindPass password",
+      text: expect.stringContaining("https://app.test/reset-password?token=rst_token")
     });
+    expect(body.html).toContain("https://app.test/reset-password?token=rst_token");
+    expect(body.html).toContain("BLIND");
+    expect(body.html).toContain("PASS");
   });
 
   it("falls back to local log when RESEND_API_KEY is missing (non-production)", async () => {
