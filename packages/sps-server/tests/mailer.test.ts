@@ -51,12 +51,13 @@ describe("MailerService", () => {
     expect(body).toMatchObject({
       from: "verify@blindpass.test",
       to: ["user@example.com"],
-      subject: "Verify your BlindPass email",
+      subject: "Verify your email address",
       text: expect.stringContaining("https://sps.test/api/v2/auth/verify-email/ver_token")
     });
     expect(body.html).toContain("https://sps.test/api/v2/auth/verify-email/ver_token");
-    expect(body.html).toContain("BLIND");
-    expect(body.html).toContain("PASS");
+    expect(body.html).toContain('<html lang="en">');
+    expect(body.html).toContain("Email Verification");
+    expect(body.text).toContain("Hello,");
   });
 
   it("sends a password reset email when RESEND_API_KEY is set", async () => {
@@ -87,12 +88,53 @@ describe("MailerService", () => {
     expect(body).toMatchObject({
       from: "verify@blindpass.test",
       to: ["user@example.com"],
-      subject: "Reset your BlindPass password",
+      subject: "Reset your password",
       text: expect.stringContaining("https://app.test/reset-password?token=rst_token")
     });
     expect(body.html).toContain("https://app.test/reset-password?token=rst_token");
-    expect(body.html).toContain("BLIND");
-    expect(body.html).toContain("PASS");
+    expect(body.html).toContain('<html lang="en">');
+    expect(body.html).toContain("Password Reset");
+    expect(body.text).toContain("Hello,");
+  });
+
+  it("renders verification email copy in Vietnamese when locale is vi", async () => {
+    process.env.RESEND_API_KEY = "re_test_key";
+    process.env.SPS_EMAIL_FROM = "verify@blindpass.test";
+    process.env.SPS_BASE_URL = "https://sps.test";
+
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ id: "123" }), { status: 200 }));
+
+    await sendVerificationEmail("user@example.com", "ver_token", "vi");
+
+    const lastCall = fetchMock.mock.calls.at(-1)!;
+    const body = JSON.parse(lastCall[1]!.body as string);
+
+    expect(body.subject).toBe("Xác minh địa chỉ email của bạn");
+    expect(body.html).toContain('<html lang="vi">');
+    expect(body.html).toContain("Xác minh email");
+    expect(body.html).toContain("Liên kết này sẽ hết hạn sau 7 ngày.");
+    expect(body.text).toContain("Xin chào,");
+  });
+
+  it("renders password reset copy in Vietnamese when locale is vi", async () => {
+    process.env.RESEND_API_KEY = "re_test_key";
+    process.env.SPS_EMAIL_FROM = "verify@blindpass.test";
+    process.env.SPS_UI_BASE_URL = "https://app.test";
+
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ id: "123" }), { status: 200 }));
+
+    await sendPasswordResetEmail("user@example.com", "rst_token", "vi");
+
+    const lastCall = fetchMock.mock.calls.at(-1)!;
+    const body = JSON.parse(lastCall[1]!.body as string);
+
+    expect(body.subject).toBe("Đặt lại mật khẩu của bạn");
+    expect(body.html).toContain('<html lang="vi">');
+    expect(body.html).toContain("Đặt lại mật khẩu");
+    expect(body.html).toContain("Liên kết này sẽ hết hạn sau 1 giờ.");
+    expect(body.text).toContain("Xin chào,");
   });
 
   it("falls back to local log when RESEND_API_KEY is missing (non-production)", async () => {

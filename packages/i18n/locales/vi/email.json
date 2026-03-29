@@ -1,27 +1,27 @@
 {
   "verification": {
-    "subject": "Verify your email address",
-    "preheader": "Confirm your email to activate your BlindPass workspace",
-    "heading": "Email Verification",
-    "body": "Click the button below to verify your email address and activate your workspace.",
-    "ctaButton": "Verify Email Address",
-    "expiry": "This link expires in 7 days.",
-    "fallback": "If the button doesn't work, copy and paste this URL into your browser:",
-    "footer": "You received this email because someone registered a BlindPass workspace with this address. If this wasn't you, you can safely ignore this email."
+    "subject": "Xác minh địa chỉ email của bạn",
+    "preheader": "Xác nhận email để kích hoạt không gian làm việc BlindPass của bạn",
+    "heading": "Xác minh email",
+    "body": "Nhấp vào nút bên dưới để xác minh địa chỉ email và kích hoạt không gian làm việc của bạn.",
+    "ctaButton": "Xác minh địa chỉ email",
+    "expiry": "Liên kết này sẽ hết hạn sau 7 ngày.",
+    "fallback": "Nếu nút không hoạt động, hãy sao chép và dán URL này vào trình duyệt của bạn:",
+    "footer": "Bạn nhận được email này vì ai đó đã đăng ký một không gian làm việc BlindPass bằng địa chỉ này. Nếu đó không phải là bạn, bạn có thể bỏ qua email này."
   },
   "passwordReset": {
-    "subject": "Reset your password",
-    "preheader": "Reset your BlindPass workspace password",
-    "heading": "Password Reset",
-    "body": "Click the button below to set a new password for your workspace account.",
-    "ctaButton": "Reset Password",
-    "expiry": "This link expires in 1 hour.",
-    "fallback": "If the button doesn't work, copy and paste this URL into your browser:",
-    "footer": "You received this email because a password reset was requested for your BlindPass account. If this wasn't you, you can safely ignore this email."
+    "subject": "Đặt lại mật khẩu của bạn",
+    "preheader": "Đặt lại mật khẩu không gian làm việc BlindPass của bạn",
+    "heading": "Đặt lại mật khẩu",
+    "body": "Nhấp vào nút bên dưới để đặt mật khẩu mới cho tài khoản không gian làm việc của bạn.",
+    "ctaButton": "Đặt lại mật khẩu",
+    "expiry": "Liên kết này sẽ hết hạn sau 1 giờ.",
+    "fallback": "Nếu nút không hoạt động, hãy sao chép và dán URL này vào trình duyệt của bạn:",
+    "footer": "Bạn nhận được email này vì đã có yêu cầu đặt lại mật khẩu cho tài khoản BlindPass của bạn. Nếu đó không phải là bạn, bạn có thể bỏ qua email này."
   },
   "common": {
-    "greeting": "Hello,",
-    "securityNote": "For security, never share this link with anyone.",
-    "supportLine": "If you need help, contact your workspace administrator."
+    "greeting": "Xin chào,",
+    "securityNote": "Vì lý do bảo mật, đừng chia sẻ liên kết này với bất kỳ ai.",
+    "supportLine": "Nếu bạn cần trợ giúp, hãy liên hệ quản trị viên không gian làm việc của bạn."
   }
 }

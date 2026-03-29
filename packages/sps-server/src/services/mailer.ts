@@ -1,6 +1,12 @@
 import { DEFAULT_LOCALE, type SupportedLocale } from "@blindpass/i18n";
+import enEmail from "@blindpass/i18n/locales/en/email.json" with { type: "json" };
+import viEmail from "@blindpass/i18n/locales/vi/email.json" with { type: "json" };
 
 const RESEND_API_URL = "https://api.resend.com/emails";
+const EMAIL_COPY = {
+  en: enEmail,
+  vi: viEmail
+} as const;
 
 export interface MailDeliveryResult {
   mode: "sent" | "logged";
@@ -26,6 +32,9 @@ interface MailRequest {
   html: string;
   text: string;
 }
+
+type EmailKind = "verification" | "passwordReset";
+type EmailCopy = typeof enEmail;
 
 function resendApiKey(): string | null {
   const value = process.env.RESEND_API_KEY?.trim();
@@ -91,23 +100,35 @@ function logPasswordResetFallback(email: string, token: string): void {
   console.info(`Password reset URL for ${email}: ${passwordResetUrl(token)}`);
 }
 
+function emailCopy(locale: SupportedLocale): EmailCopy {
+  return EMAIL_COPY[locale] ?? EMAIL_COPY[DEFAULT_LOCALE];
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 function renderBaseTemplate(params: {
+  lang: SupportedLocale;
   title: string;
   preheader: string;
-  bodyContent: string;
-  ctaUrl: string;
-  ctaText: string;
-  footerNotice: string;
+  contentHtml: string;
+  footerHtml: string;
 }) {
   const supportEmail = emailSupport();
   
   return `
 <!DOCTYPE html>
-<html lang="en">
+<html lang="${params.lang}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${params.title}</title>
+  <title>${escapeHtml(params.title)}</title>
   <!--[if mso]>
   <noscript>
     <xml>
@@ -222,7 +243,7 @@ function renderBaseTemplate(params: {
   </style>
 </head>
 <body>
-  <div class="preheader">${params.preheader}</div>
+  <div class="preheader">${escapeHtml(params.preheader)}</div>
   <div class="wrapper">
     <table class="main" role="presentation">
       <tr>
@@ -234,23 +255,9 @@ function renderBaseTemplate(params: {
       </tr>
       <tr>
         <td class="content">
-          <h1>${params.title}</h1>
-          <p>${params.bodyContent}</p>
-          <div class="button-container">
-            <!--[if mso]>
-            <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${params.ctaUrl}" style="height:50px;v-text-anchor:middle;width:240px;" arcsize="24%" stroke="f" fillcolor="#00f5d4">
-              <w:anchorlock/>
-              <center>
-            <![endif]-->
-            <a href="${params.ctaUrl}" class="button">${params.ctaText}</a>
-            <!--[if mso]>
-              </center>
-            </v:roundrect>
-            <![endif]-->
-          </div>
-          <p style="font-size: 14px; margin-top: 20px;">
-            ${params.footerNotice}
-          </p>
+          <h1>${escapeHtml(params.title)}</h1>
+          ${params.contentHtml}
+          ${params.footerHtml}
         </td>
       </tr>
       <tr>
@@ -264,6 +271,67 @@ function renderBaseTemplate(params: {
 </body>
 </html>
   `;
+}
+
+function buildEmailContent(kind: EmailKind, locale: SupportedLocale, url: string) {
+  const copy = emailCopy(locale);
+  const section = kind === "verification" ? copy.verification : copy.passwordReset;
+  const escapedUrl = escapeHtml(url);
+
+  const contentHtml = `
+          <p>${escapeHtml(copy.common.greeting)}</p>
+          <p>${escapeHtml(section.body)}</p>
+          <div class="button-container">
+            <!--[if mso]>
+            <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${escapedUrl}" style="height:50px;v-text-anchor:middle;width:240px;" arcsize="24%" stroke="f" fillcolor="#00f5d4">
+              <w:anchorlock/>
+              <center>
+            <![endif]-->
+            <a href="${escapedUrl}" class="button">${escapeHtml(section.ctaButton)}</a>
+            <!--[if mso]>
+              </center>
+            </v:roundrect>
+            <![endif]-->
+          </div>
+          <p style="font-size: 14px; margin-top: 20px;">${escapeHtml(section.expiry)}</p>
+          <p style="font-size: 14px;">${escapeHtml(copy.common.securityNote)}</p>
+          <div style="margin-top: 24px; border-radius: 12px; background: rgba(255, 255, 255, 0.03); padding: 16px; text-align: left;">
+            <p style="font-size: 13px; margin-bottom: 12px;">${escapeHtml(section.fallback)}</p>
+            <p style="font-size: 13px; margin: 0; word-break: break-all;">
+              <a href="${escapedUrl}" style="color: #00f5d4; text-decoration: none;">${escapedUrl}</a>
+            </p>
+          </div>
+  `;
+
+  const footerHtml = `
+          <p style="font-size: 14px; margin-top: 24px;">${escapeHtml(section.footer)}</p>
+          <p style="font-size: 14px; margin-bottom: 0;">${escapeHtml(copy.common.supportLine)}</p>
+  `;
+
+  const text = [
+    copy.common.greeting,
+    "",
+    section.body,
+    "",
+    `${section.ctaButton}: ${url}`,
+    section.expiry,
+    copy.common.securityNote,
+    "",
+    section.fallback,
+    url,
+    "",
+    section.footer,
+    copy.common.supportLine
+  ].join("\n");
+
+  return {
+    subject: section.subject,
+    heading: section.heading,
+    preheader: section.preheader,
+    contentHtml,
+    footerHtml,
+    text
+  };
 }
 
 async function sendViaResend(input: MailRequest): Promise<MailDeliveryResult> {
@@ -318,7 +386,7 @@ async function sendViaResend(input: MailRequest): Promise<MailDeliveryResult> {
 export async function sendVerificationEmail(
   email: string,
   token: string,
-  _locale: SupportedLocale = DEFAULT_LOCALE
+  locale: SupportedLocale = DEFAULT_LOCALE
 ): Promise<MailDeliveryResult> {
   const apiKey = resendApiKey();
   if (!apiKey) {
@@ -334,27 +402,27 @@ export async function sendVerificationEmail(
   }
 
   const url = verificationUrl(token);
+  const copy = buildEmailContent("verification", locale, url);
   const html = renderBaseTemplate({
-    title: "Verify your email",
-    preheader: "Confirm your email address to get started with BlindPass.",
-    bodyContent: "Welcome to BlindPass. To begin securing your secrets and automating high-assurance workflows, please confirm your email address by clicking the button below.",
-    ctaUrl: url,
-    ctaText: "Verify Email",
-    footerNotice: "If you did not create an account on BlindPass, you can safely ignore this email."
+    lang: locale,
+    title: copy.heading,
+    preheader: copy.preheader,
+    contentHtml: copy.contentHtml,
+    footerHtml: copy.footerHtml
   });
 
   return sendViaResend({
     to: email,
-    subject: "Verify your BlindPass email",
+    subject: copy.subject,
     html,
-    text: `Verify your BlindPass email address: ${url}\n\nIf you did not request this, you can ignore this email.`
+    text: copy.text
   });
 }
 
 export async function sendPasswordResetEmail(
   email: string,
   token: string,
-  _locale: SupportedLocale = DEFAULT_LOCALE
+  locale: SupportedLocale = DEFAULT_LOCALE
 ): Promise<MailDeliveryResult> {
   const apiKey = resendApiKey();
   if (!apiKey) {
@@ -370,19 +438,19 @@ export async function sendPasswordResetEmail(
   }
 
   const url = passwordResetUrl(token);
+  const copy = buildEmailContent("passwordReset", locale, url);
   const html = renderBaseTemplate({
-    title: "Reset your password",
-    preheader: "Securely reset your BlindPass account password.",
-    bodyContent: "We received a request to reset your BlindPass password. Click the button below to choose a new, secure password for your account.",
-    ctaUrl: url,
-    ctaText: "Reset Password",
-    footerNotice: "If you did not request a password reset, your account is secure and you can ignore this email. This link will expire in 1 hour."
+    lang: locale,
+    title: copy.heading,
+    preheader: copy.preheader,
+    contentHtml: copy.contentHtml,
+    footerHtml: copy.footerHtml
   });
 
   return sendViaResend({
     to: email,
-    subject: "Reset your BlindPass password",
+    subject: copy.subject,
     html,
-    text: `Reset your BlindPass password: ${url}\n\nIf you did not request this, you can ignore this email.`
+    text: copy.text
   });
 }
