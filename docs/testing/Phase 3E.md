@@ -122,3 +122,43 @@ Useful companion commands:
 - [ ] Hosted login / refresh / logout work correctly with secure cookie-backed session auth at production URLs
 - [ ] No refresh token is readable from JS-accessible browser storage after hosted login
 - [ ] A throttled workspace does not impact the performance or rate limits of other active workspaces on the same instance
+
+## Milestone 5: Internationalization (i18n)
+
+- [ ] **Locale JSON parity**
+  - [ ] Validation script confirms all English and Vietnamese locale files have identical key structures
+  - [ ] Translation review flags untranslated English-copy placeholders in Vietnamese locale files before release
+
+- [ ] **Dashboard i18n**
+  - [ ] Dashboard auto-detects Vietnamese when `navigator.language` is `vi`
+  - [ ] Registration seeds `preferred_locale` from the current browser-selected locale
+  - [ ] Dashboard re-applies `preferred_locale` from auth/login, auth/refresh, and auth/me responses after authentication
+  - [ ] Dashboard renders all pages with Vietnamese translations when locale is `vi`
+  - [ ] Dashboard renders all pages with English translations when locale is `en`
+  - [ ] Language switcher toggles between EN and VI and persists across page reload via `localStorage`
+  - [ ] Language switcher persists the authenticated user's locale through `PATCH /api/v2/auth/locale`
+  - [ ] No Stitch references, milestone labels, or internal jargon remain in user-facing dashboard text
+  - [ ] All `section-label` text uses professional English (no "Desktop Agents Management", "Milestone 3", etc.)
+
+- [ ] **Browser UI i18n**
+  - [ ] Browser UI auto-detects Vietnamese when `navigator.language` is `vi`
+  - [ ] All static HTML text and JS status messages render in the selected locale
+  - [ ] English text remains as fallback when locale files fail to load
+
+- [ ] **Email template i18n**
+  - [ ] Verification email renders in Vietnamese when locale is `vi`
+  - [ ] Password reset email renders in Vietnamese when locale is `vi`
+  - [ ] Emails default to English when no locale is specified
+  - [ ] `Accept-Language` header is only used as a fallback when no stored `preferred_locale` exists
+
+- [ ] **Database locale**
+  - [ ] `preferred_locale` column exists on `users` table after migration
+  - [ ] User registration stores the current browser-selected locale as the initial default
+  - [ ] Auth response includes `preferred_locale` field
+  - [ ] Locale preference is used for server-side email language selection
+  - [ ] Explicit locale changes update the current user record without affecting other users or workspaces
+
+- [ ] **Build and regression**
+  - [ ] `npm run build` passes for all packages including new `@blindpass/i18n`
+  - [ ] `npm test` passes for all existing test suites
+  - [ ] Dashboard Playwright E2E tests still pass

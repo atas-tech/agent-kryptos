@@ -92,7 +92,7 @@ describe("dashboard milestone 2", () => {
     expect(window.sessionStorage.getItem("sps_refresh_token")).toBeNull();
     expect(window.localStorage.getItem("sps_refresh_token")).toBeNull();
 
-    await userEvent.click(screen.getByRole("button", { name: /log out/i }));
+    await userEvent.click(screen.getByRole("button", { name: /sign out/i }));
     await screen.findByText("Welcome back");
     expect(window.sessionStorage.getItem("sps_refresh_token")).toBeNull();
     expect(fetchMock).toHaveBeenCalledWith(

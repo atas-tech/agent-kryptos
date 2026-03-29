@@ -1,0 +1,23 @@
+{
+  "nav": {
+    "dashboard": "Bảng điều khiển",
+    "agents": "Agent",
+    "members": "Thành viên",
+    "billing": "Thanh toán",
+    "analytics": "Phân tích",
+    "audit": "Nhật ký",
+    "policy": "Chính sách",
+    "offers": "Ưu đãi",
+    "approvals": "Phê duyệt",
+    "settings": "Cài đặt",
+    "signOut": "Đăng xuất"
+  },
+  "brand": {
+    "name": "BlindPass",
+    "tagline": "Gửi bí mật zero-knowledge"
+  },
+  "sidebar": {
+    "operations": "Vận hành",
+    "administration": "Quản trị"
+  }
+}

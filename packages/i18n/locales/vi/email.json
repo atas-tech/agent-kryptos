@@ -1,0 +1,27 @@
+{
+  "verification": {
+    "subject": "Verify your email address",
+    "preheader": "Confirm your email to activate your BlindPass workspace",
+    "heading": "Email Verification",
+    "body": "Click the button below to verify your email address and activate your workspace.",
+    "ctaButton": "Verify Email Address",
+    "expiry": "This link expires in 7 days.",
+    "fallback": "If the button doesn't work, copy and paste this URL into your browser:",
+    "footer": "You received this email because someone registered a BlindPass workspace with this address. If this wasn't you, you can safely ignore this email."
+  },
+  "passwordReset": {
+    "subject": "Reset your password",
+    "preheader": "Reset your BlindPass workspace password",
+    "heading": "Password Reset",
+    "body": "Click the button below to set a new password for your workspace account.",
+    "ctaButton": "Reset Password",
+    "expiry": "This link expires in 1 hour.",
+    "fallback": "If the button doesn't work, copy and paste this URL into your browser:",
+    "footer": "You received this email because a password reset was requested for your BlindPass account. If this wasn't you, you can safely ignore this email."
+  },
+  "common": {
+    "greeting": "Hello,",
+    "securityNote": "For security, never share this link with anyone.",
+    "supportLine": "If you need help, contact your workspace administrator."
+  }
+}

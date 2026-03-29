@@ -1,0 +1,31 @@
+{
+  "hero": {
+    "sectionLabel": "Workspace overview",
+    "title": "Dashboard",
+    "loadingTitle": "Loading workspace overview",
+    "loadingBody": "Fetching quotas, billing, and membership data.",
+    "errorTitle": "Unable to load workspace data"
+  },
+  "quota": {
+    "sectionLabel": "Usage",
+    "title": "Current usage",
+    "body": "Current usage across daily limits and seat allowances.",
+    "secretRequests": "Secret requests",
+    "agents": "Agents",
+    "members": "Members",
+    "resetAt": "Resets {{date}}.",
+    "activeAgentsHelper": "Active enrolled agents for this workspace.",
+    "activeMembersHelper": "Active admins, operators, and viewers."
+  },
+  "billing": {
+    "sectionLabel": "Subscription",
+    "title": "Billing",
+    "body": "Current subscription status and billing provider details.",
+    "provider": "Provider",
+    "notConnected": "Not connected",
+    "customerRef": "Customer reference",
+    "subscriptionRef": "Subscription reference",
+    "pendingCheckout": "Pending checkout",
+    "status": "Status"
+  }
+}

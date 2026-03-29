@@ -1,0 +1,31 @@
+{
+  "hero": {
+    "sectionLabel": "Tổng quan không gian làm việc",
+    "title": "Bảng điều khiển",
+    "loadingTitle": "Đang tải tổng quan",
+    "loadingBody": "Đang lấy dữ liệu hạn mức, thanh toán và thành viên.",
+    "errorTitle": "Không thể tải dữ liệu không gian làm việc"
+  },
+  "quota": {
+    "sectionLabel": "Sử dụng",
+    "title": "Mức sử dụng hiện tại",
+    "body": "Mức sử dụng theo giới hạn hàng ngày và số lượng ghế.",
+    "secretRequests": "Yêu cầu bí mật",
+    "agents": "Agent",
+    "members": "Thành viên",
+    "resetAt": "Đặt lại {{date}}.",
+    "activeAgentsHelper": "Agent đang hoạt động trong không gian làm việc.",
+    "activeMembersHelper": "Quản trị viên, vận hành viên và người xem đang hoạt động."
+  },
+  "billing": {
+    "sectionLabel": "Gói đăng ký",
+    "title": "Thanh toán",
+    "body": "Trạng thái gói đăng ký và thông tin nhà cung cấp thanh toán.",
+    "provider": "Nhà cung cấp",
+    "notConnected": "Chưa kết nối",
+    "customerRef": "Mã khách hàng",
+    "subscriptionRef": "Mã đăng ký",
+    "pendingCheckout": "Đang chờ thanh toán",
+    "status": "Trạng thái"
+  }
+}

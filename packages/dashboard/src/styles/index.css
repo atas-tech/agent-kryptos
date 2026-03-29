@@ -1376,4 +1376,27 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     color: var(--primary);
   }
+  .locale-switcher {
+    @apply inline-flex rounded-xl border;
+    border-color: rgba(0, 245, 212, 0.18);
+    background: rgba(255, 255, 255, 0.04);
+    overflow: hidden;
+  }
+
+  .locale-switcher__option {
+    @apply border-0 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] transition-all;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .locale-switcher__option:hover {
+    color: white;
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .locale-switcher__option--active {
+    background: linear-gradient(135deg, rgba(0, 245, 212, 0.22), rgba(141, 104, 255, 0.18));
+    color: var(--primary);
+  }
 }

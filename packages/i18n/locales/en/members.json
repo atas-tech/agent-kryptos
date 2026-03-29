@@ -1,0 +1,77 @@
+{
+  "hero": {
+    "sectionLabel": "Team management",
+    "title": "Workspace member controls",
+    "body": "Manage human access: create users with temporary passwords, change roles inline, and protect the final active admin from accidental lockout."
+  },
+  "table": {
+    "sectionLabel": "Member roster",
+    "title": "Workspace members",
+    "body": "Members in this workspace. Roles update inline; suspension requires confirmation."
+  },
+  "stats": {
+    "activeMembers": "Active members",
+    "suspendedMembers": "Suspended members",
+    "adminSafety": "Admin safety",
+    "activeAdmin": "{{count}} active admin",
+    "activeAdmins": "{{count}} active admins"
+  },
+  "addMember": {
+    "sectionLabel": "Member onboarding",
+    "title": "Create workspace member",
+    "body": "Provision a user with a temporary password. The first login will redirect them into the password change flow automatically.",
+    "emailLabel": "Email address",
+    "emailPlaceholder": "operator@company.com",
+    "emailHint": "Each user belongs to this workspace.",
+    "roleLabel": "Role",
+    "roleHint": "Admins can manage billing, settings, members, and agent enrollment.",
+    "tempPasswordLabel": "Temporary password",
+    "tempPasswordPlaceholder": "At least 12 characters",
+    "tempPasswordStrength": "Temporary password strength: {{label}}",
+    "submitButton": "Create member",
+    "submitting": "Creating...",
+    "addFirstMember": "Add first member"
+  },
+  "roles": {
+    "workspace_admin": "Workspace admin",
+    "workspace_operator": "Workspace operator",
+    "workspace_viewer": "Workspace viewer"
+  },
+  "emptyState": {
+    "title": "No members yet",
+    "body": "This workspace only has the owner account. Add operators or viewers to distribute access."
+  },
+  "actions": {
+    "addMember": "Add member",
+    "suspend": "Suspend",
+    "suspendTitle": "Suspend {{email}}",
+    "suspendBody": "Suspend {{email}}. They will lose access until an admin reactivates the account.",
+    "suspendLabel": "Suspend member"
+  },
+  "status": {
+    "passwordResetRequired": "Password reset required",
+    "added": "Added {{date}}",
+    "lastAdminError": "The last active admin cannot be demoted or suspended."
+  },
+  "errors": {
+    "loadFailed": "Unable to load members",
+    "createFailed": "Unable to create member",
+    "updateFailed": "Unable to update member",
+    "weakPassword": "Temporary password must be at least 12 characters and not obviously weak."
+  },
+  "footer": {
+    "loadingMembers": "Loading members...",
+    "rowsLoaded": "{{count}} rows loaded"
+  },
+  "filter": {
+    "label": "Filter members by status"
+  },
+  "passwordStrength": {
+    "waiting": "waiting for input",
+    "tooWeak": "too weak",
+    "tooShort": "too short",
+    "acceptable": "acceptable",
+    "strong": "strong",
+    "veryStrong": "very strong"
+  }
+}

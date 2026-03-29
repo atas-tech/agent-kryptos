@@ -1,0 +1,69 @@
+{
+  "hero": {
+    "sectionLabel": "Audit trail",
+    "title": "Audit log viewer",
+    "body": "Monitor user, agent, and system activity. Filter by event type, actor, resource, or date range."
+  },
+  "timeline": {
+    "sectionLabel": "Exchange timeline",
+    "title": "Exchange lifecycle timeline",
+    "body": "Complete audit trail for this exchange: every state transition and approval event in chronological order.",
+    "tableTitle": "Event history",
+    "tableBody": "Requested, reserved, submitted, retrieved, and approval decision events rendered in chronological order.",
+    "loadingTitle": "Building lifecycle view",
+    "loadingBody": "Fetching the exchange timeline and approval trail.",
+    "emptyTitle": "Timeline unavailable",
+    "emptyBody": "No exchange lifecycle events were found for this exchange.",
+    "backToAudit": "Back to audit"
+  },
+  "stats": {
+    "visibleRows": "Visible rows",
+    "exchangeEvents": "Exchange events",
+    "approvalEvents": "Approval events",
+    "exchange": "Exchange",
+    "timelineEvents": "Timeline events",
+    "latestState": "Latest state"
+  },
+  "filters": {
+    "sectionLabel": "Filters",
+    "title": "Search and scope",
+    "body": "Filter by event type, actor class, resource ID, or date range.",
+    "eventType": "Event type",
+    "allEvents": "All events",
+    "actorType": "Actor type",
+    "allActors": "All actors",
+    "user": "User",
+    "agent": "Agent",
+    "system": "System",
+    "resourceId": "Resource ID",
+    "resourceIdPlaceholder": "Exchange ID, member ID, or approval ref",
+    "fromDate": "From date",
+    "toDate": "To date",
+    "applyButton": "Apply filters",
+    "resetButton": "Reset"
+  },
+  "table": {
+    "sectionLabel": "Audit stream",
+    "title": "Workspace events",
+    "body": "Click any row to inspect the sanitized metadata. Exchange rows include a drill-down into the full lifecycle timeline.",
+    "columnRecorded": "Recorded",
+    "columnEvent": "Event",
+    "columnActor": "Actor",
+    "columnResource": "Resource",
+    "columnAction": "Action",
+    "noForwardedIp": "No forwarded IP",
+    "exchangeDrillDown": "Exchange drill-down available",
+    "metadataOnly": "Metadata details only",
+    "openExchange": "Open exchange",
+    "inspectMetadata": "Inspect metadata",
+    "emptyTitle": "No audit rows match",
+    "emptyBody": "No audit events matched the current filters. Adjust the search scope or refresh after more workspace activity occurs.",
+    "sanitizedMetadata": "Sanitized metadata",
+    "sanitizedMetadataHint": "Sensitive values remain masked at the API boundary.",
+    "footerHint": "Masked JSON expansion is read-only for every workspace role."
+  },
+  "errors": {
+    "loadFailed": "Unable to load audit records",
+    "timelineFailed": "Unable to load exchange lifecycle"
+  }
+}

@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyPluginOptions, FastifyReply, FastifyRequest } from "fastify";
+import { DEFAULT_LOCALE, type SupportedLocale } from "@blindpass/i18n";
 import type { Pool } from "pg";
 import { requireUserAuth, type AuthenticatedUserClaims } from "../middleware/auth.js";
 import { rateLimitKeyByIp, sendRateLimited, type RateLimitService } from "../middleware/rate-limit.js";
@@ -12,6 +13,7 @@ import {
   registerUser,
   resetPasswordWithToken,
   retriggerEmailVerification,
+  updateUserPreferredLocale,
   UserServiceError,
   verifyEmail
 } from "../services/user.js";
@@ -184,6 +186,7 @@ function toUserResponse(user: UserRecord) {
     role: user.role,
     status: user.status,
     email_verified: user.emailVerified,
+    preferred_locale: user.preferredLocale,
     force_password_change: user.forcePasswordChange,
     workspace_id: user.workspaceId,
     created_at: user.createdAt.toISOString(),
@@ -209,6 +212,24 @@ function sessionContextForRequest(ip: string, userAgent: string | null) {
     ipAddress: ip,
     userAgent
   };
+}
+
+function preferredLocaleFromHeader(header: string | string[] | undefined): SupportedLocale {
+  const raw = Array.isArray(header) ? header[0] : header;
+  if (!raw) {
+    return DEFAULT_LOCALE;
+  }
+
+  const primary = raw.split(",")[0]?.split(";")[0]?.trim().toLowerCase();
+  if (!primary) {
+    return DEFAULT_LOCALE;
+  }
+
+  if (primary === "vi" || primary.startsWith("vi-")) {
+    return "vi";
+  }
+
+  return "en";
 }
 
 function buildAuthResponse(
@@ -334,7 +355,7 @@ function forgotPasswordMinimumResponseMs(): number {
 }
 
 export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesOptions): Promise<void> {
-  app.post<{ Body: { email: string; password: string; workspace_slug: string; display_name: string; cf_turnstile_response?: string } }>(
+  app.post<{ Body: { email: string; password: string; workspace_slug: string; display_name: string; preferred_locale?: SupportedLocale; cf_turnstile_response?: string } }>(
     "/register",
     {
       schema: {
@@ -347,6 +368,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
             password: { type: "string", minLength: 8, maxLength: 200 },
             workspace_slug: { type: "string", minLength: 3, maxLength: 40 },
             display_name: { type: "string", minLength: 1, maxLength: 160 },
+            preferred_locale: { type: "string", enum: ["en", "vi"] },
             cf_turnstile_response: { type: "string", minLength: 1, maxLength: 4096 }
           }
         }
@@ -373,6 +395,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
           req.body.password,
           req.body.workspace_slug,
           req.body.display_name,
+          req.body.preferred_locale ?? preferredLocaleFromHeader(req.headers["accept-language"]),
           sessionContextForRequest(req.ip, userAgentFromHeaders(req.headers["user-agent"]))
         );
 
@@ -559,7 +582,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
       try {
         await withMinimumDuration(async () => {
           await verifyTurnstileToken(req.body.cf_turnstile_response, req.ip);
-          await requestPasswordReset(opts.db, req.body.email);
+          await requestPasswordReset(opts.db, req.body.email, preferredLocaleFromHeader(req.headers["accept-language"]));
         }, forgotPasswordMinimumResponseMs());
 
         return reply.code(200).send({
@@ -655,6 +678,36 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
         message: delivery.mode === "sent" ? "Verification email sent" : "Verification link logged for local delivery",
         delivery
       });
+    } catch (error) {
+      return sendServiceError(reply, error);
+    }
+  });
+
+  app.patch<{ Body: { preferred_locale: SupportedLocale } }>("/locale", {
+    schema: {
+      body: {
+        type: "object",
+        additionalProperties: false,
+        required: ["preferred_locale"],
+        properties: {
+          preferred_locale: { type: "string", enum: ["en", "vi"] }
+        }
+      }
+    }
+  }, async (req, reply) => {
+    const currentUser = await requireCurrentUser(req, reply);
+    if (!currentUser) {
+      return;
+    }
+
+    try {
+      const user = await updateUserPreferredLocale(
+        opts.db,
+        currentUser.sub,
+        currentUser.workspaceId,
+        req.body.preferred_locale
+      );
+      return reply.send({ user: toUserResponse(user) });
     } catch (error) {
       return sendServiceError(reply, error);
     }

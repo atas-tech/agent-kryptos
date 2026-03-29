@@ -1,0 +1,23 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "agents": "Agents",
+    "members": "Members",
+    "billing": "Billing",
+    "analytics": "Analytics",
+    "audit": "Audit log",
+    "policy": "Policy",
+    "offers": "Offers",
+    "approvals": "Approvals",
+    "settings": "Settings",
+    "signOut": "Sign out"
+  },
+  "brand": {
+    "name": "BlindPass",
+    "tagline": "Zero-knowledge secret delivery"
+  },
+  "sidebar": {
+    "operations": "Operations",
+    "administration": "Administration"
+  }
+}

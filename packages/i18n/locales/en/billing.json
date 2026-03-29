@@ -1,0 +1,79 @@
+{
+  "hero": {
+    "sectionLabel": "Billing operations",
+    "title": "Billing and quota controls",
+    "body": "Manage the recurring workspace subscription and per-agent payment controls for exchange overages."
+  },
+  "subscription": {
+    "sectionLabel": "Subscription",
+    "title": "Workspace plan",
+    "body": "Recurring subscription details and billing provider status.",
+    "provider": "Provider",
+    "notConnected": "Not connected",
+    "customerRef": "Customer reference",
+    "subscriptionRef": "Subscription reference",
+    "pendingCheckout": "Pending checkout",
+    "infoTitle": "Simple billing path",
+    "infoBody": "Stripe manages recurring subscriptions. Per-agent overages settle separately via x402 payments."
+  },
+  "quota": {
+    "sectionLabel": "Quota visibility",
+    "title": "Current hosted limits",
+    "body": "Usage across daily limits and seat allowances. Exhausting the free tier triggers upgrade prompts.",
+    "secretRequests": "Secret requests",
+    "agents": "Agents",
+    "members": "Members",
+    "resetAt": "Resets {{date}}.",
+    "activeAgentsHelper": "Active enrolled agents for this workspace.",
+    "activeMembersHelper": "Active admins, operators, and viewers.",
+    "infoTitle": "Agent payments active",
+    "infoBody": "x402 overages settle before release and use a separate USDC ledger from the recurring billing record."
+  },
+  "x402": {
+    "sectionLabel": "x402 allowances",
+    "title": "Per-agent monthly budgets",
+    "body": "Free-tier workspaces get 10 monthly exchange requests. After that, enrolled agents need an explicit x402 budget.",
+    "agentLabel": "Agent",
+    "noActiveAgents": "No active agents",
+    "budgetLabel": "Monthly budget",
+    "budgetHint": "Stored in USD cents per UTC calendar month.",
+    "budgetHintAgent": "Only active enrolled agents can receive an x402 allowance.",
+    "saveButton": "Save allowance",
+    "savingButton": "Saving...",
+    "emptyTitle": "No allowances yet",
+    "emptyBody": "Set a monthly budget for an enrolled agent to enable paid overages.",
+    "errorBudgetInput": "Select an agent and enter a non-negative budget in cents."
+  },
+  "ledger": {
+    "sectionLabel": "x402 ledger",
+    "title": "Recent autonomous payments",
+    "body": "Per-agent payment ledger: quoted spend, settlement status, and chain transaction reference.",
+    "columnAgent": "Agent",
+    "columnAmount": "Amount",
+    "columnUsd": "USD",
+    "columnStatus": "Status",
+    "columnTxHash": "Tx hash",
+    "columnCreated": "Created",
+    "emptyTitle": "No x402 payments yet",
+    "emptyBody": "Paid exchange overages will appear here after the free monthly cap is exhausted.",
+    "pendingTx": "Pending"
+  },
+  "actions": {
+    "refresh": "Refresh",
+    "manageSubscription": "Manage subscription",
+    "openingPortal": "Opening portal...",
+    "upgrade": "Upgrade to Standard",
+    "startingCheckout": "Starting checkout..."
+  },
+  "loading": {
+    "sectionLabel": "Recurring billing",
+    "title": "Loading billing overview",
+    "body": "Reading workspace plan, customer reference, and daily usage."
+  },
+  "errors": {
+    "checkoutFailed": "Unable to start checkout",
+    "portalFailed": "Unable to open billing portal",
+    "x402LoadFailed": "Unable to load x402 data",
+    "allowanceSaveFailed": "Unable to save x402 allowance"
+  }
+}

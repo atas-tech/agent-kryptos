@@ -1,0 +1,69 @@
+{
+  "hero": {
+    "sectionLabel": "Quản lý agent",
+    "title": "Đăng ký và xoay vòng agent",
+    "body": "Quản lý thông tin đăng nhập agent, xoay khóa bootstrap và kiểm soát quyền truy cập."
+  },
+  "table": {
+    "sectionLabel": "Tổng quan đội",
+    "title": "Đội agent",
+    "body": "Các agent đã đăng ký trong không gian làm việc. Sử dụng bộ lọc để thu hẹp theo trạng thái."
+  },
+  "stats": {
+    "activeAgents": "Agent hoạt động",
+    "revokedAgents": "Agent đã thu hồi",
+    "revealPolicy": "Chính sách hiển thị",
+    "revealPolicyValue": "Chỉ một lần"
+  },
+  "enroll": {
+    "sectionLabel": "Đăng ký mới",
+    "title": "Đăng ký agent mới",
+    "body": "Cấp khóa API bootstrap một lần cho danh tính workload mới. ID Agent thuộc phạm vi không gian làm việc.",
+    "agentIdLabel": "ID Agent",
+    "agentIdPlaceholder": "agent:deploy-bot",
+    "agentIdHint": "Ký tự cho phép: chữ cái, số, `.`, `_`, `:`, `@`, `-`.",
+    "displayNameLabel": "Tên hiển thị agent",
+    "displayNamePlaceholder": "Bot triển khai sản xuất",
+    "displayNameHint": "Nhãn tùy chọn hiển thị trong bảng vận hành.",
+    "submitButton": "Tạo khóa bootstrap",
+    "submitting": "Đang đăng ký...",
+    "enrollFirstAgent": "Đăng ký agent đầu tiên"
+  },
+  "emptyState": {
+    "title": "Chưa có agent nào",
+    "body": "Chưa có agent nào được đăng ký trong không gian làm việc."
+  },
+  "actions": {
+    "rotate": "Xoay vòng",
+    "revoke": "Thu hồi"
+  },
+  "confirm": {
+    "rotateTitle": "Xoay khóa API bootstrap",
+    "rotateBody": "Xoay khóa API cho {{agentId}}. Khóa trước sẽ ngừng hoạt động ngay lập tức.",
+    "rotateLabel": "Xoay khóa",
+    "revokeTitle": "Thu hồi agent",
+    "revokeBody": "Thu hồi {{agentId}}. Agent này sẽ không thể tạo token truy cập nữa.",
+    "revokeLabel": "Thu hồi agent"
+  },
+  "reveal": {
+    "bootstrapTitle": "Khóa bootstrap cho {{agentId}}",
+    "bootstrapDescription": "Lưu khóa API này vào runtime agent ngay bây giờ. BlindPass sẽ không hiển thị lại sau khi đóng.",
+    "replacementTitle": "Khóa thay thế cho {{agentId}}",
+    "replacementDescription": "Khóa trước đã bị vô hiệu. Lưu khóa thay thế trước khi đóng."
+  },
+  "errors": {
+    "loadFailed": "Không thể tải danh sách agent",
+    "enrollFailed": "Không thể đăng ký agent",
+    "updateFailed": "Không thể cập nhật agent"
+  },
+  "footer": {
+    "loadingAgents": "Đang tải agent...",
+    "rowsLoaded": "{{count}} dòng đã tải"
+  },
+  "filter": {
+    "label": "Lọc agent theo trạng thái"
+  },
+  "dates": {
+    "revokedAt": "Đã thu hồi {{date}}"
+  }
+}

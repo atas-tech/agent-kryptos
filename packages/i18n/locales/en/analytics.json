@@ -1,0 +1,64 @@
+{
+  "hero": {
+    "sectionLabel": "Usage analytics",
+    "title": "Workspace analytics",
+    "body": "Review request volume, exchange outcomes, and recent active agents across your workspace."
+  },
+  "stats": {
+    "requestVolume": "Request volume",
+    "requestVolumeHelper": "{{days}}-day request count",
+    "successfulExchanges": "Successful exchanges",
+    "successfulExchangesHelper": "Completed exchange retrievals",
+    "failedExpired": "Failed or expired",
+    "failedExpiredHelper": "Revoked or failed end states",
+    "activeAgents": "Active agents",
+    "activeAgentsHelper": "Distinct agents active in {{hours}}h"
+  },
+  "dateRanges": {
+    "last7Days": "Last 7 days",
+    "last30Days": "Last 30 days",
+    "last60Days": "Last 60 days",
+    "24Hours": "24 hours",
+    "72Hours": "72 hours",
+    "7Days": "7 days"
+  },
+  "requestVolume": {
+    "sectionLabel": "Request volume",
+    "title": "Daily secret requests",
+    "body": "Each bar shows the number of secret requests created on that day."
+  },
+  "exchangeOutcomes": {
+    "sectionLabel": "Exchange outcomes",
+    "title": "Successful, failed, and denied flows",
+    "body": "Stacked columns show terminal exchange outcomes by day.",
+    "legendSuccessful": "Successful",
+    "legendFailed": "Failed / expired",
+    "legendDenied": "Denied"
+  },
+  "insights": {
+    "sectionLabel": "Activity summary",
+    "title": "What this window says",
+    "body": "Use this readout to distinguish normal workload from repeated failures or policy friction.",
+    "requestPaceTitle": "{{days}}-day request pace",
+    "requestPaceNoRequests": "No request creation has been recorded in this window.",
+    "requestPaceWithRequests": "{{count}} requests were created across the selected period.",
+    "exchangeCompletionTitle": "Exchange completion",
+    "exchangeHealthy": "Successful exchange retrievals currently outweigh failed and denied paths.",
+    "exchangeUnhealthy": "Failed or denied exchanges are outpacing successful retrievals in this window.",
+    "agentActivityTitle": "Recent agent activity",
+    "agentActivityActive": "{{count}} distinct agents were active in the last {{hours}} hours.",
+    "agentActivityNone": "No agent activity has been recorded in the selected window."
+  },
+  "loading": {
+    "sectionLabel": "Analytics",
+    "title": "Loading workspace analytics",
+    "body": "Reading usage data from the workspace."
+  },
+  "emptyState": {
+    "title": "No analytics traffic yet",
+    "body": "Once this workspace starts creating requests and completing exchanges, the charts will fill with daily activity."
+  },
+  "errors": {
+    "loadFailed": "Unable to load analytics"
+  }
+}

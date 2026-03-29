@@ -6,6 +6,7 @@ export interface AuthUser {
   role: UserRole;
   status: "active" | "suspended" | "deleted";
   email_verified: boolean;
+  preferred_locale?: "en" | "vi";
   force_password_change: boolean;
   workspace_id: string;
   created_at: string;

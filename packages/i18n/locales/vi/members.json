@@ -1,0 +1,77 @@
+{
+  "hero": {
+    "sectionLabel": "Quản lý nhóm",
+    "title": "Quản lý thành viên",
+    "body": "Quản lý quyền truy cập: tạo người dùng với mật khẩu tạm thời, thay đổi vai trò và bảo vệ quản trị viên cuối cùng."
+  },
+  "table": {
+    "sectionLabel": "Danh sách thành viên",
+    "title": "Thành viên không gian làm việc",
+    "body": "Các thành viên trong không gian làm việc. Thay đổi vai trò trực tiếp; tạm ngưng cần xác nhận."
+  },
+  "stats": {
+    "activeMembers": "Thành viên hoạt động",
+    "suspendedMembers": "Thành viên tạm ngưng",
+    "adminSafety": "An toàn quản trị",
+    "activeAdmin": "{{count}} quản trị viên hoạt động",
+    "activeAdmins": "{{count}} quản trị viên hoạt động"
+  },
+  "addMember": {
+    "sectionLabel": "Thêm thành viên",
+    "title": "Tạo thành viên",
+    "body": "Cấp tài khoản với mật khẩu tạm thời. Lần đăng nhập đầu tiên sẽ yêu cầu đổi mật khẩu.",
+    "emailLabel": "Địa chỉ email",
+    "emailPlaceholder": "vanhanh@congty.com",
+    "emailHint": "Mỗi người dùng thuộc về không gian làm việc này.",
+    "roleLabel": "Vai trò",
+    "roleHint": "Quản trị viên có thể quản lý thanh toán, cài đặt, thành viên và đăng ký agent.",
+    "tempPasswordLabel": "Mật khẩu tạm thời",
+    "tempPasswordPlaceholder": "Ít nhất 12 ký tự",
+    "tempPasswordStrength": "Độ mạnh mật khẩu tạm thời: {{label}}",
+    "submitButton": "Tạo thành viên",
+    "submitting": "Đang tạo...",
+    "addFirstMember": "Thêm thành viên đầu tiên"
+  },
+  "roles": {
+    "workspace_admin": "Quản trị viên",
+    "workspace_operator": "Vận hành viên",
+    "workspace_viewer": "Người xem"
+  },
+  "emptyState": {
+    "title": "Chưa có thành viên",
+    "body": "Không gian làm việc chỉ có tài khoản chủ sở hữu. Thêm vận hành viên hoặc người xem để phân chia quyền."
+  },
+  "actions": {
+    "addMember": "Thêm thành viên",
+    "suspend": "Tạm ngưng",
+    "suspendTitle": "Tạm ngưng {{email}}",
+    "suspendBody": "Tạm ngưng {{email}}. Họ sẽ mất quyền truy cập cho đến khi quản trị viên kích hoạt lại.",
+    "suspendLabel": "Tạm ngưng thành viên"
+  },
+  "status": {
+    "passwordResetRequired": "Yêu cầu đặt lại mật khẩu",
+    "added": "Đã thêm {{date}}",
+    "lastAdminError": "Quản trị viên hoạt động cuối cùng không thể bị hạ cấp hoặc tạm ngưng."
+  },
+  "errors": {
+    "loadFailed": "Không thể tải danh sách thành viên",
+    "createFailed": "Không thể tạo thành viên",
+    "updateFailed": "Không thể cập nhật thành viên",
+    "weakPassword": "Mật khẩu tạm thời phải có ít nhất 12 ký tự và không quá yếu."
+  },
+  "footer": {
+    "loadingMembers": "Đang tải thành viên...",
+    "rowsLoaded": "{{count}} dòng đã tải"
+  },
+  "filter": {
+    "label": "Lọc thành viên theo trạng thái"
+  },
+  "passwordStrength": {
+    "waiting": "chờ nhập liệu",
+    "tooWeak": "quá yếu",
+    "tooShort": "quá ngắn",
+    "acceptable": "chấp nhận được",
+    "strong": "mạnh",
+    "veryStrong": "rất mạnh"
+  }
+}

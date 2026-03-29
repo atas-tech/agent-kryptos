@@ -1,0 +1,31 @@
+{
+  "hero": {
+    "sectionLabel": "Workspace configuration",
+    "title": "Settings",
+    "body": "View and manage your workspace identity and display labels."
+  },
+  "displayName": {
+    "sectionLabel": "Workspace identity",
+    "title": "Display name",
+    "body": "Update the display name shown across the dashboard.",
+    "label": "Display name",
+    "submitButton": "Save changes",
+    "submitting": "Saving...",
+    "successNote": "Changes apply immediately after saving."
+  },
+  "readOnly": {
+    "sectionLabel": "Platform details",
+    "title": "Workspace details",
+    "body": "Read-only fields managed by the platform.",
+    "slug": "Workspace slug",
+    "tier": "Account tier",
+    "status": "Workspace status",
+    "ownerId": "Owner user ID",
+    "createdAt": "Created at",
+    "updatedAt": "Updated at"
+  },
+  "errors": {
+    "loadFailed": "Unable to load settings",
+    "saveFailed": "Unable to save settings"
+  }
+}

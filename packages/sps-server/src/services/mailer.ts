@@ -1,3 +1,5 @@
+import { DEFAULT_LOCALE, type SupportedLocale } from "@blindpass/i18n";
+
 const RESEND_API_URL = "https://api.resend.com/emails";
 
 export interface MailDeliveryResult {
@@ -313,7 +315,11 @@ async function sendViaResend(input: MailRequest): Promise<MailDeliveryResult> {
   );
 }
 
-export async function sendVerificationEmail(email: string, token: string): Promise<MailDeliveryResult> {
+export async function sendVerificationEmail(
+  email: string,
+  token: string,
+  _locale: SupportedLocale = DEFAULT_LOCALE
+): Promise<MailDeliveryResult> {
   const apiKey = resendApiKey();
   if (!apiKey) {
     if (isProductionEnv()) {
@@ -345,7 +351,11 @@ export async function sendVerificationEmail(email: string, token: string): Promi
   });
 }
 
-export async function sendPasswordResetEmail(email: string, token: string): Promise<MailDeliveryResult> {
+export async function sendPasswordResetEmail(
+  email: string,
+  token: string,
+  _locale: SupportedLocale = DEFAULT_LOCALE
+): Promise<MailDeliveryResult> {
   const apiKey = resendApiKey();
   if (!apiKey) {
     if (isProductionEnv()) {

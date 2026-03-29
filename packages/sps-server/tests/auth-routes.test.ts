@@ -189,7 +189,7 @@ describePg("auth routes", () => {
     adminPool = null;
   });
 
-  it("registers, normalizes email, and exposes auth/me", async () => {
+  it("registers, normalizes email, persists preferred locale, and exposes auth/me", async () => {
     const { pool, schema } = await createIsolatedPool();
 
     try {
@@ -206,7 +206,8 @@ describePg("auth routes", () => {
           email: "  OWNER@Example.COM ",
           password: "Password123!",
           workspace_slug: "acme-auth",
-          display_name: "Acme Auth"
+          display_name: "Acme Auth",
+          preferred_locale: "vi"
         }
       });
 
@@ -214,7 +215,13 @@ describePg("auth routes", () => {
       const registered = registerResponse.json() as {
         access_token: string;
         refresh_token: string;
-        user: { email: string; email_verified: boolean; force_password_change: boolean; role: string };
+        user: {
+          email: string;
+          email_verified: boolean;
+          force_password_change: boolean;
+          preferred_locale: string;
+          role: string;
+        };
         workspace: { slug: string; display_name: string };
       };
 
@@ -222,6 +229,7 @@ describePg("auth routes", () => {
         email: "owner@example.com",
         email_verified: false,
         force_password_change: false,
+        preferred_locale: "vi",
         role: "workspace_admin"
       });
       expect(registered.workspace).toMatchObject({
@@ -242,7 +250,8 @@ describePg("auth routes", () => {
       expect(meResponse.statusCode).toBe(200);
       expect(meResponse.json()).toMatchObject({
         user: {
-          email: "owner@example.com"
+          email: "owner@example.com",
+          preferred_locale: "vi"
         },
         workspace: {
           slug: "acme-auth"
@@ -261,6 +270,68 @@ describePg("auth routes", () => {
       });
 
       expect(duplicateResponse.statusCode).toBe(409);
+
+      await app.close();
+    } finally {
+      await disposeIsolatedPool(pool, schema);
+    }
+  });
+
+  it("updates the preferred locale for the current user", async () => {
+    const { pool, schema } = await createIsolatedPool();
+
+    try {
+      await runMigrations(pool, { migrationsDir: migrationsDir.pathname });
+      const app = await buildApp({ db: pool, useInMemoryStore: true });
+
+      const registerResponse = await app.inject({
+        method: "POST",
+        url: "/api/v2/auth/register",
+        payload: {
+          email: "locale-owner@example.com",
+          password: "Password123!",
+          workspace_slug: "locale-space",
+          display_name: "Locale Space"
+        }
+      });
+
+      expect(registerResponse.statusCode).toBe(201);
+      const registered = registerResponse.json() as { access_token: string; user: { preferred_locale: string } };
+      expect(registered.user.preferred_locale).toBe("en");
+
+      const updateResponse = await app.inject({
+        method: "PATCH",
+        url: "/api/v2/auth/locale",
+        headers: {
+          authorization: `Bearer ${registered.access_token}`
+        },
+        payload: {
+          preferred_locale: "vi"
+        }
+      });
+
+      expect(updateResponse.statusCode).toBe(200);
+      expect(updateResponse.json()).toMatchObject({
+        user: {
+          email: "locale-owner@example.com",
+          preferred_locale: "vi"
+        }
+      });
+
+      const meResponse = await app.inject({
+        method: "GET",
+        url: "/api/v2/auth/me",
+        headers: {
+          authorization: `Bearer ${registered.access_token}`
+        }
+      });
+
+      expect(meResponse.statusCode).toBe(200);
+      expect(meResponse.json()).toMatchObject({
+        user: {
+          preferred_locale: "vi"
+        }
+      });
 
       await app.close();
     } finally {

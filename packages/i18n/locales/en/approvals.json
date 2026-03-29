@@ -1,0 +1,52 @@
+{
+  "hero": {
+    "sectionLabel": "Approval queue",
+    "title": "Approvals inbox",
+    "body": "Pending exchange approvals and guest intent approvals in one queue. Admins and operators can approve or deny; viewers are read-only."
+  },
+  "stats": {
+    "pendingApprovals": "Pending approvals",
+    "guestRequests": "Guest requests",
+    "rulesInPlay": "Rules in play",
+    "expiringSoon": "Expiring soon"
+  },
+  "viewerNote": {
+    "title": "Viewer access is read-only",
+    "body": "You can inspect pending approvals here, but only workspace admins and operators can approve or deny them."
+  },
+  "loading": {
+    "eyebrow": "Loading",
+    "title": "Refreshing approvals",
+    "body": "Collecting pending exchange and guest approvals from the workspace."
+  },
+  "emptyState": {
+    "title": "Inbox clear",
+    "body": "No currently pending exchange or guest approvals were found."
+  },
+  "card": {
+    "pendingGuestApproval": "Pending guest approval",
+    "pendingAgentApproval": "Pending agent approval",
+    "guestRequester": "Guest requester",
+    "requesterAgent": "Requester agent",
+    "deliveryTarget": "Delivery target",
+    "fulfillerAgent": "Fulfiller agent",
+    "requestedAt": "Requested at",
+    "approvalRef": "Approval ref",
+    "rule": "Rule",
+    "purpose": "Purpose",
+    "expiring": "expiring",
+    "guestAgent": "guest agent",
+    "guestHuman": "guest human",
+    "agent": "agent"
+  },
+  "actions": {
+    "approve": "Approve",
+    "deny": "Deny",
+    "approved": "Approved {{id}}.",
+    "denied": "Denied {{id}}."
+  },
+  "errors": {
+    "loadFailed": "Unable to load approvals",
+    "actionFailed": "Unable to update approval"
+  }
+}

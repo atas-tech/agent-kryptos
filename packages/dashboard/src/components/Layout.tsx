@@ -15,52 +15,55 @@ import {
   Users
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/useAuth.js";
 import type { UserRole } from "../auth/types.js";
+import { LocaleSwitcher } from "./LocaleSwitcher.js";
 
 interface NavItem {
-  label: string;
+  labelKey: string;
   path: string;
   icon: typeof ShieldCheck;
   roles: UserRole[];
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", path: "/", icon: ShieldCheck, roles: ["workspace_admin"] },
-  { label: "Agents", path: "/agents", icon: Bot, roles: ["workspace_admin", "workspace_operator"] },
-  { label: "Members", path: "/members", icon: Users, roles: ["workspace_admin"] },
+  { labelKey: "nav.dashboard", path: "/", icon: ShieldCheck, roles: ["workspace_admin"] },
+  { labelKey: "nav.agents", path: "/agents", icon: Bot, roles: ["workspace_admin", "workspace_operator"] },
+  { labelKey: "nav.members", path: "/members", icon: Users, roles: ["workspace_admin"] },
   {
-    label: "Audit",
+    labelKey: "nav.audit",
     path: "/audit",
     icon: ScanSearch,
     roles: ["workspace_admin", "workspace_operator", "workspace_viewer"]
   },
   {
-    label: "Public Offers",
+    labelKey: "nav.offers",
     path: "/public-offers",
     icon: KeyRound,
     roles: ["workspace_admin", "workspace_operator", "workspace_viewer"]
   },
   {
-    label: "Approvals",
+    labelKey: "nav.approvals",
     path: "/approvals",
     icon: ArrowLeftRight,
     roles: ["workspace_admin", "workspace_operator", "workspace_viewer"]
   },
   {
-    label: "Policy",
+    labelKey: "nav.policy",
     path: "/policy",
     icon: ShieldCheck,
     roles: ["workspace_admin", "workspace_operator"]
   },
-  { label: "Billing", path: "/billing", icon: BadgeDollarSign, roles: ["workspace_admin"] },
-  { label: "Analytics", path: "/analytics", icon: BarChart3, roles: ["workspace_admin", "workspace_operator"] },
-  { label: "Settings", path: "/settings", icon: Settings, roles: ["workspace_admin"] }
+  { labelKey: "nav.billing", path: "/billing", icon: BadgeDollarSign, roles: ["workspace_admin"] },
+  { labelKey: "nav.analytics", path: "/analytics", icon: BarChart3, roles: ["workspace_admin", "workspace_operator"] },
+  { labelKey: "nav.settings", path: "/settings", icon: Settings, roles: ["workspace_admin"] }
 ];
 
 export function Layout() {
   const { user, workspace, logout } = useAuth();
+  const { t } = useTranslation("layout");
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -96,8 +99,8 @@ export function Layout() {
             <ShieldCheck size={18} />
           </div>
           <div>
-            <div className="workspace-heading">BlindPass</div>
-            <div className="workspace-meta">{workspace?.display_name ?? "Operations shell"}</div>
+            <div className="workspace-heading">{t("brand.name")}</div>
+            <div className="workspace-meta">{workspace?.display_name ?? t("brand.tagline")}</div>
           </div>
         </div>
 
@@ -125,7 +128,7 @@ export function Layout() {
               >
                 <span className="dashboard-nav__label">
                   <Icon size={18} />
-                  {item.label}
+                  {t(item.labelKey)}
                 </span>
                 <ChevronRight size={16} />
               </NavLink>
@@ -141,9 +144,10 @@ export function Layout() {
               <div className="profile-card__role">{(user?.role ?? "workspace_viewer").replace("workspace_", "")}</div>
             </div>
           </div>
+          <LocaleSwitcher />
           <button className="ghost-button" onClick={handleLogout} type="button">
             <LogOut size={16} />
-            Log out
+            {t("nav.signOut")}
           </button>
         </div>
       </aside>
@@ -151,9 +155,9 @@ export function Layout() {
       <div className="dashboard-main">
         <header className="dashboard-header">
           <div>
-            <div className="section-label">Operations shell</div>
+            <div className="section-label">{t("sidebar.operations")}</div>
             <h1 className="dashboard-header__title">
-              {navItems.find((item) => item.path === location.pathname)?.label ?? "Dashboard"}
+              {t(navItems.find((item) => item.path === location.pathname)?.labelKey ?? "nav.dashboard")}
             </h1>
           </div>
 

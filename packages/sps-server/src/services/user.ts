@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { createHash } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
+import { DEFAULT_LOCALE, isSupportedLocale, type SupportedLocale } from "@blindpass/i18n";
 import { userJwtSecret } from "../utils/crypto.js";
 import type { Pool, PoolClient } from "pg";
 import { decodePageCursor, encodePageCursor } from "./pagination.js";
@@ -41,6 +42,7 @@ interface UserRow {
   password_hash: string;
   force_password_change: boolean;
   email_verified: boolean;
+  preferred_locale?: string | null;
   workspace_id: string;
   role: UserRole;
   status: UserStatus;
@@ -60,6 +62,7 @@ export interface UserRecord {
   email: string;
   forcePasswordChange: boolean;
   emailVerified: boolean;
+  preferredLocale: SupportedLocale;
   workspaceId: string;
   role: UserRole;
   status: UserStatus;
@@ -243,12 +246,27 @@ function logEmailDeliveryFailure(action: string, email: string, error: unknown):
   console.warn(`Email delivery failed for ${action} (${email}): code=${code} retryable=${retryable}`);
 }
 
+function normalizePreferredLocale(raw: string | null | undefined): SupportedLocale {
+  if (!raw) {
+    return DEFAULT_LOCALE;
+  }
+
+  const normalized = raw.trim().toLowerCase();
+  if (isSupportedLocale(normalized)) {
+    return normalized;
+  }
+
+  const prefix = normalized.split("-")[0];
+  return prefix && isSupportedLocale(prefix) ? prefix : DEFAULT_LOCALE;
+}
+
 function toUserRecord(row: UserRow): UserRecord {
   return {
     id: row.id,
     email: row.email,
     forcePasswordChange: row.force_password_change,
     emailVerified: row.email_verified,
+    preferredLocale: normalizePreferredLocale(row.preferred_locale),
     workspaceId: row.workspace_id,
     role: row.role,
     status: row.status,
@@ -343,6 +361,7 @@ async function queryUserWithWorkspaceByEmail(client: PoolClient, email: string):
         u.password_hash,
         u.force_password_change,
         u.email_verified,
+        u.preferred_locale,
         u.workspace_id,
         u.role,
         u.status,
@@ -375,6 +394,7 @@ async function queryUserWithWorkspaceById(client: PoolClient, userId: string): P
         u.password_hash,
         u.force_password_change,
         u.email_verified,
+        u.preferred_locale,
         u.workspace_id,
         u.role,
         u.status,
@@ -583,11 +603,13 @@ export async function registerUser(
   password: string,
   workspaceSlug: string,
   displayName: string,
+  preferredLocaleRaw: string | null = null,
   session: SessionContext = {}
 ): Promise<AuthResult> {
   const normalizedEmail = normalizeEmail(email);
   validateEmail(normalizedEmail);
   const normalizedPassword = normalizePassword(password);
+  const preferredLocale = normalizePreferredLocale(preferredLocaleRaw);
   const passwordHash = await bcrypt.hash(normalizedPassword, PASSWORD_HASH_ROUNDS);
   const client = await db.connect();
   let verificationToken: string | null = null;
@@ -604,11 +626,11 @@ export async function registerUser(
 
     const insertedUser = await client.query<UserRow>(
       `
-        INSERT INTO users (email, password_hash, workspace_id, role)
-        VALUES ($1, $2, $3, 'workspace_admin')
-        RETURNING id, email, password_hash, force_password_change, email_verified, workspace_id, role, status, created_at, updated_at
+        INSERT INTO users (email, password_hash, preferred_locale, workspace_id, role)
+        VALUES ($1, $2, $3, $4, 'workspace_admin')
+        RETURNING id, email, password_hash, force_password_change, email_verified, preferred_locale, workspace_id, role, status, created_at, updated_at
       `,
-      [normalizedEmail, passwordHash, workspace.id]
+      [normalizedEmail, passwordHash, preferredLocale, workspace.id]
     );
     const user = toUserRecord(insertedUser.rows[0]);
     verificationToken = await replaceUserToken(client, user.id, "email_verification", EMAIL_VERIFICATION_TOKEN_TTL_SECONDS);
@@ -633,7 +655,7 @@ export async function registerUser(
     let verificationEmailDelivery: MailDeliveryResult | null = null;
     if (verificationToken) {
       try {
-        verificationEmailDelivery = await sendVerificationEmail(normalizedEmail, verificationToken);
+        verificationEmailDelivery = await sendVerificationEmail(normalizedEmail, verificationToken, user.preferredLocale);
       } catch (error) {
         logEmailDeliveryFailure("registration verification", normalizedEmail, error);
       }
@@ -741,6 +763,7 @@ export async function refreshSession(
           u.password_hash,
           u.force_password_change,
           u.email_verified,
+          u.preferred_locale,
           u.workspace_id,
           u.role,
           u.status,
@@ -871,7 +894,7 @@ export async function changePassword(
             force_password_change = false,
             updated_at = now()
         WHERE id = $1
-        RETURNING id, email, password_hash, force_password_change, email_verified, workspace_id, role, status, created_at, updated_at
+        RETURNING id, email, password_hash, force_password_change, email_verified, preferred_locale, workspace_id, role, status, created_at, updated_at
       `,
       [userId, passwordHash]
     );
@@ -925,7 +948,7 @@ export async function verifyEmail(db: Pool, token: string): Promise<UserWithWork
         SET email_verified = true,
             updated_at = now()
         WHERE id = $1
-        RETURNING id, email, password_hash, force_password_change, email_verified, workspace_id, role, status, created_at, updated_at
+        RETURNING id, email, password_hash, force_password_change, email_verified, preferred_locale, workspace_id, role, status, created_at, updated_at
       `,
       [userId]
     );
@@ -957,12 +980,13 @@ export async function verifyEmail(db: Pool, token: string): Promise<UserWithWork
 export async function retriggerEmailVerification(db: Pool, userId: string): Promise<MailDeliveryResult> {
   const client = await db.connect();
   let email: string | null = null;
+  let preferredLocale: SupportedLocale = DEFAULT_LOCALE;
   let verificationToken: string | null = null;
   try {
     await client.query("BEGIN");
     const result = await client.query<UserRow>(
       `
-        SELECT id, email, email_verified
+        SELECT id, email, email_verified, preferred_locale
         FROM users
         WHERE id = $1
         FOR UPDATE
@@ -980,6 +1004,7 @@ export async function retriggerEmailVerification(db: Pool, userId: string): Prom
     }
 
     email = row.email;
+    preferredLocale = normalizePreferredLocale(row.preferred_locale);
     verificationToken = await replaceUserToken(client, userId, "email_verification", EMAIL_VERIFICATION_TOKEN_TTL_SECONDS);
 
     await client.query("COMMIT");
@@ -988,7 +1013,7 @@ export async function retriggerEmailVerification(db: Pool, userId: string): Prom
       throw new UserServiceError(500, "verification_not_issued", "Verification email could not be issued");
     }
 
-    return await sendVerificationEmail(email, verificationToken);
+    return await sendVerificationEmail(email, verificationToken, preferredLocale);
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     throw error;
@@ -997,11 +1022,16 @@ export async function retriggerEmailVerification(db: Pool, userId: string): Prom
   }
 }
 
-export async function requestPasswordReset(db: Pool, email: string): Promise<PasswordResetRequestResult> {
+export async function requestPasswordReset(
+  db: Pool,
+  email: string,
+  fallbackLocaleRaw: string | null = null
+): Promise<PasswordResetRequestResult> {
   const normalizedEmail = normalizeEmail(email);
   validateEmail(normalizedEmail);
   const client = await db.connect();
   let userEmail: string | null = null;
+  let preferredLocale = normalizePreferredLocale(fallbackLocaleRaw);
   let resetToken: string | null = null;
 
   try {
@@ -1020,6 +1050,7 @@ export async function requestPasswordReset(db: Pool, email: string): Promise<Pas
     }
 
     userEmail = row.email;
+    preferredLocale = row.preferred_locale ? normalizePreferredLocale(row.preferred_locale) : preferredLocale;
     resetToken = await replaceUserToken(client, row.id, "password_reset", PASSWORD_RESET_TOKEN_TTL_SECONDS);
     await client.query("COMMIT");
   } catch (error) {
@@ -1034,7 +1065,7 @@ export async function requestPasswordReset(db: Pool, email: string): Promise<Pas
   }
 
   try {
-    await sendPasswordResetEmail(userEmail, resetToken);
+    await sendPasswordResetEmail(userEmail, resetToken, preferredLocale);
   } catch (error) {
     logEmailDeliveryFailure("password reset", userEmail, error);
   }
@@ -1289,7 +1320,7 @@ export async function createWorkspaceMember(
         `
           INSERT INTO users (email, password_hash, force_password_change, workspace_id, role, status)
           VALUES ($1, $2, true, $3, $4, 'active')
-          RETURNING id, email, password_hash, force_password_change, email_verified, workspace_id, role, status, created_at, updated_at
+          RETURNING id, email, password_hash, force_password_change, email_verified, preferred_locale, workspace_id, role, status, created_at, updated_at
         `,
         [normalizedEmail, passwordHash, workspaceId, input.role]
       );
@@ -1298,7 +1329,7 @@ export async function createWorkspaceMember(
 
       if (verificationToken) {
         try {
-          await sendVerificationEmail(normalizedEmail, verificationToken);
+          await sendVerificationEmail(normalizedEmail, verificationToken, DEFAULT_LOCALE);
         } catch (error) {
           logEmailDeliveryFailure("member verification", normalizedEmail, error);
         }
@@ -1375,7 +1406,7 @@ export async function updateWorkspaceMember(
             updated_at = now()
         WHERE id = $1
           AND workspace_id = $2
-        RETURNING id, email, password_hash, force_password_change, email_verified, workspace_id, role, status, created_at, updated_at
+        RETURNING id, email, password_hash, force_password_change, email_verified, preferred_locale, workspace_id, role, status, created_at, updated_at
       `,
       [userId, workspaceId, nextRole, nextStatus]
     );
@@ -1388,4 +1419,31 @@ export async function updateWorkspaceMember(
   } finally {
     client.release();
   }
+}
+
+export async function updateUserPreferredLocale(
+  db: Pool,
+  userId: string,
+  workspaceId: string,
+  preferredLocaleRaw: string
+): Promise<UserRecord> {
+  const preferredLocale = normalizePreferredLocale(preferredLocaleRaw);
+  const result = await db.query<UserRow>(
+    `
+      UPDATE users
+      SET preferred_locale = $3,
+          updated_at = now()
+      WHERE id = $1
+        AND workspace_id = $2
+      RETURNING id, email, password_hash, force_password_change, email_verified, preferred_locale, workspace_id, role, status, created_at, updated_at
+    `,
+    [userId, workspaceId, preferredLocale]
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    throw new UserServiceError(404, "user_not_found", "User not found");
+  }
+
+  return toUserRecord(row);
 }

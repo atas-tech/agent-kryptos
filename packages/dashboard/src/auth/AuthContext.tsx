@@ -6,7 +6,9 @@ import {
   useState,
   type PropsWithChildren
 } from "react";
+import { type SupportedLocale } from "@blindpass/i18n";
 import { apiBaseUrl, configureApiClient, type AuthApiResponse } from "../api/client.js";
+import { applyLocalePreference, currentLocale } from "../i18n/config.js";
 import type { AuthUser, WorkspaceSummary } from "./types.js";
 
 interface RegisterInput {
@@ -28,6 +30,7 @@ export interface AuthContextValue {
   logout: () => Promise<void>;
   refresh: () => Promise<string | null>;
   changePassword: (currentPassword: string, nextPassword: string) => Promise<void>;
+  updatePreferredLocale: (locale: SupportedLocale) => Promise<void>;
   setWorkspaceSummary: (workspace: WorkspaceSummary) => void;
   clearAuth: () => void;
 }
@@ -54,6 +57,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (payload.workspace) {
       setWorkspace(payload.workspace);
     }
+    void applyLocalePreference(payload.user.preferred_locale);
   }
 
   function clearAuth(): void {
@@ -155,6 +159,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         password: input.password,
         workspace_slug: input.workspaceSlug,
         display_name: input.displayName,
+        preferred_locale: currentLocale(),
         cf_turnstile_response: input.turnstileToken ?? undefined
       })
     });
@@ -213,6 +218,32 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setUser(payload.user);
   }
 
+  async function updatePreferredLocale(locale: SupportedLocale): Promise<void> {
+    await applyLocalePreference(locale);
+    if (!accessTokenRef.current || !user) {
+      return;
+    }
+
+    const response = await fetch(`${apiBaseUrl()}/api/v2/auth/locale`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${accessTokenRef.current}`
+      },
+      body: JSON.stringify({
+        preferred_locale: locale
+      })
+    });
+
+    if (!response.ok) {
+      throw await readError(response, "Locale update failed");
+    }
+
+    const payload = (await response.json()) as { user: AuthUser };
+    setUser(payload.user);
+  }
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -225,6 +256,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       logout,
       refresh,
       changePassword,
+      updatePreferredLocale,
       setWorkspaceSummary: setWorkspace,
       clearAuth
     }),

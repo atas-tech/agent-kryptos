@@ -1,0 +1,124 @@
+{
+  "hero": {
+    "sectionLabel": "Workspace controls",
+    "title": "Policy",
+    "body": "Manage the secret registry and exchange rules that drive workspace-level request enforcement."
+  },
+  "stats": {
+    "currentVersion": "Current version",
+    "draft": "Draft",
+    "source": "Source",
+    "lastUpdated": "Last updated",
+    "notAvailable": "Not available"
+  },
+  "status": {
+    "sectionLabel": "Registry & Rules",
+    "title": "Workspace policy editor",
+    "summary": "{{secrets}} registered secrets · {{rules}} configured rules · {{issues}} active issues",
+    "validationIssues": "validation issues",
+    "draftChanged": "Draft changed",
+    "synced": "Synced",
+    "operatorView": "operator view",
+    "adminEditable": "admin editable"
+  },
+  "readOnly": {
+    "title": "Operator access is read-only",
+    "body": "Operators can inspect workspace policy state and validation output here, but only workspace admins can save changes."
+  },
+  "registry": {
+    "sectionLabel": "Secret registry",
+    "title": "Managed secrets",
+    "body": "Register each secret the workspace can exchange and classify it for policy decisions.",
+    "addSecret": "Add secret",
+    "columnName": "Secret name",
+    "columnClassification": "Classification",
+    "columnDescription": "Description",
+    "namePlaceholder": "stripe.api_key.prod",
+    "classificationPlaceholder": "finance",
+    "descriptionPlaceholder": "Stripe production key",
+    "removeSecret": "Remove",
+    "removeSecretLabel": "Remove secret {{index}}",
+    "namingCallout": "Secret naming discipline matters.",
+    "namingHint": "Use deployment-stable dotted names so policy rules and manifests stay aligned.",
+    "loadingTitle": "Refreshing policy",
+    "loadingBody": "Loading the current workspace policy document."
+  },
+  "rules": {
+    "sectionLabel": "Exchange rules",
+    "title": "Rule definitions",
+    "body": "Define requester, fulfiller, ring, and approval controls for each secret exchange path.",
+    "addRule": "Add rule",
+    "untitledRule": "Untitled rule",
+    "ruleLabel": "Rule {{index}}",
+    "ruleId": "Rule ID",
+    "ruleIdPlaceholder": "allow-stripe",
+    "secretName": "Secret name",
+    "secretNamePlaceholder": "stripe.api_key.prod",
+    "mode": "Mode",
+    "modeAllow": "allow",
+    "modePendingApproval": "pending_approval",
+    "modeDeny": "deny",
+    "reason": "Reason",
+    "reasonPlaceholder": "Primary payments flow",
+    "noReason": "No explicit reason set.",
+    "requesters": "Requesters",
+    "requesterIds": "Requester IDs",
+    "requesterIdsPlaceholder": "agent:crm-bot, agent:orders-bot",
+    "anyRequester": "Any requester",
+    "fulfillers": "Fulfillers",
+    "fulfillerIds": "Fulfiller IDs",
+    "fulfillerIdsPlaceholder": "agent:payment-bot",
+    "anyFulfiller": "Any fulfiller",
+    "approverIds": "Approver IDs",
+    "approverIdsPlaceholder": "user:ops-admin",
+    "purposes": "Purposes",
+    "purposesPlaceholder": "charge-order, refund-order",
+    "purposeMode": "Purpose / mode",
+    "anyPurpose": "Any purpose",
+    "requesterRings": "Requester rings",
+    "requesterRingsPlaceholder": "prod, staging",
+    "fulfillerRings": "Fulfiller rings",
+    "fulfillerRingsPlaceholder": "prod",
+    "approverRings": "Approver rings",
+    "approverRingsPlaceholder": "ops",
+    "allowedRings": "Allowed same-ring list",
+    "allowedRingsPlaceholder": "prod",
+    "approvalReference": "Approval reference",
+    "approvalReferencePlaceholder": "apr_finance",
+    "sameRing": "Require same ring",
+    "removeRule": "Remove rule",
+    "removeRuleLabel": "Remove rule {{index}}"
+  },
+  "validation": {
+    "sectionLabel": "Validation",
+    "title": "Draft status",
+    "titleWithIssues": "Draft status ({{count}})",
+    "body": "Run validation before save to surface normalization and policy-contract issues.",
+    "noIssues": "No active validation issues",
+    "noIssuesHint": "Run validation after editing to confirm the draft still matches the policy schema.",
+    "passed": "Policy validation passed.",
+    "hasIssues": "Policy validation returned issues."
+  },
+  "jsonPreview": {
+    "sectionLabel": "JSON preview",
+    "title": "Normalized payload",
+    "body": "Read-only view of the normalized policy JSON that would be sent for save."
+  },
+  "actions": {
+    "refresh": "Refresh",
+    "refreshing": "Refreshing...",
+    "resetChanges": "Reset changes",
+    "validate": "Validate",
+    "validating": "Validating...",
+    "savePolicy": "Save policy",
+    "saving": "Saving..."
+  },
+  "success": {
+    "saved": "Policy saved as version {{version}}."
+  },
+  "errors": {
+    "loadFailed": "Unable to load workspace policy",
+    "validateFailed": "Unable to validate policy",
+    "saveFailed": "Unable to save policy"
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "hero": {
+    "sectionLabel": "Agent management",
+    "title": "Agent enrollment and rotation",
+    "body": "Manage agent credentials, rotate bootstrap keys, and control access for enrolled workload identities."
+  },
+  "table": {
+    "sectionLabel": "Fleet overview",
+    "title": "Workspace fleet",
+    "body": "Enrolled agents in this workspace. Use the filters to narrow by status."
+  },
+  "stats": {
+    "activeAgents": "Active agents",
+    "revokedAgents": "Revoked agents",
+    "revealPolicy": "Reveal policy",
+    "revealPolicyValue": "One-time only"
+  },
+  "enroll": {
+    "sectionLabel": "New enrollment",
+    "title": "Enroll a new agent",
+    "body": "Issue a one-time bootstrap API key for a new workload identity. Agent IDs are workspace-scoped.",
+    "agentIdLabel": "Agent ID",
+    "agentIdPlaceholder": "agent:deploy-bot",
+    "agentIdHint": "Allowed characters: letters, numbers, `.`, `_`, `:`, `@`, `-`.",
+    "displayNameLabel": "Agent display name",
+    "displayNamePlaceholder": "Production deploy bot",
+    "displayNameHint": "Optional label shown in the operations table.",
+    "submitButton": "Create bootstrap key",
+    "submitting": "Enrolling...",
+    "enrollFirstAgent": "Enroll first agent"
+  },
+  "emptyState": {
+    "title": "No agents enrolled",
+    "body": "No agents have been enrolled in this workspace yet."
+  },
+  "actions": {
+    "rotate": "Rotate",
+    "revoke": "Revoke"
+  },
+  "confirm": {
+    "rotateTitle": "Rotate bootstrap API key",
+    "rotateBody": "Rotate the API key for {{agentId}}. The previous key will stop working immediately.",
+    "rotateLabel": "Rotate key",
+    "revokeTitle": "Revoke enrolled agent",
+    "revokeBody": "Revoke {{agentId}}. This agent will no longer be able to mint access tokens.",
+    "revokeLabel": "Revoke agent"
+  },
+  "reveal": {
+    "bootstrapTitle": "Bootstrap key for {{agentId}}",
+    "bootstrapDescription": "Store this API key in the agent runtime now. BlindPass will not reveal it again after dismissal.",
+    "replacementTitle": "Replacement key for {{agentId}}",
+    "replacementDescription": "The previous key is now invalid. Store this replacement key before you close the reveal."
+  },
+  "errors": {
+    "loadFailed": "Unable to load agents",
+    "enrollFailed": "Unable to enroll agent",
+    "updateFailed": "Unable to update agent"
+  },
+  "footer": {
+    "loadingAgents": "Loading agents...",
+    "rowsLoaded": "{{count}} rows loaded"
+  },
+  "filter": {
+    "label": "Filter agents by status"
+  },
+  "dates": {
+    "revokedAt": "Revoked {{date}}"
+  }
+}
