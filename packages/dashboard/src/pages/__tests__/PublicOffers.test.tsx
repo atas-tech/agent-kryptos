@@ -119,6 +119,8 @@ describe("PublicOffersPage", () => {
 
     expect(await screen.findByText("Public offers and guest requests")).toBeInTheDocument();
     expect((await screen.findAllByText("Stripe handoff")).length).toBeGreaterThan(0);
+    expect(await screen.findByText("Human handoff")).toBeInTheDocument();
+    expect((await screen.findAllByText("Payment required")).length).toBeGreaterThan(0);
     expect(await screen.findByText("Viewer access is read-only")).toBeInTheDocument();
     expect((await screen.findAllByText("Charge order 784")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /approve/i })).not.toBeInTheDocument();
@@ -182,6 +184,7 @@ describe("PublicOffersPage", () => {
 
     render(<PublicOffersPage />);
 
+    expect(await screen.findByText("Delivery failed")).toBeInTheDocument();
     expect(await screen.findByText(/Failure: runtime transport unavailable/i)).toBeInTheDocument();
     expect(screen.queryByText("redacted")).not.toBeInTheDocument();
 

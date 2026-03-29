@@ -1,26 +1,11 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { analyzeTranslationDrift, collectKeys, type JsonObj } from "./validation-lib.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const LOCALES_DIR = path.join(__dirname, "..", "locales");
-
-type JsonValue = string | number | boolean | null | JsonObj | JsonValue[];
-type JsonObj = { [key: string]: JsonValue };
-
-function collectKeys(obj: JsonObj, prefix = ""): string[] {
-  const keys: string[] = [];
-  for (const [key, value] of Object.entries(obj)) {
-    const fullKey = prefix ? `${prefix}.${key}` : key;
-    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-      keys.push(...collectKeys(value as JsonObj, fullKey));
-    } else {
-      keys.push(fullKey);
-    }
-  }
-  return keys.sort();
-}
 
 async function listNamespaces(locale: string): Promise<string[]> {
   const dir = path.join(LOCALES_DIR, locale);
@@ -95,14 +80,32 @@ async function main(): Promise<void> {
       }
 
       if (missing.length === 0 && extra.length === 0) {
+        const drift = analyzeTranslationDrift(refObj, targetObj);
+        if (drift.suspicious) {
+          const sampleKeys = drift.identicalKeys.slice(0, 8).join(", ");
+          console.error(
+            `✗ ${locale}/${ns}.json appears untranslated: ` +
+              `${drift.identicalKeys.length}/${drift.comparableStrings} comparable strings still match ${referenceLocale}.`
+          );
+          console.error(`  Sample keys: ${sampleKeys}`);
+          hasErrors = true;
+          continue;
+        }
+
         console.log(`✓ ${ns}.json — ${refKeys.length} keys match`);
+        if (drift.identicalKeys.length > 0) {
+          console.warn(
+            `⚠ ${locale}/${ns}.json retains ${drift.identicalKeys.length} identical English strings ` +
+              `(sample: ${drift.identicalKeys.slice(0, 5).join(", ")})`
+          );
+        }
       }
     }
   }
 
   console.log("\n");
   if (hasErrors) {
-    console.error("✗ Validation FAILED — missing keys detected.");
+    console.error("✗ Validation FAILED — missing keys or suspicious untranslated namespaces detected.");
     process.exit(1);
   }
 

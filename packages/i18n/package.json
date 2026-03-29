@@ -9,6 +9,7 @@
     "./locales/*": "./locales/*"
   },
   "scripts": {
+    "test": "node --import tsx --test tests/validate-keys.test.ts",
     "validate": "node --import tsx scripts/validate-keys.ts",
     "build": "echo 'No build step needed for i18n package'"
   },

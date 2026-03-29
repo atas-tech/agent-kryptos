@@ -287,6 +287,101 @@ function approvalStatusLabel(
   }
 }
 
+function offerStatusLabel(
+  status: OfferRecord["status"],
+  t: (key: string) => string
+): string {
+  switch (status) {
+    case "active":
+      return t("offers:labels.offerActive");
+    case "revoked":
+      return t("offers:labels.offerRevoked");
+    default:
+      return status;
+  }
+}
+
+function deliveryModeLabel(
+  mode: OfferRecord["delivery_mode"] | GuestIntentRecord["delivery_mode"],
+  t: (key: string) => string
+): string {
+  switch (mode) {
+    case "human":
+      return t("offers:labels.deliveryHuman");
+    case "agent":
+      return t("offers:labels.deliveryAgent");
+    case "either":
+      return t("offers:labels.deliveryEither");
+    default:
+      return mode;
+  }
+}
+
+function paymentPolicyLabel(
+  policy: OfferRecord["payment_policy"] | GuestIntentRecord["payment_policy"],
+  t: (key: string) => string
+): string {
+  switch (policy) {
+    case "free":
+      return t("offers:labels.paymentFree");
+    case "always_x402":
+      return t("offers:labels.paymentAlwaysX402");
+    case "quota_then_x402":
+      return t("offers:labels.paymentQuotaThenX402");
+    default:
+      return policy;
+  }
+}
+
+function requestStateLabel(
+  status: IntentRequestState["status"] | null | undefined,
+  t: (key: string) => string
+): string {
+  switch (status) {
+    case "pending":
+      return t("offers:labels.requestPending");
+    case "submitted":
+      return t("offers:labels.requestSubmitted");
+    case null:
+    case undefined:
+      return t("offers:intentDetail.notIssued");
+    default:
+      return status;
+  }
+}
+
+function exchangeStateLabel(
+  status: string | null | undefined,
+  t: (key: string) => string
+): string {
+  switch (status) {
+    case "pending":
+      return t("offers:labels.exchangePending");
+    case "reserved":
+      return t("offers:labels.exchangeReserved");
+    case "submitted":
+      return t("offers:labels.exchangeSubmitted");
+    case "retrieved":
+      return t("offers:labels.exchangeRetrieved");
+    case "revoked":
+      return t("offers:labels.exchangeRevoked");
+    case "expired":
+      return t("offers:labels.exchangeExpired");
+    case "denied":
+      return t("offers:labels.exchangeDenied");
+    case "dispatched":
+      return t("offers:labels.exchangeDispatched");
+    case "delivery_failed":
+    case "failed":
+      return t("offers:labels.exchangeDeliveryFailed");
+    case null:
+    case undefined:
+      return t("common:notAvailable");
+    default:
+      return status;
+  }
+}
+
 export function PublicOffersPage() {
   const { t } = useTranslation(["offers", "common"]);
   const { user } = useAuth();
@@ -562,15 +657,19 @@ export function PublicOffersPage() {
                 header: t("offers:offers.columnPolicy"),
                 render: (offer) => (
                   <div>
-                    <div>{offer.delivery_mode}</div>
-                    <div className="record-meta">{offer.payment_policy}</div>
+                    <div>{deliveryModeLabel(offer.delivery_mode, t)}</div>
+                    <div className="record-meta">{paymentPolicyLabel(offer.payment_policy, t)}</div>
                   </div>
                 )
               },
               {
                 key: "status",
                 header: t("offers:offers.columnStatus"),
-                render: (offer) => <StatusBadge tone={toneForOfferStatus(offer.status)}>{offer.status}</StatusBadge>
+                render: (offer) => (
+                  <StatusBadge tone={toneForOfferStatus(offer.status)}>
+                    {offerStatusLabel(offer.status, t)}
+                  </StatusBadge>
+                )
               },
               {
                 key: "usage",
@@ -713,7 +812,7 @@ export function PublicOffersPage() {
                   </div>
                   <div className="detail-list__item">
                     <span className="meta-label">{t("offers:intentDetail.requestState")}</span>
-                    <strong>{intent.request_state?.status ?? t("offers:intentDetail.notIssued")}</strong>
+                    <strong>{requestStateLabel(intent.request_state?.status, t)}</strong>
                   </div>
                 </div>
               </div>
@@ -766,7 +865,7 @@ export function PublicOffersPage() {
               </div>
               <div className="detail-list__item">
                 <span className="meta-label">{t("offers:intentDetail.delivery")}</span>
-                <strong>{selectedIntent.delivery_mode}</strong>
+                <strong>{deliveryModeLabel(selectedIntent.delivery_mode, t)}</strong>
               </div>
               <div className="detail-list__item">
                 <span className="meta-label">{t("offers:intentDetail.price")}</span>
@@ -774,7 +873,7 @@ export function PublicOffersPage() {
               </div>
               <div className="detail-list__item">
                 <span className="meta-label">{t("offers:intentDetail.requestState")}</span>
-                <strong>{selectedIntent.request_state?.status ?? t("offers:intentDetail.notIssued")}</strong>
+                <strong>{requestStateLabel(selectedIntent.request_state?.status, t)}</strong>
               </div>
               <div className="detail-list__item">
                 <span className="meta-label">{t("offers:intentDetail.requestId")}</span>
@@ -782,7 +881,7 @@ export function PublicOffersPage() {
               </div>
               <div className="detail-list__item">
                 <span className="meta-label">{t("offers:intentDetail.exchangeState")}</span>
-                <strong>{selectedIntent.exchange_state?.status ?? t("common:notAvailable")}</strong>
+                <strong>{exchangeStateLabel(selectedIntent.exchange_state?.status, t)}</strong>
               </div>
               <div className="detail-list__item">
                 <span className="meta-label">{t("offers:intentDetail.exchangeId")}</span>
@@ -823,7 +922,7 @@ export function PublicOffersPage() {
                   <span className="meta-label">{t("offers:intentDetail.agentDelivery")}</span>
                   <div className="support-payment-row">
                     <StatusBadge tone={selectedIntent.agent_delivery.recoverable ? "warning" : "neutral"}>
-                      {selectedIntent.agent_delivery.state ?? t("common:notAvailable")}
+                      {exchangeStateLabel(selectedIntent.agent_delivery.state, t)}
                     </StatusBadge>
                     <span className="record-meta">{t("offers:intentDetail.attempt", { count: selectedIntent.agent_delivery.attempt_count })}</span>
                   </div>

@@ -70,6 +70,27 @@
     "failed": "Failed",
     "unknown": "Unknown"
   },
+  "labels": {
+    "offerActive": "Active",
+    "offerRevoked": "Revoked",
+    "deliveryHuman": "Human handoff",
+    "deliveryAgent": "Agent delivery",
+    "deliveryEither": "Human or agent",
+    "paymentFree": "Free",
+    "paymentAlwaysX402": "Payment required",
+    "paymentQuotaThenX402": "Quota then payment",
+    "requestPending": "Pending request",
+    "requestSubmitted": "Request submitted",
+    "exchangePending": "Pending fulfillment",
+    "exchangeReserved": "Reserved",
+    "exchangeSubmitted": "Submitted",
+    "exchangeRetrieved": "Retrieved",
+    "exchangeRevoked": "Revoked",
+    "exchangeExpired": "Expired",
+    "exchangeDenied": "Denied",
+    "exchangeDispatched": "Dispatched",
+    "exchangeDeliveryFailed": "Delivery failed"
+  },
   "intentDetail": {
     "sectionLabel": "Intent detail",
     "title": "Selected guest request",

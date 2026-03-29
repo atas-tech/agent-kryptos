@@ -70,6 +70,27 @@
     "failed": "Thất bại",
     "unknown": "Không rõ"
   },
+  "labels": {
+    "offerActive": "Đang hoạt động",
+    "offerRevoked": "Đã thu hồi",
+    "deliveryHuman": "Bàn giao cho người",
+    "deliveryAgent": "Giao cho agent",
+    "deliveryEither": "Người hoặc agent",
+    "paymentFree": "Miễn phí",
+    "paymentAlwaysX402": "Cần thanh toán",
+    "paymentQuotaThenX402": "Hết hạn mức thì thanh toán",
+    "requestPending": "Yêu cầu đang chờ",
+    "requestSubmitted": "Yêu cầu đã gửi",
+    "exchangePending": "Đang chờ thực hiện",
+    "exchangeReserved": "Đã giữ chỗ",
+    "exchangeSubmitted": "Đã gửi",
+    "exchangeRetrieved": "Đã truy xuất",
+    "exchangeRevoked": "Đã thu hồi",
+    "exchangeExpired": "Đã hết hạn",
+    "exchangeDenied": "Đã từ chối",
+    "exchangeDispatched": "Đã điều phối",
+    "exchangeDeliveryFailed": "Giao thất bại"
+  },
   "intentDetail": {
     "sectionLabel": "Chi tiết ý định",
     "title": "Yêu cầu khách đã chọn",
