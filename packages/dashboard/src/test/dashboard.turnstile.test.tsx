@@ -78,15 +78,15 @@ describe("dashboard turnstile", () => {
     vi.stubGlobal("fetch", fetchMock);
     renderApp(["/login"]);
 
-    await screen.findByText("Welcome back");
+    await screen.findByLabelText("Email address");
     await userEvent.type(screen.getByLabelText("Email address"), "owner@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "Password123!");
-    await userEvent.click(screen.getByRole("button", { name: /login to portal/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
 
     expect(await screen.findByText("Complete human verification to continue.")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /solve challenge/i }));
-    await userEvent.click(screen.getByRole("button", { name: /login to portal/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
 
     expect(await screen.findByText("Workspace command overview")).toBeInTheDocument();
 
@@ -145,10 +145,10 @@ describe("dashboard turnstile", () => {
     await userEvent.type(screen.getByLabelText("Display name"), "Agent Lab");
     await userEvent.type(screen.getByLabelText("Email address"), "owner@example.com");
     await userEvent.type(screen.getByLabelText("Workspace slug"), "agent-lab");
-    await userEvent.type(screen.getByLabelText("Master password"), "Password123!");
+    await userEvent.type(screen.getByLabelText("Password"), "Password123!");
     await userEvent.click(screen.getByRole("checkbox"));
     await userEvent.click(screen.getByRole("button", { name: /solve challenge/i }));
-    await userEvent.click(screen.getByRole("button", { name: /create my account/i }));
+    await userEvent.click(screen.getByRole("button", { name: /create workspace/i }));
 
     expect(await screen.findByText("Workspace command overview")).toBeInTheDocument();
 

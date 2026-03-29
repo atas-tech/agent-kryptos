@@ -1,52 +1,53 @@
 {
   "hero": {
-    "sectionLabel": "Approval queue",
-    "title": "Approvals inbox",
-    "body": "Pending exchange approvals and guest intent approvals in one queue. Admins and operators can approve or deny; viewers are read-only."
+    "sectionLabel": "Hàng chờ phê duyệt",
+    "title": "Hộp thư phê duyệt",
+    "body": "Các phê duyệt trao đổi đang chờ và yêu cầu khách đều nằm trong một hàng chờ. Quản trị viên và vận hành viên có thể chấp thuận hoặc từ chối; người xem chỉ có quyền đọc."
   },
   "stats": {
-    "pendingApprovals": "Pending approvals",
-    "guestRequests": "Guest requests",
-    "rulesInPlay": "Rules in play",
-    "expiringSoon": "Expiring soon"
+    "pendingApprovals": "Phê duyệt đang chờ",
+    "guestRequests": "Yêu cầu khách",
+    "rulesInPlay": "Quy tắc đang áp dụng",
+    "expiringSoon": "Sắp hết hạn"
   },
   "viewerNote": {
-    "title": "Viewer access is read-only",
-    "body": "You can inspect pending approvals here, but only workspace admins and operators can approve or deny them."
+    "title": "Quyền của người xem chỉ đọc",
+    "body": "Bạn có thể kiểm tra các phê duyệt đang chờ ở đây, nhưng chỉ quản trị viên và vận hành viên của không gian làm việc mới có thể chấp thuận hoặc từ chối."
   },
   "loading": {
-    "eyebrow": "Loading",
-    "title": "Refreshing approvals",
-    "body": "Collecting pending exchange and guest approvals from the workspace."
+    "eyebrow": "Đang tải",
+    "title": "Đang làm mới phê duyệt",
+    "body": "Đang thu thập các phê duyệt trao đổi và phê duyệt khách đang chờ từ không gian làm việc."
   },
   "emptyState": {
-    "title": "Inbox clear",
-    "body": "No currently pending exchange or guest approvals were found."
+    "title": "Hộp thư trống",
+    "body": "Không tìm thấy phê duyệt trao đổi hoặc phê duyệt khách nào đang chờ."
   },
   "card": {
-    "pendingGuestApproval": "Pending guest approval",
-    "pendingAgentApproval": "Pending agent approval",
-    "guestRequester": "Guest requester",
-    "requesterAgent": "Requester agent",
-    "deliveryTarget": "Delivery target",
-    "fulfillerAgent": "Fulfiller agent",
-    "requestedAt": "Requested at",
-    "approvalRef": "Approval ref",
-    "rule": "Rule",
-    "purpose": "Purpose",
-    "expiring": "expiring",
-    "guestAgent": "guest agent",
-    "guestHuman": "guest human",
+    "pendingGuestApproval": "Phê duyệt khách đang chờ",
+    "pendingAgentApproval": "Phê duyệt agent đang chờ",
+    "guestRequester": "Bên yêu cầu khách",
+    "requesterAgent": "Agent yêu cầu",
+    "deliveryTarget": "Đích giao",
+    "fulfillerAgent": "Agent thực hiện",
+    "workspaceHuman": "người vận hành không gian làm việc",
+    "requestedAt": "Yêu cầu lúc",
+    "approvalRef": "Mã phê duyệt",
+    "rule": "Quy tắc",
+    "purpose": "Mục đích",
+    "expiring": "sắp hết hạn",
+    "guestAgent": "agent khách",
+    "guestHuman": "người dùng khách",
     "agent": "agent"
   },
   "actions": {
-    "approve": "Approve",
-    "deny": "Deny",
-    "approved": "Approved {{id}}.",
-    "denied": "Denied {{id}}."
+    "approve": "Chấp thuận",
+    "deny": "Từ chối",
+    "approved": "Đã chấp thuận {{id}}.",
+    "denied": "Đã từ chối {{id}}."
   },
   "errors": {
-    "loadFailed": "Unable to load approvals",
-    "actionFailed": "Unable to update approval"
+    "loadFailed": "Không thể tải danh sách phê duyệt",
+    "actionFailed": "Không thể cập nhật trạng thái phê duyệt"
   }
 }

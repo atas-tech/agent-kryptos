@@ -1,5 +1,6 @@
 import { Check, RefreshCw, ShieldAlert, Undo2, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { apiRequest } from "../api/client.js";
 import { useAuth } from "../auth/useAuth.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
@@ -111,7 +112,7 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
 
 function formatDate(value: string | null): string {
   if (!value) {
-    return "n/a";
+    return "";
   }
 
   return dateFormatter.format(new Date(value));
@@ -168,7 +169,10 @@ type IntentAction =
   | { type: "intent_revoke"; intent: GuestIntentRecord }
   | { type: "intent_retry_agent_delivery"; intent: GuestIntentRecord };
 
-function actionDialogCopy(action: IntentAction): {
+function actionDialogCopy(
+  action: IntentAction,
+  t: (key: string, options?: Record<string, unknown>) => string
+): {
   title: string;
   body: string;
   confirmLabel: string;
@@ -176,49 +180,115 @@ function actionDialogCopy(action: IntentAction): {
 } {
   if (action.type === "offer_revoke") {
     return {
-      title: "Revoke public offer",
-      body: `This disables ${formatOfferLabel(action.offer)} for new guest requests immediately.`,
-      confirmLabel: "Revoke offer",
+      title: t("offers:confirm.revokeOfferTitle"),
+      body: t("offers:confirm.revokeOfferBody", { label: formatOfferLabel(action.offer) }),
+      confirmLabel: t("offers:confirm.revokeOfferLabel"),
       tone: "danger"
     };
   }
 
   if (action.type === "intent_approve") {
     return {
-      title: "Approve guest intent",
-      body: "This makes the pending guest request payable or directly activatable according to the offer policy.",
-      confirmLabel: "Approve intent",
+      title: t("offers:confirm.approveIntentTitle"),
+      body: t("offers:confirm.approveIntentBody"),
+      confirmLabel: t("offers:confirm.approveIntentLabel"),
       tone: "neutral"
     };
   }
 
   if (action.type === "intent_reject") {
     return {
-      title: "Reject guest intent",
-      body: "This permanently denies the current guest request without exposing any secret material.",
-      confirmLabel: "Reject intent",
+      title: t("offers:confirm.rejectIntentTitle"),
+      body: t("offers:confirm.rejectIntentBody"),
+      confirmLabel: t("offers:confirm.rejectIntentLabel"),
       tone: "danger"
     };
   }
 
   if (action.type === "intent_retry_agent_delivery") {
     return {
-      title: "Retry guest agent delivery",
-      body: "This reissues the current pending guest-agent fulfillment path without exposing guest tokens or payload data.",
-      confirmLabel: "Retry delivery",
+      title: t("offers:confirm.retryDeliveryTitle"),
+      body: t("offers:confirm.retryDeliveryBody"),
+      confirmLabel: t("offers:confirm.retryDeliveryLabel"),
       tone: "neutral"
     };
   }
 
   return {
-    title: "Revoke guest intent",
-    body: "This invalidates any active fulfill path for the guest request and prevents later retrieval.",
-    confirmLabel: "Revoke intent",
+    title: t("offers:confirm.revokeIntentTitle"),
+    body: t("offers:confirm.revokeIntentBody"),
+    confirmLabel: t("offers:confirm.revokeIntentLabel"),
     tone: "danger"
   };
 }
 
+function intentStatusLabel(
+  status: GuestIntentRecord["effective_status"],
+  t: (key: string) => string
+): string {
+  switch (status) {
+    case "pending_approval":
+      return t("offers:intents.pendingApproval");
+    case "payment_required":
+      return t("offers:intents.paymentRequired");
+    case "activated":
+      return t("offers:intents.activated");
+    case "expired":
+      return t("offers:intents.expired");
+    case "rejected":
+      return t("offers:intents.rejected");
+    case "revoked":
+      return t("offers:intents.revoked");
+    default:
+      return status;
+  }
+}
+
+function paymentStatusLabel(
+  status: IntentPaymentSummary["status"],
+  t: (key: string) => string
+): string {
+  switch (status) {
+    case "pending":
+      return t("offers:payments.pending");
+    case "verified":
+      return t("offers:payments.verified");
+    case "settled":
+      return t("offers:payments.settled");
+    case "failed":
+      return t("offers:payments.failed");
+    case null:
+      return t("offers:intents.paymentNone");
+    default:
+      return t("offers:payments.unknown");
+  }
+}
+
+function actorTypeLabel(
+  actorType: GuestIntentRecord["actor_type"],
+  t: (key: string) => string
+): string {
+  return actorType === "guest_human" ? t("offers:intents.guestHuman") : t("offers:intents.guestAgent");
+}
+
+function approvalStatusLabel(
+  status: GuestIntentRecord["approval_status"],
+  t: (key: string) => string
+): string {
+  switch (status) {
+    case "pending":
+      return t("offers:intentDetail.approvalPending");
+    case "approved":
+      return t("offers:intentDetail.approvalApproved");
+    case "rejected":
+      return t("offers:intentDetail.approvalRejected");
+    default:
+      return t("offers:intentDetail.notRequired");
+  }
+}
+
 export function PublicOffersPage() {
+  const { t } = useTranslation(["offers", "common"]);
   const { user } = useAuth();
   const [offers, setOffers] = useState<OfferRecord[]>([]);
   const [selectedOfferId, setSelectedOfferId] = useState<string>("all");
@@ -269,7 +339,7 @@ export function PublicOffersPage() {
         setSelectedOfferId("all");
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to load public offers");
+      setError(requestError instanceof Error ? requestError.message : t("offers:errors.loadOffersFailed"));
       setOffers([]);
     } finally {
       setLoadingOffers(false);
@@ -302,7 +372,7 @@ export function PublicOffersPage() {
         setSelectedIntentId(payload.intents[0].id);
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to load guest intents");
+      setError(requestError instanceof Error ? requestError.message : t("offers:errors.loadIntentsFailed"));
       setIntents([]);
       setSelectedIntentId(null);
     } finally {
@@ -317,7 +387,7 @@ export function PublicOffersPage() {
       const payload = await apiRequest<IntentDetailResponse>(`/api/v2/public/intents/admin/${intentId}`);
       setSelectedIntent(payload.intent);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to load guest intent detail");
+      setError(requestError instanceof Error ? requestError.message : t("offers:errors.loadDetailFailed"));
       setSelectedIntent(null);
     } finally {
       setLoadingDetail(false);
@@ -352,7 +422,7 @@ export function PublicOffersPage() {
       }
       setConfirmAction(null);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to update guest access state");
+      setError(requestError instanceof Error ? requestError.message : t("offers:errors.actionFailed"));
     } finally {
       setActionPending(false);
     }
@@ -372,11 +442,11 @@ export function PublicOffersPage() {
               <div className="inline-actions">
                 <button className="ghost-button" onClick={() => setConfirmAction({ type: "intent_reject", intent: selectedIntent })} type="button">
                   <X size={16} />
-                  Reject
+                  {t("offers:actions.reject")}
                 </button>
                 <button className="primary-button" onClick={() => setConfirmAction({ type: "intent_approve", intent: selectedIntent })} type="button">
                   <Check size={16} />
-                  Approve
+                  {t("offers:actions.approve")}
                 </button>
               </div>
             )
@@ -386,12 +456,12 @@ export function PublicOffersPage() {
                   {selectedIntent.agent_delivery?.recoverable ? (
                     <button className="ghost-button" onClick={() => setConfirmAction({ type: "intent_retry_agent_delivery", intent: selectedIntent })} type="button">
                       <RefreshCw size={16} />
-                      Retry delivery
+                      {t("offers:actions.retryDelivery")}
                     </button>
                   ) : null}
                   <button className="ghost-button" onClick={() => setConfirmAction({ type: "intent_revoke", intent: selectedIntent })} type="button">
                     <Undo2 size={16} />
-                    Revoke intent
+                    {t("offers:actions.revokeIntent")}
                   </button>
                 </div>
               )
@@ -399,44 +469,41 @@ export function PublicOffersPage() {
       )
     : null;
 
-  const dialogCopy = confirmAction ? actionDialogCopy(confirmAction) : null;
+  const dialogCopy = confirmAction ? actionDialogCopy(confirmAction, t) : null;
 
   return (
     <section className="page-stack">
       <div className="hero-card hero-card--dashboard">
         <div className="toolbar">
           <div>
-            <div className="section-label">Phase 3C</div>
-            <h2 className="hero-card__title">Public offers and guest requests</h2>
-            <p className="hero-card__body">
-              Inspect public guest-access offers, payment state, approval backlog, and live fulfill handoffs without exposing
-              secret payloads, guest tokens, or raw request links.
-            </p>
+            <div className="section-label">{t("offers:hero.sectionLabel")}</div>
+            <h2 className="hero-card__title">{t("offers:hero.title")}</h2>
+            <p className="hero-card__body">{t("offers:hero.body")}</p>
           </div>
 
           <div className="toolbar__actions">
             <button className="ghost-button" onClick={() => { void loadOffers(); void loadIntents(); }} type="button">
               <RefreshCw size={16} />
-              Refresh
+              {t("offers:actions.refresh")}
             </button>
           </div>
         </div>
 
         <div className="stats-row">
           <article className="metric-panel">
-            <span>Public offers</span>
+            <span>{t("offers:stats.publicOffers")}</span>
             <strong>{offers.length}</strong>
           </article>
           <article className="metric-panel">
-            <span>Pending approvals</span>
+            <span>{t("offers:stats.pendingApprovals")}</span>
             <strong>{pendingApprovals}</strong>
           </article>
           <article className="metric-panel">
-            <span>Activated intents</span>
+            <span>{t("offers:stats.activatedIntents")}</span>
             <strong>{activeIntentCount}</strong>
           </article>
           <article className="metric-panel">
-            <span>Settled payments</span>
+            <span>{t("offers:stats.settledPayments")}</span>
             <strong>{settledPayments}</strong>
           </article>
         </div>
@@ -446,10 +513,8 @@ export function PublicOffersPage() {
         <div className="panel-card approvals-viewer-note">
           <ShieldAlert size={18} />
           <div>
-            <div className="record-title">Viewer access is read-only</div>
-            <div className="panel-card__body">
-              You can inspect public offers and guest-request lifecycle details here, but only admins and operators can make changes.
-            </div>
+            <div className="record-title">{t("offers:viewerNote.title")}</div>
+            <div className="panel-card__body">{t("offers:viewerNote.body")}</div>
           </div>
         </div>
       ) : null}
@@ -460,21 +525,19 @@ export function PublicOffersPage() {
         <div className="panel-card support-column">
           <div className="panel-card__header">
             <div>
-              <div className="section-label">Workspace offers</div>
-              <h3 className="panel-card__title">Offer inventory</h3>
-              <p className="panel-card__body">
-                Filter the guest queue by a specific offer, inspect capacity, and disable abused or obsolete offers.
-              </p>
+              <div className="section-label">{t("offers:offers.sectionLabel")}</div>
+              <h3 className="panel-card__title">{t("offers:offers.title")}</h3>
+              <p className="panel-card__body">{t("offers:offers.body")}</p>
             </div>
 
             <div className="toolbar__filters">
               <select
-                aria-label="Filter guest intents by offer"
+                aria-label={t("offers:offers.filterLabel")}
                 className="dashboard-select"
                 onChange={(event) => setSelectedOfferId(event.target.value)}
                 value={selectedOfferId}
               >
-                <option value="all">All offers</option>
+                <option value="all">{t("offers:offers.allOffers")}</option>
                 {offers.map((offer) => (
                   <option key={offer.id} value={offer.id}>{formatOfferLabel(offer)}</option>
                 ))}
@@ -486,17 +549,17 @@ export function PublicOffersPage() {
             columns={[
               {
                 key: "offer",
-                header: "Offer",
+                header: t("offers:offers.columnOffer"),
                 render: (offer) => (
                   <div>
                     <div className="record-title">{formatOfferLabel(offer)}</div>
-                    <div className="record-meta">{offer.secret_name ?? "no secret pinned"}</div>
+                    <div className="record-meta">{offer.secret_name ?? t("offers:offers.noSecretPinned")}</div>
                   </div>
                 )
               },
               {
                 key: "policy",
-                header: "Policy",
+                header: t("offers:offers.columnPolicy"),
                 render: (offer) => (
                   <div>
                     <div>{offer.delivery_mode}</div>
@@ -506,21 +569,25 @@ export function PublicOffersPage() {
               },
               {
                 key: "status",
-                header: "Status",
+                header: t("offers:offers.columnStatus"),
                 render: (offer) => <StatusBadge tone={toneForOfferStatus(offer.status)}>{offer.status}</StatusBadge>
               },
               {
                 key: "usage",
-                header: "Usage",
+                header: t("offers:offers.columnUsage"),
                 render: (offer) => (
-                  <strong>{offer.max_uses === null ? `${offer.used_count} used` : `${offer.used_count}/${offer.max_uses}`}</strong>
+                  <strong>
+                    {offer.max_uses === null
+                      ? t("offers:offers.usedCount", { used: offer.used_count })
+                      : t("offers:offers.usedOfMax", { used: offer.used_count, max: offer.max_uses })}
+                  </strong>
                 )
               }
             ]}
             emptyState={
               <EmptyState
-                title="No public offers"
-                body="Create guest-facing offers from the operator API to expose them here for support and triage."
+                title={t("offers:offers.emptyTitle")}
+                body={t("offers:offers.emptyBody")}
               />
             }
             loading={loadingOffers}
@@ -533,20 +600,20 @@ export function PublicOffersPage() {
             <div className="support-summary">
               <div className="detail-list">
                 <div className="detail-list__item">
-                  <span className="meta-label">Offer ID</span>
+                  <span className="meta-label">{t("offers:offerDetail.offerId")}</span>
                   <ResourceLabel value={selectedOffer.id} />
                 </div>
                 <div className="detail-list__item">
-                  <span className="meta-label">Expires</span>
-                  <strong>{formatDate(selectedOffer.expires_at)}</strong>
+                  <span className="meta-label">{t("offers:offerDetail.expires")}</span>
+                  <strong>{formatDate(selectedOffer.expires_at) || t("common:notAvailable")}</strong>
                 </div>
                 <div className="detail-list__item">
-                  <span className="meta-label">Price</span>
-                  <strong>{selectedOffer.payment_policy === "free" ? "Free" : centsLabel(selectedOffer.price_usd_cents)}</strong>
+                  <span className="meta-label">{t("offers:offerDetail.price")}</span>
+                  <strong>{selectedOffer.payment_policy === "free" ? t("offers:offerDetail.free") : centsLabel(selectedOffer.price_usd_cents)}</strong>
                 </div>
                 <div className="detail-list__item">
-                  <span className="meta-label">Approval</span>
-                  <strong>{selectedOffer.require_approval ? "Required" : "Direct allow"}</strong>
+                  <span className="meta-label">{t("offers:offerDetail.approval")}</span>
+                  <strong>{selectedOffer.require_approval ? t("offers:offerDetail.required") : t("offers:offerDetail.directAllow")}</strong>
                 </div>
               </div>
 
@@ -554,7 +621,7 @@ export function PublicOffersPage() {
                 <div className="support-actions">
                   <button className="ghost-button" onClick={() => setConfirmAction({ type: "offer_revoke", offer: selectedOffer })} type="button">
                     <Undo2 size={16} />
-                    Revoke offer
+                    {t("offers:offerDetail.revokeOffer")}
                   </button>
                 </div>
               ) : null}
@@ -565,27 +632,25 @@ export function PublicOffersPage() {
         <div className="panel-card support-column">
           <div className="panel-card__header">
             <div>
-              <div className="section-label">Guest queue</div>
-              <h3 className="panel-card__title">Guest intents</h3>
-              <p className="panel-card__body">
-                Review approval state, payment outcome, and request lifecycle without exposing guest token or fulfill-link material.
-              </p>
+              <div className="section-label">{t("offers:intents.sectionLabel")}</div>
+              <h3 className="panel-card__title">{t("offers:intents.title")}</h3>
+              <p className="panel-card__body">{t("offers:intents.body")}</p>
             </div>
 
             <div className="toolbar__filters">
               <select
-                aria-label="Filter guest intents by status"
+                aria-label={t("offers:intents.filterLabel")}
                 className="dashboard-select"
                 onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
                 value={statusFilter}
               >
-                <option value="all">All intent states</option>
-                <option value="pending_approval">Pending approval</option>
-                <option value="payment_required">Payment required</option>
-                <option value="activated">Activated</option>
-                <option value="expired">Expired</option>
-                <option value="rejected">Rejected</option>
-                <option value="revoked">Revoked</option>
+                <option value="all">{t("offers:intents.allStates")}</option>
+                <option value="pending_approval">{t("offers:intents.pendingApproval")}</option>
+                <option value="payment_required">{t("offers:intents.paymentRequired")}</option>
+                <option value="activated">{t("offers:intents.activated")}</option>
+                <option value="expired">{t("offers:intents.expired")}</option>
+                <option value="rejected">{t("offers:intents.rejected")}</option>
+                <option value="revoked">{t("offers:intents.revoked")}</option>
               </select>
             </div>
           </div>
@@ -594,38 +659,46 @@ export function PublicOffersPage() {
             columns={[
               {
                 key: "intent",
-                header: "Requester",
+                header: t("offers:intents.columnRequester"),
                 render: (intent) => (
                   <div>
-                    <div className="record-title">{intent.requester_label || intent.actor_type.replace("guest_", "guest ")}</div>
+                    <div className="record-title">{intent.requester_label || actorTypeLabel(intent.actor_type, t)}</div>
                     <div className="record-meta">{intent.resolved_secret_name}</div>
                   </div>
                 )
               },
               {
                 key: "status",
-                header: "Lifecycle",
-                render: (intent) => <StatusBadge tone={toneForIntentStatus(intent.effective_status)}>{intent.effective_status}</StatusBadge>
+                header: t("offers:intents.columnLifecycle"),
+                render: (intent) => (
+                  <StatusBadge tone={toneForIntentStatus(intent.effective_status)}>
+                    {intentStatusLabel(intent.effective_status, t)}
+                  </StatusBadge>
+                )
               },
               {
                 key: "payment",
-                header: "Payment",
+                header: t("offers:intents.columnPayment"),
                 render: (intent) => (
                   intent.latest_payment
-                    ? <StatusBadge tone={toneForPaymentStatus(intent.latest_payment.status)}>{intent.latest_payment.status ?? "unknown"}</StatusBadge>
-                    : <span className="record-meta">none</span>
+                    ? (
+                        <StatusBadge tone={toneForPaymentStatus(intent.latest_payment.status)}>
+                          {paymentStatusLabel(intent.latest_payment.status, t)}
+                        </StatusBadge>
+                      )
+                    : <span className="record-meta">{t("offers:intents.paymentNone")}</span>
                 )
               },
               {
                 key: "created",
-                header: "Created",
-                render: (intent) => <strong>{formatDate(intent.created_at)}</strong>
+                header: t("offers:intents.columnCreated"),
+                render: (intent) => <strong>{formatDate(intent.created_at) || t("common:notAvailable")}</strong>
               }
             ]}
             emptyState={
               <EmptyState
-                title="No guest intents"
-                body={selectedOffer ? "No guest requests match the selected offer and status filters." : "No guest requests have been created for this workspace yet."}
+                title={t("offers:intents.emptyTitle")}
+                body={selectedOffer ? t("offers:intents.emptyBodyFiltered") : t("offers:intents.emptyBodyDefault")}
               />
             }
             expandedRowKey={selectedIntentId}
@@ -635,12 +708,12 @@ export function PublicOffersPage() {
               <div className="audit-expanded">
                 <div className="detail-list">
                   <div className="detail-list__item">
-                    <span className="meta-label">Purpose</span>
+                    <span className="meta-label">{t("offers:intentDetail.purpose")}</span>
                     <strong>{intent.purpose}</strong>
                   </div>
                   <div className="detail-list__item">
-                    <span className="meta-label">Request state</span>
-                    <strong>{intent.request_state?.status ?? "not issued"}</strong>
+                    <span className="meta-label">{t("offers:intentDetail.requestState")}</span>
+                    <strong>{intent.request_state?.status ?? t("offers:intentDetail.notIssued")}</strong>
                   </div>
                 </div>
               </div>
@@ -654,112 +727,112 @@ export function PublicOffersPage() {
       <div className="panel-card">
         <div className="panel-card__header">
           <div>
-            <div className="section-label">Intent detail</div>
-            <h3 className="panel-card__title">Selected guest request</h3>
-            <p className="panel-card__body">
-              Drill into the current support record. This view intentionally excludes guest tokens, fulfill URLs, and any submitted payload data.
-            </p>
+            <div className="section-label">{t("offers:intentDetail.sectionLabel")}</div>
+            <h3 className="panel-card__title">{t("offers:intentDetail.title")}</h3>
+            <p className="panel-card__body">{t("offers:intentDetail.body")}</p>
           </div>
           {detailAction}
         </div>
 
         {loadingDetail ? (
           <div className="empty-state">
-            <div className="empty-state__eyebrow">Loading</div>
-            <h3>Refreshing guest request detail</h3>
-            <p>Reading the latest offer, payment, and request-state summary.</p>
+            <div className="empty-state__eyebrow">{t("common:loading")}</div>
+            <h3>{t("offers:intentDetail.loadingTitle")}</h3>
+            <p>{t("offers:intentDetail.loadingBody")}</p>
           </div>
         ) : !selectedIntent ? (
           <EmptyState
-            title="No guest request selected"
-            body="Choose a guest intent from the queue to inspect its support detail."
+            title={t("offers:intentDetail.emptyTitle")}
+            body={t("offers:intentDetail.emptyBody")}
           />
         ) : (
           <div className="support-detail-grid">
             <div className="detail-list">
               <div className="detail-list__item">
-                <span className="meta-label">Intent ID</span>
+                <span className="meta-label">{t("offers:intentDetail.intentId")}</span>
                 <ResourceLabel value={selectedIntent.id} />
               </div>
               <div className="detail-list__item">
-                <span className="meta-label">Offer</span>
+                <span className="meta-label">{t("offers:intentDetail.offer")}</span>
                 <strong>{selectedIntent.offer_label || selectedIntent.resolved_secret_name}</strong>
               </div>
               <div className="detail-list__item">
-                <span className="meta-label">Lifecycle</span>
-                <strong>{selectedIntent.effective_status}</strong>
+                <span className="meta-label">{t("offers:intentDetail.lifecycle")}</span>
+                <strong>{intentStatusLabel(selectedIntent.effective_status, t)}</strong>
               </div>
               <div className="detail-list__item">
-                <span className="meta-label">Approval</span>
-                <strong>{selectedIntent.approval_status ?? "not required"}</strong>
+                <span className="meta-label">{t("offers:intentDetail.approval")}</span>
+                <strong>{approvalStatusLabel(selectedIntent.approval_status, t)}</strong>
               </div>
               <div className="detail-list__item">
-                <span className="meta-label">Delivery</span>
+                <span className="meta-label">{t("offers:intentDetail.delivery")}</span>
                 <strong>{selectedIntent.delivery_mode}</strong>
               </div>
               <div className="detail-list__item">
-                <span className="meta-label">Price</span>
-                <strong>{selectedIntent.payment_policy === "free" ? "Free" : centsLabel(selectedIntent.price_usd_cents)}</strong>
+                <span className="meta-label">{t("offers:intentDetail.price")}</span>
+                <strong>{selectedIntent.payment_policy === "free" ? t("offers:offerDetail.free") : centsLabel(selectedIntent.price_usd_cents)}</strong>
               </div>
               <div className="detail-list__item">
-                <span className="meta-label">Request state</span>
-                <strong>{selectedIntent.request_state?.status ?? "not issued"}</strong>
+                <span className="meta-label">{t("offers:intentDetail.requestState")}</span>
+                <strong>{selectedIntent.request_state?.status ?? t("offers:intentDetail.notIssued")}</strong>
               </div>
               <div className="detail-list__item">
-                <span className="meta-label">Request ID</span>
-                {selectedIntent.request_id ? <ResourceLabel value={selectedIntent.request_id} /> : <strong>n/a</strong>}
+                <span className="meta-label">{t("offers:intentDetail.requestId")}</span>
+                {selectedIntent.request_id ? <ResourceLabel value={selectedIntent.request_id} /> : <strong>{t("common:notAvailable")}</strong>}
               </div>
               <div className="detail-list__item">
-                <span className="meta-label">Exchange state</span>
-                <strong>{selectedIntent.exchange_state?.status ?? "n/a"}</strong>
+                <span className="meta-label">{t("offers:intentDetail.exchangeState")}</span>
+                <strong>{selectedIntent.exchange_state?.status ?? t("common:notAvailable")}</strong>
               </div>
               <div className="detail-list__item">
-                <span className="meta-label">Exchange ID</span>
-                {selectedIntent.exchange_id ? <ResourceLabel value={selectedIntent.exchange_id} /> : <strong>n/a</strong>}
+                <span className="meta-label">{t("offers:intentDetail.exchangeId")}</span>
+                {selectedIntent.exchange_id ? <ResourceLabel value={selectedIntent.exchange_id} /> : <strong>{t("common:notAvailable")}</strong>}
               </div>
             </div>
 
             <div className="support-detail-stack">
               <div className="detail-list__item">
-                <span className="meta-label">Purpose</span>
+                <span className="meta-label">{t("offers:intentDetail.purpose")}</span>
                 <strong>{selectedIntent.purpose}</strong>
               </div>
               <div className="detail-list__item">
-                <span className="meta-label">Latest payment</span>
+                <span className="meta-label">{t("offers:intentDetail.latestPayment")}</span>
                 <div className="support-payment-row">
                   <StatusBadge tone={toneForPaymentStatus(selectedIntent.latest_payment?.status ?? null)}>
-                    {selectedIntent.latest_payment?.status ?? "none"}
+                    {paymentStatusLabel(selectedIntent.latest_payment?.status ?? null, t)}
                   </StatusBadge>
                   {selectedIntent.latest_payment?.payment_id ? <ResourceLabel value={selectedIntent.latest_payment.payment_id} /> : null}
                 </div>
                 <div className="record-meta">
-                  {selectedIntent.latest_payment?.tx_hash ? `tx ${selectedIntent.latest_payment.tx_hash}` : "No payment settlement recorded"}
+                  {selectedIntent.latest_payment?.tx_hash
+                    ? t("offers:intentDetail.txHash", { hash: selectedIntent.latest_payment.tx_hash })
+                    : t("offers:intentDetail.noPayment")}
                 </div>
               </div>
               <div className="detail-list__item">
-                <span className="meta-label">Timestamps</span>
+                <span className="meta-label">{t("offers:intentDetail.timestamps")}</span>
                 <div className="support-timestamp-list">
-                  <div>Created {formatDate(selectedIntent.created_at)}</div>
-                  <div>Activated {formatDate(selectedIntent.activated_at)}</div>
-                  <div>Expires {formatDate(selectedIntent.expires_at)}</div>
-                  <div>Updated {formatDate(selectedIntent.updated_at)}</div>
+                  <div>{t("offers:intentDetail.created", { date: formatDate(selectedIntent.created_at) || t("common:notAvailable") })}</div>
+                  <div>{t("offers:intentDetail.activated", { date: formatDate(selectedIntent.activated_at) || t("common:notAvailable") })}</div>
+                  <div>{t("offers:intentDetail.expires", { date: formatDate(selectedIntent.expires_at) || t("common:notAvailable") })}</div>
+                  <div>{t("offers:intentDetail.updated", { date: formatDate(selectedIntent.updated_at) || t("common:notAvailable") })}</div>
                 </div>
               </div>
               {selectedIntent.agent_delivery ? (
                 <div className="detail-list__item">
-                  <span className="meta-label">Agent delivery</span>
+                  <span className="meta-label">{t("offers:intentDetail.agentDelivery")}</span>
                   <div className="support-payment-row">
                     <StatusBadge tone={selectedIntent.agent_delivery.recoverable ? "warning" : "neutral"}>
-                      {selectedIntent.agent_delivery.state ?? "n/a"}
+                      {selectedIntent.agent_delivery.state ?? t("common:notAvailable")}
                     </StatusBadge>
-                    <span className="record-meta">attempt {selectedIntent.agent_delivery.attempt_count}</span>
+                    <span className="record-meta">{t("offers:intentDetail.attempt", { count: selectedIntent.agent_delivery.attempt_count })}</span>
                   </div>
                   <div className="record-meta">
                     {selectedIntent.agent_delivery.failure_reason
-                      ? `Failure: ${selectedIntent.agent_delivery.failure_reason}`
+                      ? t("offers:intentDetail.failureReason", { reason: selectedIntent.agent_delivery.failure_reason })
                       : selectedIntent.exchange_state?.fulfilled_by
-                        ? `Fulfilled by ${selectedIntent.exchange_state.fulfilled_by}`
-                        : "No guest-agent delivery failure recorded"}
+                        ? t("offers:intentDetail.fulfilledBy", { agent: selectedIntent.exchange_state.fulfilled_by })
+                        : t("offers:intentDetail.noDeliveryFailure")}
                   </div>
                 </div>
               ) : null}

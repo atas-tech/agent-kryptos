@@ -1,5 +1,6 @@
 import { ArrowRight, Mail, ShieldAlert } from "lucide-react";
 import { useCallback, useState, type FormEvent } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { apiBaseUrl } from "../api/client.js";
 import { AuthShell } from "../components/AuthShell.js";
@@ -13,6 +14,7 @@ async function readError(response: Response, fallback: string): Promise<Error> {
 }
 
 export function ForgotPasswordPage() {
+  const { t } = useTranslation(["auth", "common"]);
   const [email, setEmail] = useState("");
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -21,13 +23,13 @@ export function ForgotPasswordPage() {
   const requiresTurnstile = turnstileEnabled();
   const handleTurnstileChange = useCallback((token: string | null) => {
     setTurnstileToken(token);
-    setError((current) => (current === "Complete human verification to continue." ? null : current));
-  }, []);
+    setError((current) => (current === t("auth:forgotPassword.errorTurnstile") ? null : current));
+  }, [t]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (requiresTurnstile && !turnstileToken) {
-      setError("Complete human verification to continue.");
+      setError(t("auth:forgotPassword.errorTurnstile"));
       return;
     }
 
@@ -48,12 +50,12 @@ export function ForgotPasswordPage() {
       });
 
       if (!response.ok) {
-        throw await readError(response, "Password recovery failed");
+        throw await readError(response, t("auth:forgotPassword.errorDefault"));
       }
 
       setSubmitted(true);
     } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : "Password recovery failed");
+      setError(submissionError instanceof Error ? submissionError.message : t("auth:forgotPassword.errorDefault"));
     } finally {
       setPending(false);
     }
@@ -61,23 +63,21 @@ export function ForgotPasswordPage() {
 
   return (
     <AuthShell
-      eyebrow="Recovery path"
-      heroBody="Request a time-limited reset link. The response stays generic so account existence is never exposed at the edge."
+      eyebrow={t("auth:forgotPassword.sectionLabel")}
+      heroBody={t("auth:forgotPassword.heroBody")}
       heroTitle={
-        <>
-          Recover access <span>without operator handoffs</span>.
-        </>
+        <Trans i18nKey="auth:forgotPassword.heroTitle" />
       }
       metrics={[
-        { label: "Reset token", value: "single-use" },
-        { label: "Delivery path", value: "email" },
-        { label: "Abuse gate", value: "shielded" }
+        { label: t("auth:forgotPassword.metricToken"), value: t("auth:forgotPassword.metricTokenValue") },
+        { label: t("auth:forgotPassword.metricDelivery"), value: t("auth:forgotPassword.metricDeliveryValue") },
+        { label: t("auth:forgotPassword.metricGate"), value: t("auth:forgotPassword.metricGateValue") }
       ]}
-      subtitle="Enter your workspace email address and we will issue reset instructions if the account is eligible."
-      title="Password recovery"
+      subtitle={t("auth:forgotPassword.subtitle")}
+      title={t("auth:forgotPassword.title")}
       footer={
         <p>
-          Return to <Link to="/login">login</Link>
+          <Trans i18nKey="auth:forgotPassword.backToLogin" components={[<Link key="login" to="/login" />]} />
         </p>
       }
     >
@@ -86,8 +86,8 @@ export function ForgotPasswordPage() {
           <div className="turnstile-placeholder turnstile-placeholder--info">
             <ShieldAlert size={18} />
             <div>
-              <strong>Check your inbox</strong>
-              <span>If the account exists, password reset instructions have been issued.</span>
+              <strong>{t("auth:forgotPassword.successTitle")}</strong>
+              <span>{t("auth:forgotPassword.successBody")}</span>
             </div>
           </div>
         ) : null}
@@ -95,16 +95,16 @@ export function ForgotPasswordPage() {
         <FormField
           autoComplete="email"
           icon={<Mail size={18} />}
-          label="Email address"
+          label={t("auth:forgotPassword.emailLabel")}
           onChange={(event) => setEmail(event.target.value)}
-          placeholder="name@company.com"
+          placeholder={t("auth:forgotPassword.emailPlaceholder")}
           required
           type="email"
           value={email}
         />
         <TurnstileWidget onTokenChange={handleTurnstileChange} />
         <button className="primary-button primary-button--full" disabled={pending} type="submit">
-          {pending ? "Issuing reset..." : "Send reset link"}
+          {pending ? t("auth:forgotPassword.submitting") : t("auth:forgotPassword.submitButton")}
           <ArrowRight size={16} />
         </button>
       </form>

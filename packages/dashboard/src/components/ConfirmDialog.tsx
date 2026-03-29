@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 interface ConfirmDialogProps {
   open: boolean;
   title: string;
@@ -19,20 +21,22 @@ export function ConfirmDialog({
   onConfirm,
   onCancel
 }: ConfirmDialogProps) {
+  const { t } = useTranslation("common");
+
   if (!open) {
     return null;
   }
 
   return (
     <div className="modal-shell" role="dialog" aria-modal="true" aria-label={title}>
-      <button aria-label="Close dialog" className="modal-shell__backdrop" onClick={onCancel} type="button" />
+      <button aria-label={t("closeDialog")} className="modal-shell__backdrop" onClick={onCancel} type="button" />
       <div className="modal-card">
-        <div className="section-label">Confirmation required</div>
+        <div className="section-label">{t("confirmationRequired")}</div>
         <h2 className="modal-card__title">{title}</h2>
         <p className="modal-card__body">{body}</p>
         <div className="modal-card__actions">
           <button className="ghost-button" disabled={pending} onClick={onCancel} type="button">
-            Cancel
+            {t("cancel")}
           </button>
           <button
             className={`primary-button ${tone === "danger" ? "primary-button--danger" : ""}`}
@@ -41,7 +45,7 @@ export function ConfirmDialog({
             type="button"
             data-testid="confirm-dialog-btn"
           >
-            {pending ? "Working..." : confirmLabel}
+            {pending ? t("working") : confirmLabel}
           </button>
         </div>
       </div>

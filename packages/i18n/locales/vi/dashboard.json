@@ -2,30 +2,94 @@
   "hero": {
     "sectionLabel": "Tổng quan không gian làm việc",
     "title": "Bảng điều khiển",
-    "loadingTitle": "Đang tải tổng quan",
-    "loadingBody": "Đang lấy dữ liệu hạn mức, thanh toán và thành viên.",
+    "loadingTitle": "Đang tải tóm tắt bảng điều khiển",
+    "loadingBody": "Đang đọc hạn mức không gian làm việc, trạng thái thanh toán và số lượng vận hành viên.",
     "errorTitle": "Không thể tải dữ liệu không gian làm việc"
   },
+  "verification": {
+    "sentTitle": "Đã gửi email xác minh",
+    "sentBody": "Vui lòng kiểm tra hộp thư để lấy liên kết mới.",
+    "loggedTitle": "Đã tạo liên kết xác minh cục bộ",
+    "loggedBody": "Kiểm tra đầu ra máy chủ để lấy liên kết xác minh trong môi trường cục bộ này."
+  },
+  "summary": {
+    "sectionLabel": "Tóm tắt không gian làm việc",
+    "title": "Tổng quan điều hành không gian làm việc",
+    "body": "Theo dõi tư thế truy cập của <strong>{{workspace}}</strong> với hạn mức trực tiếp, thanh toán và số lượng vận hành viên từ control plane lưu trữ.",
+    "yourWorkspace": "không gian làm việc của bạn",
+    "workspaceTier": "gói không gian làm việc",
+    "activeRole": "vai trò hiện tại",
+    "workspaceStatus": "trạng thái không gian làm việc",
+    "tiers": {
+      "free": "miễn phí",
+      "standard": "chuẩn"
+    },
+    "roles": {
+      "admin": "quản trị viên",
+      "operator": "vận hành viên",
+      "viewer": "người xem"
+    }
+  },
+  "cards": {
+    "subscription": {
+      "title": "Đăng ký",
+      "none": "không có",
+      "connected": "Thanh toán định kỳ được quản lý bởi {{provider}}.",
+      "notConnected": "Chưa gắn nhà cung cấp thanh toán định kỳ."
+    },
+    "agents": {
+      "title": "Agent",
+      "copy": "Đã dùng {{used}} trên {{limit}} chỗ agent.",
+      "loading": "Đang tải hạn mức agent."
+    },
+    "members": {
+      "title": "Thành viên",
+      "copy": "Đã dùng {{used}} trên {{limit}} chỗ thành viên.",
+      "loading": "Đang tải hạn mức thành viên."
+    },
+    "secretRequests": {
+      "title": "Yêu cầu bí mật",
+      "copy": "Hạn mức hàng ngày được đặt lại lúc {{date}}.",
+      "loading": "Đang tải hạn mức hàng ngày."
+    },
+    "exchange": {
+      "title": "Trao đổi A2A",
+      "enabled": "Đã bật",
+      "locked": "Đã khóa",
+      "available": "Có thể tạo yêu cầu trao đổi trên gói không gian làm việc này.",
+      "unavailable": "Nâng cấp thanh toán trước khi mở khóa trao đổi giữa các agent."
+    },
+    "provider": {
+      "title": "Nhà cung cấp",
+      "none": "không có",
+      "connected": "Danh tính thanh toán của không gian làm việc đã được kết nối và sẵn sàng cho cổng thanh toán.",
+      "notConnected": "Chưa có cổng khách hàng cho đến khi tạo gói đăng ký đầu tiên."
+    }
+  },
   "quota": {
-    "sectionLabel": "Sử dụng",
-    "title": "Mức sử dụng hiện tại",
-    "body": "Mức sử dụng theo giới hạn hàng ngày và số lượng ghế.",
+    "sectionLabel": "Sử dụng hạn mức",
+    "title": "Giới hạn hàng ngày và ghế",
+    "body": "Các bộ đếm này điều khiển hàng rào gói miễn phí lưu trữ và đường nâng cấp.",
+    "tierBadge": "gói {{tier}}",
+    "exchangeEnabled": "đã bật trao đổi",
+    "exchangeLocked": "đã khóa trao đổi",
     "secretRequests": "Yêu cầu bí mật",
+    "secretRequestsHelper": "Lưu lượng yêu cầu bí mật của agent lưu trữ trong ngày UTC hiện tại.",
     "agents": "Agent",
+    "agentsHelper": "Số agent đã ghi danh đang hoạt động được phép cho gói này.",
     "members": "Thành viên",
-    "resetAt": "Đặt lại {{date}}.",
-    "activeAgentsHelper": "Agent đang hoạt động trong không gian làm việc.",
-    "activeMembersHelper": "Quản trị viên, vận hành viên và người xem đang hoạt động."
+    "membersHelper": "Vận hành viên và người xem đang hoạt động trong không gian làm việc."
   },
   "billing": {
-    "sectionLabel": "Gói đăng ký",
-    "title": "Thanh toán",
-    "body": "Trạng thái gói đăng ký và thông tin nhà cung cấp thanh toán.",
+    "sectionLabel": "Tư thế thanh toán",
+    "title": "Ảnh chụp gói đăng ký định kỳ",
+    "body": "Bề mặt này chỉ theo dõi nhà cung cấp gói đăng ký của không gian làm việc. Mức dùng x402 được tính riêng.",
     "provider": "Nhà cung cấp",
     "notConnected": "Chưa kết nối",
-    "customerRef": "Mã khách hàng",
-    "subscriptionRef": "Mã đăng ký",
+    "customerReference": "Mã khách hàng",
+    "subscriptionStatus": "Trạng thái gói đăng ký",
     "pendingCheckout": "Đang chờ thanh toán",
-    "status": "Trạng thái"
+    "none": "không có",
+    "refresh": "Làm mới tóm tắt"
   }
 }

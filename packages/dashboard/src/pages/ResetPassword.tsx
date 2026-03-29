@@ -1,5 +1,6 @@
 import { ArrowRight, Lock } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiBaseUrl } from "../api/client.js";
 import { AuthShell } from "../components/AuthShell.js";
@@ -11,6 +12,7 @@ async function readError(response: Response, fallback: string): Promise<Error> {
 }
 
 export function ResetPasswordPage() {
+  const { t } = useTranslation(["auth", "common"]);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = useMemo(() => searchParams.get("token")?.trim() ?? "", [searchParams]);
@@ -22,12 +24,12 @@ export function ResetPasswordPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (!token) {
-      setError("Password reset token is missing.");
+      setError(t("auth:resetPassword.errorMissingToken"));
       return;
     }
 
     if (nextPassword !== confirmPassword) {
-      setError("The new password confirmation does not match.");
+      setError(t("auth:resetPassword.errorMismatch"));
       return;
     }
 
@@ -48,17 +50,17 @@ export function ResetPasswordPage() {
       });
 
       if (!response.ok) {
-        throw await readError(response, "Password reset failed");
+        throw await readError(response, t("auth:resetPassword.errorDefault"));
       }
 
       navigate("/login", {
         replace: true,
         state: {
-          notice: "Password reset complete. Sign in with your new password."
+          notice: t("auth:login.noticePasswordReset")
         }
       });
     } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : "Password reset failed");
+      setError(submissionError instanceof Error ? submissionError.message : t("auth:resetPassword.errorDefault"));
     } finally {
       setPending(false);
     }
@@ -66,23 +68,21 @@ export function ResetPasswordPage() {
 
   return (
     <AuthShell
-      eyebrow="Reset access"
-      heroBody="Apply a new password to invalidate the issued recovery token and rotate any active sessions."
+      eyebrow={t("auth:resetPassword.sectionLabel")}
+      heroBody={t("auth:resetPassword.heroBody")}
       heroTitle={
-        <>
-          Set a fresh <span>workspace password</span>.
-        </>
+        <Trans i18nKey="auth:resetPassword.heroTitle" components={[<span key="emphasis" />]} />
       }
       metrics={[
-        { label: "Token policy", value: "single-use" },
-        { label: "Session impact", value: "revoked" },
-        { label: "Password policy", value: "8+ chars" }
+        { label: t("auth:resetPassword.metricTokenPolicy"), value: t("auth:resetPassword.metricTokenPolicyValue") },
+        { label: t("auth:resetPassword.metricSessionImpact"), value: t("auth:resetPassword.metricSessionImpactValue") },
+        { label: t("auth:resetPassword.metricPasswordPolicy"), value: t("auth:resetPassword.metricPasswordPolicyValue") }
       ]}
-      subtitle="Use the recovery link from your email to complete a password reset."
-      title="Reset password"
+      subtitle={t("auth:resetPassword.subtitle")}
+      title={t("auth:resetPassword.title")}
       footer={
         <p>
-          Back to <Link to="/login">login</Link>
+          <Trans i18nKey="auth:resetPassword.backToLogin" components={[<Link key="login" to="/login" />]} />
         </p>
       }
     >
@@ -91,7 +91,7 @@ export function ResetPasswordPage() {
         <FormField
           autoComplete="new-password"
           icon={<Lock size={18} />}
-          label="New password"
+          label={t("auth:resetPassword.newPasswordLabel")}
           onChange={(event) => setNextPassword(event.target.value)}
           required
           type="password"
@@ -100,14 +100,14 @@ export function ResetPasswordPage() {
         <FormField
           autoComplete="new-password"
           icon={<Lock size={18} />}
-          label="Confirm new password"
+          label={t("auth:resetPassword.confirmPasswordLabel")}
           onChange={(event) => setConfirmPassword(event.target.value)}
           required
           type="password"
           value={confirmPassword}
         />
         <button className="primary-button primary-button--full" disabled={pending} type="submit">
-          {pending ? "Resetting..." : "Apply new password"}
+          {pending ? t("auth:resetPassword.submitting") : t("auth:resetPassword.submitButton")}
           <ArrowRight size={16} />
         </button>
       </form>

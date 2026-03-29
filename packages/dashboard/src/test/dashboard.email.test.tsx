@@ -74,7 +74,7 @@ describe("dashboard email flows", () => {
     await userEvent.type(screen.getByLabelText("Confirm new password"), "NewPassword123!");
     await userEvent.click(screen.getByRole("button", { name: /apply new password/i }));
 
-    expect(await screen.findByText("Welcome back")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Email address")).toBeInTheDocument();
     expect(await screen.findByText("Password reset complete. Sign in with your new password.")).toBeInTheDocument();
   });
 
@@ -177,7 +177,7 @@ describe("dashboard email flows", () => {
     renderApp(["/"]);
 
     await screen.findByText("Workspace command overview");
-    await userEvent.click(screen.getByRole("button", { name: /resend verification email/i }));
+    await userEvent.click(screen.getByRole("button", { name: /resend verification/i }));
 
     expect(await screen.findByText("Verification link issued locally")).toBeInTheDocument();
     expect(await screen.findByText("Check the server output for the verification link in this local environment.")).toBeInTheDocument();

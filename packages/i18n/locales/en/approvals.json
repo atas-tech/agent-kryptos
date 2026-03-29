@@ -30,6 +30,7 @@
     "requesterAgent": "Requester agent",
     "deliveryTarget": "Delivery target",
     "fulfillerAgent": "Fulfiller agent",
+    "workspaceHuman": "workspace human",
     "requestedAt": "Requested at",
     "approvalRef": "Approval ref",
     "rule": "Rule",

@@ -2,30 +2,94 @@
   "hero": {
     "sectionLabel": "Workspace overview",
     "title": "Dashboard",
-    "loadingTitle": "Loading workspace overview",
-    "loadingBody": "Fetching quotas, billing, and membership data.",
+    "loadingTitle": "Loading dashboard summary",
+    "loadingBody": "Reading workspace quotas, billing status, and operator counts.",
     "errorTitle": "Unable to load workspace data"
   },
+  "verification": {
+    "sentTitle": "Verification email sent",
+    "sentBody": "Please check your inbox for the new link.",
+    "loggedTitle": "Verification link issued locally",
+    "loggedBody": "Check the server output for the verification link in this local environment."
+  },
+  "summary": {
+    "sectionLabel": "Workspace summary",
+    "title": "Workspace command overview",
+    "body": "Monitor access posture for <strong>{{workspace}}</strong> with live quota, billing, and operator counts sourced from the hosted control plane.",
+    "yourWorkspace": "your workspace",
+    "workspaceTier": "workspace tier",
+    "activeRole": "active role",
+    "workspaceStatus": "workspace status",
+    "tiers": {
+      "free": "free",
+      "standard": "standard"
+    },
+    "roles": {
+      "admin": "admin",
+      "operator": "operator",
+      "viewer": "viewer"
+    }
+  },
+  "cards": {
+    "subscription": {
+      "title": "Subscription",
+      "none": "none",
+      "connected": "Recurring billing managed by {{provider}}.",
+      "notConnected": "No recurring billing provider is attached yet."
+    },
+    "agents": {
+      "title": "Agents",
+      "copy": "{{used}} of {{limit}} agent slots currently used.",
+      "loading": "Loading agent quota."
+    },
+    "members": {
+      "title": "Members",
+      "copy": "{{used}} of {{limit}} member slots currently used.",
+      "loading": "Loading member quota."
+    },
+    "secretRequests": {
+      "title": "Secret requests",
+      "copy": "Daily quota resets at {{date}}.",
+      "loading": "Loading daily quota."
+    },
+    "exchange": {
+      "title": "A2A exchange",
+      "enabled": "Enabled",
+      "locked": "Locked",
+      "available": "Exchange request creation is available on this workspace tier.",
+      "unavailable": "Upgrade billing before agent-to-agent exchange is unlocked."
+    },
+    "provider": {
+      "title": "Provider",
+      "none": "none",
+      "connected": "Workspace billing identity is connected and ready for portal actions.",
+      "notConnected": "No customer portal is available until the first subscription is created."
+    }
+  },
   "quota": {
-    "sectionLabel": "Usage",
-    "title": "Current usage",
-    "body": "Current usage across daily limits and seat allowances.",
+    "sectionLabel": "Quota usage",
+    "title": "Daily and seat limits",
+    "body": "These counters drive the hosted free-tier guardrails and upgrade path.",
+    "tierBadge": "{{tier}} tier",
+    "exchangeEnabled": "exchange enabled",
+    "exchangeLocked": "exchange locked",
     "secretRequests": "Secret requests",
+    "secretRequestsHelper": "Hosted agent secret-request volume for the current UTC day.",
     "agents": "Agents",
+    "agentsHelper": "Active enrolled agents allowed for this workspace tier.",
     "members": "Members",
-    "resetAt": "Resets {{date}}.",
-    "activeAgentsHelper": "Active enrolled agents for this workspace.",
-    "activeMembersHelper": "Active admins, operators, and viewers."
+    "membersHelper": "Active human operators and viewers in the workspace."
   },
   "billing": {
-    "sectionLabel": "Subscription",
-    "title": "Billing",
-    "body": "Current subscription status and billing provider details.",
+    "sectionLabel": "Billing posture",
+    "title": "Recurring subscription snapshot",
+    "body": "This surface tracks the workspace subscription provider only. x402 usage lands separately.",
     "provider": "Provider",
     "notConnected": "Not connected",
-    "customerRef": "Customer reference",
-    "subscriptionRef": "Subscription reference",
+    "customerReference": "Customer reference",
+    "subscriptionStatus": "Subscription status",
     "pendingCheckout": "Pending checkout",
-    "status": "Status"
+    "none": "none",
+    "refresh": "Refresh summary"
   }
 }

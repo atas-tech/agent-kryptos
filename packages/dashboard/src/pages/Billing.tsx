@@ -1,5 +1,6 @@
 import { BadgeDollarSign, Coins, RefreshCcw, Wallet } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import {
   createBillingCheckoutSession,
   createBillingPortalSession,
@@ -36,11 +37,7 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
 });
 
 function formatDate(value: string | null): string {
-  if (!value) {
-    return "Pending";
-  }
-
-  return dateFormatter.format(new Date(value));
+  return value ? dateFormatter.format(new Date(value)) : "";
 }
 
 function formatUsdCents(value: number): string {
@@ -48,6 +45,7 @@ function formatUsdCents(value: number): string {
 }
 
 export function BillingPage() {
+  const { t } = useTranslation(["billing", "common"]);
   const { workspace, setWorkspaceSummary } = useAuth();
   const { summary, loading, error, refresh } = useDashboardSummary();
   const [checkoutPending, setCheckoutPending] = useState(false);
@@ -105,7 +103,7 @@ export function BillingPage() {
       setAllowances(allowancePayload.allowances);
       setTransactions(transactionPayload.transactions);
     } catch (requestError) {
-      setActionError(requestError instanceof Error ? requestError.message : "Unable to load x402 data");
+      setActionError(requestError instanceof Error ? requestError.message : t("billing:errors.x402LoadFailed"));
     } finally {
       setX402Loading(false);
     }
@@ -119,7 +117,7 @@ export function BillingPage() {
       const payload = await createBillingCheckoutSession();
       window.location.assign(payload.checkout_url);
     } catch (requestError) {
-      setActionError(requestError instanceof Error ? requestError.message : "Unable to start checkout");
+      setActionError(requestError instanceof Error ? requestError.message : t("billing:errors.checkoutFailed"));
     } finally {
       setCheckoutPending(false);
     }
@@ -133,7 +131,7 @@ export function BillingPage() {
       const payload = await createBillingPortalSession();
       window.location.assign(payload.portal_url);
     } catch (requestError) {
-      setActionError(requestError instanceof Error ? requestError.message : "Unable to open billing portal");
+      setActionError(requestError instanceof Error ? requestError.message : t("billing:errors.portalFailed"));
     } finally {
       setPortalPending(false);
     }
@@ -147,7 +145,7 @@ export function BillingPage() {
     try {
       const parsedBudget = Number.parseInt(budgetCents, 10);
       if (!budgetAgentId || !Number.isFinite(parsedBudget) || parsedBudget < 0) {
-        throw new Error("Select an agent and enter a non-negative budget in cents.");
+        throw new Error(t("billing:x402.errorBudgetInput"));
       }
 
       await upsertBillingAllowance({
@@ -156,7 +154,7 @@ export function BillingPage() {
       });
       await loadX402Data();
     } catch (requestError) {
-      setActionError(requestError instanceof Error ? requestError.message : "Unable to save x402 allowance");
+      setActionError(requestError instanceof Error ? requestError.message : t("billing:errors.allowanceSaveFailed"));
     } finally {
       setBudgetPending(false);
     }
@@ -168,27 +166,24 @@ export function BillingPage() {
     <section className="page-stack">
       <div className="hero-card hero-card--dashboard">
         <div>
-          <div className="section-label">Billing operations</div>
-          <h2 className="hero-card__title">Billing and quota controls</h2>
-          <p className="hero-card__body">
-            Manage the recurring workspace subscription here alongside the first x402 controls for agent-paid exchange
-            overages.
-          </p>
+          <div className="section-label">{t("billing:hero.sectionLabel")}</div>
+          <h2 className="hero-card__title">{t("billing:hero.title")}</h2>
+          <p className="hero-card__body">{t("billing:hero.body")}</p>
         </div>
         <div className="hero-card__actions">
           <button className="ghost-button" disabled={loading || x402Loading} onClick={() => { void refresh(); void loadX402Data(); }} type="button">
             <RefreshCcw size={16} />
-            Refresh
+            {t("billing:actions.refresh")}
           </button>
           {isStandard ? (
             <button className="primary-button" disabled={portalPending || loading} onClick={() => void handlePortal()} type="button">
               <BadgeDollarSign size={16} />
-              {portalPending ? "Opening portal..." : "Manage subscription"}
+              {portalPending ? t("billing:actions.openingPortal") : t("billing:actions.manageSubscription")}
             </button>
           ) : (
             <button className="primary-button" disabled={checkoutPending || loading} onClick={() => void handleCheckout()} type="button">
               <BadgeDollarSign size={16} />
-              {checkoutPending ? "Starting checkout..." : "Upgrade to Standard"}
+              {checkoutPending ? t("billing:actions.startingCheckout") : t("billing:actions.upgrade")}
             </button>
           )}
         </div>
@@ -201,9 +196,9 @@ export function BillingPage() {
         <div className="panel-card">
           <div className="panel-card__header">
             <div>
-              <div className="section-label">Recurring billing</div>
-              <h3 className="panel-card__title">Loading billing overview</h3>
-              <p className="panel-card__body">Reading workspace plan, customer reference, and daily usage.</p>
+              <div className="section-label">{t("billing:loading.sectionLabel")}</div>
+              <h3 className="panel-card__title">{t("billing:loading.title")}</h3>
+              <p className="panel-card__body">{t("billing:loading.body")}</p>
             </div>
           </div>
         </div>
@@ -214,9 +209,9 @@ export function BillingPage() {
           <div className="panel-card">
             <div className="panel-card__header">
               <div>
-                <div className="section-label">Subscription</div>
-                <h3 className="panel-card__title">Workspace plan</h3>
-                <p className="panel-card__body">Recurring subscription billing stays provider-specific and separate from x402 request payments.</p>
+                <div className="section-label">{t("billing:subscription.sectionLabel")}</div>
+                <h3 className="panel-card__title">{t("billing:subscription.title")}</h3>
+                <p className="panel-card__body">{t("billing:subscription.body")}</p>
               </div>
               <div className="inline-actions">
                 <StatusBadge tone={isStandard ? "success" : "warning"}>
@@ -232,24 +227,24 @@ export function BillingPage() {
 
             <div className="billing-summary-grid">
               <article className="metric-panel">
-                <span>Provider</span>
-                <strong>{summary.billing.billing_provider ?? "Not connected"}</strong>
+                <span>{t("billing:subscription.provider")}</span>
+                <strong>{summary.billing.billing_provider ?? t("billing:subscription.notConnected")}</strong>
               </article>
               <article className="metric-panel">
-                <span>Customer reference</span>
-                <strong>{summary.billing.provider_customer_id ?? "Pending checkout"}</strong>
+                <span>{t("billing:subscription.customerRef")}</span>
+                <strong>{summary.billing.provider_customer_id ?? t("billing:subscription.pendingCheckout")}</strong>
               </article>
               <article className="metric-panel">
-                <span>Subscription reference</span>
-                <strong>{summary.billing.provider_subscription_id ?? "Pending checkout"}</strong>
+                <span>{t("billing:subscription.subscriptionRef")}</span>
+                <strong>{summary.billing.provider_subscription_id ?? t("billing:subscription.pendingCheckout")}</strong>
               </article>
             </div>
 
             <div className="turnstile-placeholder">
               <BadgeDollarSign size={18} />
               <div>
-                <strong>Simple billing path</strong>
-                <span>Stripe still manages recurring subscriptions. x402 now covers per-agent overage payments separately.</span>
+                <strong>{t("billing:subscription.infoTitle")}</strong>
+                <span>{t("billing:subscription.infoBody")}</span>
               </div>
             </div>
           </div>
@@ -257,30 +252,32 @@ export function BillingPage() {
           <div className="panel-card">
             <div className="panel-card__header">
               <div>
-                <div className="section-label">Quota visibility</div>
-                <h3 className="panel-card__title">Current hosted limits</h3>
-                <p className="panel-card__body">Free-tier exhaustion drives the upgrade CTA for administrators and later x402 handling for agents.</p>
+                <div className="section-label">{t("billing:quota.sectionLabel")}</div>
+                <h3 className="panel-card__title">{t("billing:quota.title")}</h3>
+                <p className="panel-card__body">{t("billing:quota.body")}</p>
               </div>
             </div>
 
             <div className="quota-grid quota-grid--single">
               <QuotaMeter
-                helper={`Resets ${new Date(summary.quota.secret_requests.reset_at * 1000).toLocaleString()}.`}
-                label="Secret requests"
+                helper={t("billing:quota.resetAt", {
+                  date: new Date(summary.quota.secret_requests.reset_at * 1000).toLocaleString()
+                })}
+                label={t("billing:quota.secretRequests")}
                 limit={summary.quota.secret_requests.limit}
                 tone={summary.quota.secret_requests.used >= summary.quota.secret_requests.limit ? "danger" : "default"}
                 used={summary.quota.secret_requests.used}
               />
               <QuotaMeter
-                helper="Active enrolled agents for this workspace."
-                label="Agents"
+                helper={t("billing:quota.activeAgentsHelper")}
+                label={t("billing:quota.agents")}
                 limit={summary.quota.agents.limit}
                 tone={summary.quota.agents.used >= summary.quota.agents.limit ? "warning" : "default"}
                 used={summary.quota.agents.used}
               />
               <QuotaMeter
-                helper="Active admins, operators, and viewers."
-                label="Members"
+                helper={t("billing:quota.activeMembersHelper")}
+                label={t("billing:quota.members")}
                 limit={summary.quota.members.limit}
                 tone={summary.quota.members.used >= summary.quota.members.limit ? "warning" : "default"}
                 used={summary.quota.members.used}
@@ -290,8 +287,8 @@ export function BillingPage() {
             <div className="turnstile-placeholder turnstile-placeholder--info">
               <Coins size={18} />
               <div>
-                <strong>Agent payments live</strong>
-                <span>x402 overages settle before release and use their own USDC ledger instead of mutating the recurring billing record.</span>
+                <strong>{t("billing:quota.infoTitle")}</strong>
+                <span>{t("billing:quota.infoBody")}</span>
               </div>
             </div>
           </div>
@@ -299,37 +296,35 @@ export function BillingPage() {
           <div className="panel-card">
             <div className="panel-card__header">
               <div>
-                <div className="section-label">x402 allowances</div>
-                <h3 className="panel-card__title">Per-agent monthly budgets</h3>
-                <p className="panel-card__body">
-                  Free-tier workspaces get 10 monthly exchange requests. After that, enrolled agents need an explicit x402 budget.
-                </p>
+                <div className="section-label">{t("billing:x402.sectionLabel")}</div>
+                <h3 className="panel-card__title">{t("billing:x402.title")}</h3>
+                <p className="panel-card__body">{t("billing:x402.body")}</p>
               </div>
             </div>
 
             <form className="form-grid" onSubmit={(event) => void handleBudgetSubmit(event)}>
               <label className="field-stack">
-                <span>Agent</span>
+                <span>{t("billing:x402.agentLabel")}</span>
                 <select
                   className="dashboard-select"
                   disabled={budgetPending || agents.length === 0}
                   onChange={(event) => setBudgetAgentId(event.target.value)}
                   value={budgetAgentId}
                 >
-                  {agents.length === 0 ? <option value="">No active agents</option> : null}
+                  {agents.length === 0 ? <option value="">{t("billing:x402.noActiveAgents")}</option> : null}
                   {agents.map((agent) => (
                     <option key={agent.id} value={agent.agent_id}>
                       {agent.display_name ? `${agent.display_name} (${agent.agent_id})` : agent.agent_id}
                     </option>
                   ))}
                 </select>
-                <small>Only active enrolled agents can receive an x402 allowance.</small>
+                <small>{t("billing:x402.budgetHintAgent")}</small>
               </label>
 
               <FormField
-                hint="Stored in USD cents per UTC calendar month."
+                hint={t("billing:x402.budgetHint")}
                 icon={<Wallet size={16} />}
-                label="Monthly budget"
+                label={t("billing:x402.budgetLabel")}
                 min="0"
                 onChange={(event) => setBudgetCents(event.target.value)}
                 type="number"
@@ -339,7 +334,7 @@ export function BillingPage() {
               <div className="inline-actions">
                 <button className="primary-button" disabled={budgetPending || !budgetAgentId} type="submit">
                   <Wallet size={16} />
-                  {budgetPending ? "Saving..." : "Save allowance"}
+                  {budgetPending ? t("billing:x402.savingButton") : t("billing:x402.saveButton")}
                 </button>
               </div>
             </form>
@@ -348,36 +343,36 @@ export function BillingPage() {
               columns={[
                 {
                   key: "agent",
-                  header: "Agent",
+                  header: t("billing:x402.agentLabel"),
                   render: (allowance) => (
                     <div>
                       <div className="record-title">{allowance.agent_id}</div>
-                      <div className="record-meta">{allowance.display_name ?? "No display name"}</div>
+                      <div className="record-meta">{allowance.display_name ?? t("common:noDisplayName")}</div>
                     </div>
                   )
                 },
                 {
                   key: "budget",
-                  header: "Budget",
+                  header: t("billing:x402.columnBudget"),
                   render: (allowance) => formatUsdCents(allowance.monthly_budget_cents)
                 },
                 {
                   key: "spend",
-                  header: "Spend",
+                  header: t("billing:x402.columnSpend"),
                   render: (allowance) => formatUsdCents(allowance.current_spend_cents)
                 },
                 {
                   key: "remaining",
-                  header: "Remaining",
+                  header: t("billing:x402.columnRemaining"),
                   render: (allowance) => formatUsdCents(allowance.remaining_budget_cents)
                 },
                 {
                   key: "reset",
-                  header: "Resets",
-                  render: (allowance) => formatDate(allowance.budget_reset_at)
+                  header: t("billing:x402.columnResets"),
+                  render: (allowance) => formatDate(allowance.budget_reset_at) || t("common:pending")
                 }
               ]}
-              emptyState={<EmptyState body="Set a monthly budget for an enrolled agent to enable paid overages." title="No allowances yet" />}
+              emptyState={<EmptyState body={t("billing:x402.emptyBody")} title={t("billing:x402.emptyTitle")} />}
               loading={x402Loading}
               rowKey={(allowance) => allowance.agent_id}
               rows={allowances}
@@ -387,11 +382,9 @@ export function BillingPage() {
           <div className="panel-card">
             <div className="panel-card__header">
               <div>
-                <div className="section-label">x402 ledger</div>
-                <h3 className="panel-card__title">Recent autonomous payments</h3>
-                <p className="panel-card__body">
-                  This is the first per-agent payment ledger: quoted spend, settlement status, and chain transaction reference.
-                </p>
+                <div className="section-label">{t("billing:ledger.sectionLabel")}</div>
+                <h3 className="panel-card__title">{t("billing:ledger.title")}</h3>
+                <p className="panel-card__body">{t("billing:ledger.body")}</p>
               </div>
             </div>
 
@@ -399,7 +392,7 @@ export function BillingPage() {
               columns={[
                 {
                   key: "agent",
-                  header: "Agent",
+                  header: t("billing:ledger.columnAgent"),
                   render: (transaction) => (
                     <div>
                       <div className="record-title">{transaction.agent_id}</div>
@@ -409,17 +402,17 @@ export function BillingPage() {
                 },
                 {
                   key: "amount",
-                  header: "Amount",
+                  header: t("billing:ledger.columnAmount"),
                   render: (transaction) => `${transaction.quoted_asset_amount} ${transaction.quoted_asset_symbol}`
                 },
                 {
                   key: "usd",
-                  header: "USD",
+                  header: t("billing:ledger.columnUsd"),
                   render: (transaction) => formatUsdCents(transaction.quoted_amount_cents)
                 },
                 {
                   key: "status",
-                  header: "Status",
+                  header: t("billing:ledger.columnStatus"),
                   render: (transaction) => (
                     <StatusBadge tone={transaction.status === "settled" ? "success" : transaction.status === "failed" ? "warning" : "neutral"}>
                       {transaction.status}
@@ -428,16 +421,16 @@ export function BillingPage() {
                 },
                 {
                   key: "tx",
-                  header: "Tx hash",
-                  render: (transaction) => transaction.tx_hash ?? "Pending"
+                  header: t("billing:ledger.columnTxHash"),
+                  render: (transaction) => transaction.tx_hash ?? t("billing:ledger.pendingTx")
                 },
                 {
                   key: "created",
-                  header: "Created",
-                  render: (transaction) => formatDate(transaction.created_at)
+                  header: t("billing:ledger.columnCreated"),
+                  render: (transaction) => formatDate(transaction.created_at) || t("common:pending")
                 }
               ]}
-              emptyState={<EmptyState body="Paid exchange overages will appear here after the free monthly cap is exhausted." title="No x402 payments yet" />}
+              emptyState={<EmptyState body={t("billing:ledger.emptyBody")} title={t("billing:ledger.emptyTitle")} />}
               loading={x402Loading}
               rowKey={(transaction) => transaction.id}
               rows={transactions}

@@ -30,7 +30,7 @@ describe("dashboard milestone 2", () => {
     );
     renderApp(["/"]);
 
-    expect(await screen.findByText("Welcome back")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Email address")).toBeInTheDocument();
   });
 
   it("uses cookie-backed refresh without persisting tokens in browser storage", async () => {
@@ -83,17 +83,17 @@ describe("dashboard milestone 2", () => {
     vi.stubGlobal("fetch", fetchMock);
     renderApp(["/login"]);
 
-    await screen.findByText("Welcome back");
+    await screen.findByLabelText("Email address");
     await userEvent.type(screen.getByLabelText("Email address"), "owner@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "Password123!");
-    await userEvent.click(screen.getByRole("button", { name: /login to portal/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
 
     await screen.findByText("Workspace command overview");
     expect(window.sessionStorage.getItem("sps_refresh_token")).toBeNull();
     expect(window.localStorage.getItem("sps_refresh_token")).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: /sign out/i }));
-    await screen.findByText("Welcome back");
+    await screen.findByLabelText("Email address");
     expect(window.sessionStorage.getItem("sps_refresh_token")).toBeNull();
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(/\/api\/v2\/auth\/login$/),
@@ -225,9 +225,9 @@ describe("dashboard milestone 2", () => {
     await userEvent.type(screen.getByLabelText("Display name"), "Agent Lab");
     await userEvent.type(screen.getByLabelText("Email address"), "owner@example.com");
     await userEvent.type(screen.getByLabelText("Workspace slug"), "agent-lab");
-    await userEvent.type(screen.getByLabelText("Master password"), "Password123!");
+    await userEvent.type(screen.getByLabelText("Password"), "Password123!");
     await userEvent.click(screen.getByRole("checkbox"));
-    await userEvent.click(screen.getByRole("button", { name: /create my account/i }));
+    await userEvent.click(screen.getByRole("button", { name: /create workspace/i }));
 
     expect(await screen.findByText("Workspace command overview")).toBeInTheDocument();
   });

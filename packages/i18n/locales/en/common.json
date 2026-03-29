@@ -35,5 +35,9 @@
   "copyToClipboard": "Copy to clipboard",
   "copied": "Copied!",
   "navigation": "Navigation",
-  "filterBy": "Filter by {{field}}"
+  "filterBy": "Filter by {{field}}",
+  "working": "Working...",
+  "noRecordsYet": "No records yet",
+  "confirmationRequired": "Confirmation required",
+  "closeDialog": "Close dialog"
 }

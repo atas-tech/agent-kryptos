@@ -131,7 +131,7 @@ describe("BillingPage", () => {
 
     expect(createBillingCheckoutSession).toHaveBeenCalledTimes(1);
     expect(window.location.assign).toHaveBeenCalledWith("https://checkout.example.test/session");
-    expect(screen.getByText("Agent payments live")).toBeInTheDocument();
+    expect(screen.getByText("Agent payments active")).toBeInTheDocument();
   });
 
   it("opens the billing portal for standard-tier workspaces", async () => {

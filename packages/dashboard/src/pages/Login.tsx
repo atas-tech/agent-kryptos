@@ -1,5 +1,6 @@
 import { ArrowRight, Eye, Lock, Mail } from "lucide-react";
 import { useCallback, useState, type FormEvent } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { firstAllowedRoute } from "../auth/ProtectedRoute.js";
 import { useAuth } from "../auth/useAuth.js";
@@ -9,7 +10,8 @@ import { TurnstileWidget } from "../components/TurnstileWidget.js";
 import { turnstileEnabled } from "../security/turnstile.js";
 
 export function LoginPage() {
-  const { login, user } = useAuth();
+  const { t } = useTranslation(["auth", "common"]);
+  const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState("");
@@ -21,13 +23,13 @@ export function LoginPage() {
   const requiresTurnstile = turnstileEnabled();
   const handleTurnstileChange = useCallback((token: string | null) => {
     setTurnstileToken(token);
-    setError((current) => (current === "Complete human verification to continue." ? null : current));
-  }, []);
+    setError((current) => (current === t("auth:login.errorTurnstile") ? null : current));
+  }, [t]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (requiresTurnstile && !turnstileToken) {
-      setError("Complete human verification to continue.");
+      setError(t("auth:login.errorTurnstile"));
       return;
     }
 
@@ -39,7 +41,7 @@ export function LoginPage() {
       const redirectTo = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
       navigate(redirectTo ?? firstAllowedRoute(session.user.role), { replace: true });
     } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : "Unable to authenticate");
+      setError(submissionError instanceof Error ? submissionError.message : t("auth:login.errorDefault"));
     } finally {
       setPending(false);
     }
@@ -47,23 +49,21 @@ export function LoginPage() {
 
   return (
     <AuthShell
-      eyebrow="Secure entry"
-      heroBody="Operate agent workflows, approvals, and audit trails through an encrypted operations surface."
+      eyebrow={t("auth:login.title")}
+      heroBody={t("auth:shell.heroSubtitle")}
       heroTitle={
-        <>
-          The gold standard for <span>AI secret management</span>.
-        </>
+        <Trans i18nKey="auth:shell.heroTitle" />
       }
       metrics={[
-        { label: "Uptime SLA", value: "99.9%" },
-        { label: "Encryption", value: "256-bit" },
-        { label: "Compliance", value: "SOC2" }
+        { label: t("auth:shell.metricEncryption"), value: t("auth:shell.metricEncryptionValue") },
+        { label: t("auth:shell.metricRotation"), value: t("auth:shell.metricRotationValue") },
+        { label: t("auth:shell.metricSecretDelivery"), value: t("auth:shell.metricSecretDeliveryValue") }
       ]}
-      subtitle="Enter your workspace credentials to continue into the operator shell."
-      title="Welcome back"
+      subtitle={t("auth:login.subtitle")}
+      title={t("auth:login.title")}
       footer={
         <p>
-          Don&apos;t have an account? <Link to="/register">Create a workspace</Link>
+          <Trans i18nKey="auth:login.noAccount" /> <Link to="/register">{t("auth:login.registerLink")}</Link>
         </p>
       }
     >
@@ -75,9 +75,9 @@ export function LoginPage() {
         <FormField
           autoComplete="email"
           icon={<Mail size={18} />}
-          label="Email address"
+          label={t("auth:login.emailLabel")}
           onChange={(event) => setEmail(event.target.value)}
-          placeholder="name@company.com"
+          placeholder={t("auth:login.emailPlaceholder")}
           required
           type="email"
           value={email}
@@ -85,7 +85,7 @@ export function LoginPage() {
         <FormField
           autoComplete="current-password"
           icon={<Lock size={18} />}
-          label="Password"
+          label={t("auth:login.passwordLabel")}
           onChange={(event) => setPassword(event.target.value)}
           placeholder="••••••••"
           required
@@ -102,10 +102,10 @@ export function LoginPage() {
 
         <div className="auth-form__actions">
           <Link className="text-link" to="/forgot-password">
-            Forgot password?
+            {t("auth:login.forgotPassword")}
           </Link>
           <button className="primary-button" disabled={pending} type="submit">
-            {pending ? "Authenticating..." : "Login to portal"}
+            {pending ? t("auth:login.submitting") : t("auth:login.submitButton")}
             <ArrowRight size={16} />
           </button>
         </div>

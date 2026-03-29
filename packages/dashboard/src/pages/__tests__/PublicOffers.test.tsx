@@ -234,6 +234,6 @@ describe("PublicOffersPage", () => {
     await waitFor(() => {
       expect(apiRequest).toHaveBeenCalledWith("/api/v2/public/intents/intent-1/approve", { method: "POST" });
     });
-    expect((await screen.findAllByText("payment_required")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Payment required")).length).toBeGreaterThan(0);
   });
 });

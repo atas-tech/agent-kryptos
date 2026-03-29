@@ -56,10 +56,19 @@
     "columnLifecycle": "Lifecycle",
     "columnPayment": "Payment",
     "columnCreated": "Created",
+    "guestAgent": "Guest agent",
+    "guestHuman": "Guest human",
     "paymentNone": "none",
     "emptyTitle": "No guest intents",
     "emptyBodyFiltered": "No guest requests match the selected offer and status filters.",
     "emptyBodyDefault": "No guest requests have been created for this workspace yet."
+  },
+  "payments": {
+    "pending": "Pending",
+    "verified": "Verified",
+    "settled": "Settled",
+    "failed": "Failed",
+    "unknown": "Unknown"
   },
   "intentDetail": {
     "sectionLabel": "Intent detail",
@@ -69,6 +78,9 @@
     "offer": "Offer",
     "lifecycle": "Lifecycle",
     "approval": "Approval",
+    "approvalPending": "Pending",
+    "approvalApproved": "Approved",
+    "approvalRejected": "Rejected",
     "notRequired": "not required",
     "delivery": "Delivery",
     "price": "Price",
@@ -79,6 +91,7 @@
     "exchangeId": "Exchange ID",
     "purpose": "Purpose",
     "latestPayment": "Latest payment",
+    "txHash": "tx {{hash}}",
     "noPayment": "No payment settlement recorded",
     "timestamps": "Timestamps",
     "created": "Created {{date}}",

@@ -1,5 +1,6 @@
 import { Check, Copy } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface ResourceLabelProps {
   value: string;
@@ -14,10 +15,11 @@ export function ResourceLabel({
   className = "", 
   showCopy = true 
 }: ResourceLabelProps) {
+  const { t } = useTranslation("common");
   const [copied, setCopied] = useState(false);
 
   if (!value || value === "n/a") {
-    return <span className="record-meta">{value ?? "n/a"}</span>;
+    return <span className="record-meta">{value ?? t("notAvailable")}</span>;
   }
 
   const shouldTruncate = value.length > truncateAt * 2;
@@ -42,7 +44,7 @@ export function ResourceLabel({
           className="resource-label__copy" 
           onClick={(e) => void handleCopy(e)} 
           type="button"
-          aria-label="Copy to clipboard"
+          aria-label={copied ? t("copied") : t("copyToClipboard")}
         >
           {copied ? <Check size={12} /> : <Copy size={12} />}
         </button>

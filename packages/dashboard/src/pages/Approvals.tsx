@@ -1,5 +1,6 @@
 import { Check, RefreshCw, ShieldAlert, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { apiRequest } from "../api/client.js";
 import { useAuth } from "../auth/useAuth.js";
 import { EmptyState } from "../components/EmptyState.js";
@@ -67,16 +68,16 @@ function extractString(metadata: Record<string, unknown> | null, key: string, fa
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
-function actorLabel(actorType: ApprovalCard["actorType"]): string {
+function actorLabel(actorType: ApprovalCard["actorType"], t: (key: string) => string): string {
   if (actorType === "guest_agent") {
-    return "guest agent";
+    return t("approvals:card.guestAgent");
   }
 
   if (actorType === "guest_human") {
-    return "guest human";
+    return t("approvals:card.guestHuman");
   }
 
-  return "agent";
+  return t("approvals:card.agent");
 }
 
 function buildExchangeApprovalCards(records: AuditRecord[]): ApprovalCard[] {
@@ -129,7 +130,7 @@ function buildGuestApprovalCards(intents: GuestIntentRecord[]): ApprovalCard[] {
       kind: "guest",
       approvalReference: intent.approval_reference,
       requesterLabel: intent.requester_label?.trim() || intent.actor_type.replace("_", " "),
-      fulfillerHint: intent.allowed_fulfiller_id ?? "workspace human",
+      fulfillerHint: intent.allowed_fulfiller_id ?? "",
       secretName: intent.resolved_secret_name,
       purpose: intent.purpose,
       ruleId: intent.approval_reference ?? "guest-intent",
@@ -140,6 +141,7 @@ function buildGuestApprovalCards(intents: GuestIntentRecord[]): ApprovalCard[] {
 }
 
 export function ApprovalsPage() {
+  const { t } = useTranslation(["approvals", "common"]);
   const { user } = useAuth();
   const [approvals, setApprovals] = useState<ApprovalCard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -182,7 +184,7 @@ export function ApprovalsPage() {
 
       setApprovals(nextApprovals);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unable to load approvals");
+      setError(requestError instanceof Error ? requestError.message : t("approvals:errors.loadFailed"));
       setApprovals([]);
     } finally {
       setLoading(false);
@@ -202,9 +204,13 @@ export function ApprovalsPage() {
       await apiRequest<Record<string, unknown>>(path, { method: "POST" });
 
       setApprovals((current) => current.filter((entry) => entry.id !== approval.id));
-      setLastDecision(`${decision === "approve" ? "Approved" : "Denied"} ${approval.id}.`);
+      setLastDecision(
+        decision === "approve"
+          ? t("approvals:actions.approved", { id: approval.id })
+          : t("approvals:actions.denied", { id: approval.id })
+      );
     } catch (requestError) {
-      setActionError(requestError instanceof Error ? requestError.message : "Unable to update approval");
+      setActionError(requestError instanceof Error ? requestError.message : t("approvals:errors.actionFailed"));
     } finally {
       setActionPendingId(null);
     }
@@ -221,37 +227,34 @@ export function ApprovalsPage() {
       <div className="hero-card hero-card--dashboard">
         <div className="toolbar">
           <div>
-            <div className="section-label">Milestone 4</div>
-            <h2 className="hero-card__title">Approvals inbox</h2>
-            <p className="hero-card__body">
-              Pending exchange approvals and guest intent approvals share one queue. Admins and operators can decide
-              both here, while viewers stay read-only.
-            </p>
+            <div className="section-label">{t("approvals:hero.sectionLabel")}</div>
+            <h2 className="hero-card__title">{t("approvals:hero.title")}</h2>
+            <p className="hero-card__body">{t("approvals:hero.body")}</p>
           </div>
 
           <div className="toolbar__actions">
             <button className="ghost-button" onClick={() => void loadApprovals()} type="button">
               <RefreshCw size={16} />
-              Refresh
+              {t("common:refresh")}
             </button>
           </div>
         </div>
 
         <div className="stats-row">
           <article className="metric-panel">
-            <span>Pending approvals</span>
+            <span>{t("approvals:stats.pendingApprovals")}</span>
             <strong>{approvals.length}</strong>
           </article>
           <article className="metric-panel">
-            <span>Guest requests</span>
+            <span>{t("approvals:stats.guestRequests")}</span>
             <strong>{guestCount}</strong>
           </article>
           <article className="metric-panel">
-            <span>Rules in play</span>
+            <span>{t("approvals:stats.rulesInPlay")}</span>
             <strong>{distinctRules}</strong>
           </article>
           <article className="metric-panel">
-            <span>Expiring soon</span>
+            <span>{t("approvals:stats.expiringSoon")}</span>
             <strong>{expiringSoonCount}</strong>
           </article>
         </div>
@@ -261,10 +264,8 @@ export function ApprovalsPage() {
         <div className="panel-card approvals-viewer-note">
           <ShieldAlert size={18} />
           <div>
-            <div className="record-title">Viewer access is read-only</div>
-            <div className="panel-card__body">
-              You can inspect pending approvals here, but only workspace admins and operators can approve or deny them.
-            </div>
+            <div className="record-title">{t("approvals:viewerNote.title")}</div>
+            <div className="panel-card__body">{t("approvals:viewerNote.body")}</div>
           </div>
         </div>
       ) : null}
@@ -276,24 +277,30 @@ export function ApprovalsPage() {
       {loading ? (
         <div className="panel-card">
           <div className="empty-state">
-            <div className="empty-state__eyebrow">Loading</div>
-            <h3>Refreshing approvals</h3>
-            <p>Collecting pending exchange and guest approvals from the active workspace.</p>
+            <div className="empty-state__eyebrow">{t("approvals:loading.eyebrow")}</div>
+            <h3>{t("approvals:loading.title")}</h3>
+            <p>{t("approvals:loading.body")}</p>
           </div>
         </div>
       ) : approvals.length === 0 ? (
         <EmptyState
-          body="No currently pending exchange or guest approvals were found in the active workspace window."
-          title="Inbox clear"
+          body={t("approvals:emptyState.body")}
+          title={t("approvals:emptyState.title")}
         />
       ) : (
         <div className="approval-grid">
           {approvals.map((approval) => {
             const actionPending = actionPendingId === approval.id;
             const expiringSoon = new Date(approval.expiresAt).getTime() - Date.now() <= 2 * 60 * 1000;
-            const sourceLabel = approval.kind === "guest" ? "Pending guest approval" : "Pending agent approval";
-            const requesterLabel = approval.kind === "guest" ? "Guest requester" : "Requester agent";
-            const fulfillerLabel = approval.kind === "guest" ? "Delivery target" : "Fulfiller agent";
+            const sourceLabel = approval.kind === "guest"
+              ? t("approvals:card.pendingGuestApproval")
+              : t("approvals:card.pendingAgentApproval");
+            const requesterLabel = approval.kind === "guest"
+              ? t("approvals:card.guestRequester")
+              : t("approvals:card.requesterAgent");
+            const fulfillerLabel = approval.kind === "guest"
+              ? t("approvals:card.deliveryTarget")
+              : t("approvals:card.fulfillerAgent");
 
             return (
               <article key={approval.id} className="approval-card">
@@ -303,7 +310,7 @@ export function ApprovalsPage() {
                     <h3 className="approval-card__title">{approval.secretName}</h3>
                   </div>
                   <StatusBadge tone={expiringSoon ? "warning" : "neutral"}>
-                    {expiringSoon ? "expiring" : actorLabel(approval.actorType)}
+                    {expiringSoon ? t("approvals:card.expiring") : actorLabel(approval.actorType, t)}
                   </StatusBadge>
                 </div>
 
@@ -314,20 +321,20 @@ export function ApprovalsPage() {
                   </div>
                   <div className="detail-list__item">
                     <span className="meta-label">{fulfillerLabel}</span>
-                    <ResourceLabel value={approval.fulfillerHint} />
+                    <ResourceLabel value={approval.fulfillerHint || t("approvals:card.workspaceHuman")} />
                   </div>
                   <div className="detail-list__item">
-                    <span className="meta-label">Requested at</span>
+                    <span className="meta-label">{t("approvals:card.requestedAt")}</span>
                     <strong>{formatTimestamp(approval.requestedAt)}</strong>
                   </div>
                   <div className="detail-list__item">
-                    <span className="meta-label">{approval.kind === "guest" ? "Approval ref" : "Rule"}</span>
-                    <strong>{approval.kind === "guest" ? approval.approvalReference ?? "n/a" : approval.ruleId}</strong>
+                    <span className="meta-label">{approval.kind === "guest" ? t("approvals:card.approvalRef") : t("approvals:card.rule")}</span>
+                    <strong>{approval.kind === "guest" ? approval.approvalReference ?? t("common:notAvailable") : approval.ruleId}</strong>
                   </div>
                 </div>
 
                 <div className="approval-card__purpose">
-                  <span className="meta-label">Purpose</span>
+                  <span className="meta-label">{t("approvals:card.purpose")}</span>
                   <p>{approval.purpose}</p>
                 </div>
 
@@ -341,7 +348,7 @@ export function ApprovalsPage() {
                       type="button"
                     >
                       <X size={16} />
-                      Deny
+                      {t("approvals:actions.deny")}
                     </button>
                     <button
                       className="primary-button"
@@ -350,7 +357,7 @@ export function ApprovalsPage() {
                       type="button"
                     >
                       <Check size={16} />
-                      Approve
+                      {t("approvals:actions.approve")}
                     </button>
                   </div>
                 </div>

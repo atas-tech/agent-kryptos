@@ -1,5 +1,6 @@
 import { ArrowRight, Lock, ShieldAlert } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { firstAllowedRoute } from "../auth/ProtectedRoute.js";
 import { useAuth } from "../auth/useAuth.js";
@@ -7,6 +8,7 @@ import { AuthShell } from "../components/AuthShell.js";
 import { FormField } from "../components/FormField.js";
 
 export function ChangePasswordPage() {
+  const { t } = useTranslation(["auth", "common"]);
   const { changePassword, user } = useAuth();
   const navigate = useNavigate();
   const [currentPassword, setCurrentPassword] = useState("");
@@ -18,7 +20,7 @@ export function ChangePasswordPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (nextPassword !== confirmPassword) {
-      setError("The new password confirmation does not match.");
+      setError(t("auth:changePassword.errorMismatch"));
       return;
     }
 
@@ -29,7 +31,7 @@ export function ChangePasswordPage() {
       await changePassword(currentPassword, nextPassword);
       navigate(firstAllowedRoute(user?.role), { replace: true });
     } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : "Password change failed");
+      setError(submissionError instanceof Error ? submissionError.message : t("auth:changePassword.errorDefault"));
     } finally {
       setPending(false);
     }
@@ -37,34 +39,32 @@ export function ChangePasswordPage() {
 
   return (
     <AuthShell
-      eyebrow="Credential rotation"
-      heroBody="Your administrator issued a temporary password. Rotate it now before accessing workspace routes."
+      eyebrow={t("auth:changePassword.sectionLabel")}
+      heroBody={t("auth:changePassword.heroBody")}
       heroTitle={
-        <>
-          Replace your <span>temporary credential</span>.
-        </>
+        <Trans i18nKey="auth:changePassword.heroTitle" components={[<span key="emphasis" />]} />
       }
       metrics={[
-        { label: "Token scope", value: "session" },
-        { label: "Password policy", value: "8+ chars" },
-        { label: "Access gate", value: "enforced" }
+        { label: t("auth:changePassword.metricScope"), value: t("auth:changePassword.metricScopeValue") },
+        { label: t("auth:changePassword.metricPolicy"), value: t("auth:changePassword.metricPolicyValue") },
+        { label: t("auth:changePassword.metricGate"), value: t("auth:changePassword.metricGateValue") }
       ]}
-      subtitle="Complete the required password rotation before continuing into the workspace."
-      title="Change password"
+      subtitle={t("auth:changePassword.subtitle")}
+      title={t("auth:changePassword.title")}
     >
       <form className="auth-form" onSubmit={handleSubmit}>
         {error ? <div className="error-banner">{error}</div> : null}
         <div className="turnstile-placeholder turnstile-placeholder--warning">
           <ShieldAlert size={18} />
           <div>
-            <strong>Protected action</strong>
-            <span>Your current session is restricted until this password update succeeds.</span>
+            <strong>{t("auth:changePassword.protectedActionTitle")}</strong>
+            <span>{t("auth:changePassword.protectedActionBody")}</span>
           </div>
         </div>
         <FormField
           autoComplete="current-password"
           icon={<Lock size={18} />}
-          label="Current password"
+          label={t("auth:changePassword.currentPasswordLabel")}
           onChange={(event) => setCurrentPassword(event.target.value)}
           required
           type="password"
@@ -73,7 +73,7 @@ export function ChangePasswordPage() {
         <FormField
           autoComplete="new-password"
           icon={<Lock size={18} />}
-          label="New password"
+          label={t("auth:changePassword.newPasswordLabel")}
           onChange={(event) => setNextPassword(event.target.value)}
           required
           type="password"
@@ -82,14 +82,14 @@ export function ChangePasswordPage() {
         <FormField
           autoComplete="new-password"
           icon={<Lock size={18} />}
-          label="Confirm new password"
+          label={t("auth:changePassword.confirmPasswordLabel")}
           onChange={(event) => setConfirmPassword(event.target.value)}
           required
           type="password"
           value={confirmPassword}
         />
         <button className="primary-button primary-button--full" disabled={pending} type="submit">
-          {pending ? "Updating..." : "Apply new password"}
+          {pending ? t("auth:changePassword.submitting") : t("auth:changePassword.submitButton")}
           <ArrowRight size={16} />
         </button>
       </form>

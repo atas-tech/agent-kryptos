@@ -35,5 +35,9 @@
   "copyToClipboard": "Sao chép",
   "copied": "Đã sao chép!",
   "navigation": "Điều hướng",
-  "filterBy": "Lọc theo {{field}}"
+  "filterBy": "Lọc theo {{field}}",
+  "working": "Đang xử lý...",
+  "noRecordsYet": "Chưa có bản ghi",
+  "confirmationRequired": "Cần xác nhận",
+  "closeDialog": "Đóng hộp thoại"
 }
