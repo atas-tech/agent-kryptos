@@ -16,7 +16,8 @@
 
 <body>
   <header class="security-banner">
-    <strong>Important:</strong> Verify the address bar and TLS certificate before entering any password, key, or credential.
+    <strong data-i18n="banner.important">Important:</strong>
+    <span data-i18n="banner.message">Verify the address bar and TLS certificate before entering any password, key, or credential.</span>
   </header>
 
   <div class="app-shell">
@@ -24,22 +25,22 @@
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">K</div>
         <div class="brand-copy">
-          <span class="brand-name">agent-BlindPass</span>
-          <span class="brand-subtitle">Secure secret exchange</span>
+          <span class="brand-name" data-i18n="brand.name">agent-BlindPass</span>
+          <span class="brand-subtitle" data-i18n="brand.subtitle">Secure secret exchange</span>
         </div>
       </div>
 
       <div class="topbar-actions">
-        <div class="status-chip">Client-side encryption</div>
-        <div id="mode-badge" class="mode-chip" data-mode="locked">Session required</div>
+        <div class="status-chip" data-i18n="topbar.clientEncryption">Client-side encryption</div>
+        <div id="mode-badge" class="mode-chip" data-mode="locked" data-i18n="topbar.sessionRequired">Session required</div>
       </div>
     </nav>
 
     <main class="workspace">
       <section class="trust-panel">
-        <p class="section-label">Zero-knowledge handoff</p>
-        <h1>Secure Secret Input</h1>
-        <p class="hero-copy">
+        <p class="section-label" data-i18n="trust.sectionLabel">Zero-knowledge handoff</p>
+        <h1 data-i18n="trust.title">Secure Secret Input</h1>
+        <p class="hero-copy" data-i18n="trust.body">
           Your secret is encrypted locally in your browser. Encrypted data is then sent securely to the agent—plaintext
           never leaves this page.
         </p>
@@ -48,7 +49,7 @@
           <div class="visualizer-track">
             <div class="visual-node node-client">
               <div class="node-icon">👤</div>
-              <span class="node-label">You</span>
+              <span class="node-label" data-i18n="trust.you">You</span>
             </div>
             <div class="visual-connector">
               <div class="pulse-line"></div>
@@ -59,60 +60,60 @@
             </div>
             <div class="visual-node node-agent">
               <div class="node-icon">🤖</div>
-              <span class="node-label">Agent</span>
+              <span class="node-label" data-i18n="trust.agent">Agent</span>
             </div>
           </div>
           <div class="visualizer-labels">
-            <span>Plaintext input</span>
-            <span>Local encryption</span>
-            <span>Secure transfer</span>
+            <span data-i18n="trust.plaintextInput">Plaintext input</span>
+            <span data-i18n="trust.localEncryption">Local encryption</span>
+            <span data-i18n="trust.secureTransfer">Secure transfer</span>
           </div>
         </div>
 
         <div class="trust-grid">
           <article class="trust-card">
-            <span class="trust-kicker">Local Encryption</span>
-            <strong>Your data, your key</strong>
-            <p>Encryption happens in your browser. No plaintext is ever uploaded.</p>
+            <span class="trust-kicker" data-i18n="trust.cards.localKicker">Local Encryption</span>
+            <strong data-i18n="trust.cards.localTitle">Your data, your key</strong>
+            <p data-i18n="trust.cards.localBody">Encryption happens in your browser. No plaintext is ever uploaded.</p>
           </article>
 
           <article class="trust-card">
-            <span class="trust-kicker">Signed Access</span>
-            <strong>Secure session</strong>
-            <p>This page is protected by a temporary, single-use security link.</p>
+            <span class="trust-kicker" data-i18n="trust.cards.signedKicker">Signed Access</span>
+            <strong data-i18n="trust.cards.signedTitle">Secure session</strong>
+            <p data-i18n="trust.cards.signedBody">This page is protected by a temporary, single-use security link.</p>
           </article>
 
           <article class="trust-card">
-            <span class="trust-kicker">One-time Delivery</span>
-            <strong>Direct to agent</strong>
-            <p>Data is held securely until retrieved by the intended agent.</p>
+            <span class="trust-kicker" data-i18n="trust.cards.deliveryKicker">One-time Delivery</span>
+            <strong data-i18n="trust.cards.deliveryTitle">Direct to agent</strong>
+            <p data-i18n="trust.cards.deliveryBody">Data is held securely until retrieved by the intended agent.</p>
           </article>
         </div>
 
         <div class="trust-checklist">
-          <p>1. Check that the address bar is correct.</p>
-          <p>2. Match the session code with your request.</p>
-          <p>3. Close this tab when you are finished.</p>
+          <p data-i18n="trust.checklist.first">1. Check that the address bar is correct.</p>
+          <p data-i18n="trust.checklist.second">2. Match the session code with your request.</p>
+          <p data-i18n="trust.checklist.third">3. Close this tab when you are finished.</p>
         </div>
       </section>
 
       <section id="form-container" class="secret-card">
         <div class="card-header">
           <div>
-            <p class="section-label">Secure channel</p>
-            <h2>Submit a secret to the agent</h2>
+            <p class="section-label" data-i18n="form.sectionLabel">Secure channel</p>
+            <h2 data-i18n="form.title">Submit a secret to the agent</h2>
           </div>
-          <div id="session-state" class="card-state" data-mode="locked">Awaiting session</div>
+          <div id="session-state" class="card-state" data-mode="locked" data-i18n="form.sessionAwaiting">Awaiting session</div>
         </div>
 
-        <p id="status" data-tone="muted">Loading request...</p>
+        <p id="status" data-tone="muted" data-i18n="form.statusLoading">Loading request...</p>
 
         <div id="code-box" class="code-container" hidden>
-          <span id="session-caption" class="code-label">Identity session code</span>
+          <span id="session-caption" class="code-label" data-i18n="form.sessionCaption">Identity session code</span>
           <p id="code" class="code"></p>
         </div>
 
-        <div id="preview-notice" class="notice notice-info" hidden>
+        <div id="preview-notice" class="notice notice-info" hidden data-i18n="form.previewNotice">
           Preview mode is active. Inputs are enabled for local QA only and no secret will be transmitted.
         </div>
 
@@ -120,59 +121,59 @@
 
         <div class="input-group">
           <div class="input-header">
-            <label id="secret-label" for="secret-single">Sensitive secret value</label>
+            <label id="secret-label" for="secret-single" data-i18n="form.secretLabel">Sensitive secret value</label>
           </div>
 
           <div class="input-wrapper">
             <input id="secret-single" type="password" autocomplete="off" autocorrect="off" autocapitalize="off"
-              spellcheck="false" placeholder="Enter a password, token, or API key" />
+              spellcheck="false" data-i18n-placeholder="form.singlePlaceholder" placeholder="Enter a password, token, or API key" />
             <textarea id="secret-multi" hidden autocomplete="off" autocorrect="off" autocapitalize="off"
-              spellcheck="false" placeholder="Paste a certificate, PEM block, or JSON credential"></textarea>
+              spellcheck="false" data-i18n-placeholder="form.multiPlaceholder" placeholder="Paste a certificate, PEM block, or JSON credential"></textarea>
           </div>
         </div>
 
         <div id="secret-controls" class="secret-controls">
           <label class="inline-toggle" for="multiline-toggle">
             <input id="multiline-toggle" type="checkbox" />
-            <span>Multiline secret (PEM/JSON)</span>
+            <span data-i18n="form.multilineToggle">Multiline secret (PEM/JSON)</span>
           </label>
 
           <div class="toolbar-actions">
-            <button id="clear-secret" type="button" class="secondary">Clear</button>
-            <button id="toggle-visibility" type="button" class="secondary">Show Secret</button>
+            <button id="clear-secret" type="button" class="secondary" data-i18n="form.clear">Clear</button>
+            <button id="toggle-visibility" type="button" class="secondary" data-i18n="form.showSecret">Show Secret</button>
           </div>
         </div>
 
-        <button id="submit" type="button" disabled>Encrypt and Submit</button>
+        <button id="submit" type="button" disabled data-i18n="form.submit">Encrypt and Submit</button>
 
-        <p id="security-footnote" class="security-footnote">
+        <p id="security-footnote" class="security-footnote" data-i18n="form.footnote">
           Client-side encryption happens before any payload leaves this page.
         </p>
 
         <div class="assurance-row">
-          <span class="assurance-pill">TLS protected</span>
-          <span class="assurance-pill">Zero-knowledge path</span>
-          <span class="assurance-pill">One-time exchange</span>
+          <span class="assurance-pill" data-i18n="form.assurance.tls">TLS protected</span>
+          <span class="assurance-pill" data-i18n="form.assurance.zeroKnowledge">Zero-knowledge path</span>
+          <span class="assurance-pill" data-i18n="form.assurance.oneTimeExchange">One-time exchange</span>
         </div>
       </section>
 
       <section id="success-container" class="secret-card success-container" hidden>
         <div class="success-icon">✓</div>
-        <p class="section-label">Secret received</p>
-        <h2 class="success-title">Secret securely encrypted</h2>
-        <p id="success-status" class="success-status">
+        <p class="section-label" data-i18n="success.sectionLabel">Secret received</p>
+        <h2 class="success-title" data-i18n="success.title">Secret securely encrypted</h2>
+        <p id="success-status" class="success-status" data-i18n="success.statusSubmitted">
           Secret submitted successfully. You may safely close this window.
         </p>
-        <p id="success-detail" class="success-detail">
+        <p id="success-detail" class="success-detail" data-i18n="success.detailSubmitted">
           Only the intended retrieval flow should be able to decrypt the submitted payload.
         </p>
 
         <div class="assurance-row success-pills">
-          <span class="assurance-pill">Encrypted payload only</span>
-          <span class="assurance-pill">Ephemeral delivery</span>
+          <span class="assurance-pill" data-i18n="success.pillEncrypted">Encrypted payload only</span>
+          <span class="assurance-pill" data-i18n="success.pillEphemeral">Ephemeral delivery</span>
         </div>
 
-        <button id="dismiss-window" type="button" class="primary-close">Dismiss and Close Window</button>
+        <button id="dismiss-window" type="button" class="primary-close" data-i18n="success.dismiss">Dismiss and Close Window</button>
       </section>
     </main>
   </div>

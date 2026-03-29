@@ -1,6 +1,7 @@
 import { getStoredRefreshToken, setStoredRefreshToken } from "./auth-storage.js";
 import { sealBase64 } from "./crypto.js";
 import { enforceTopLevelWindow } from "./frame-guard.js";
+import { initI18n, t } from "./i18n.js";
 import { createPreviewMetadata, getBootstrapMode, parseContext } from "./request-context.js";
 import "./style.css";
 
@@ -98,6 +99,8 @@ async function init() {
     return;
   }
 
+  initI18n();
+
   const status = document.getElementById("status");
   const code = document.getElementById("code");
   const codeBox = document.getElementById("code-box");
@@ -146,7 +149,7 @@ async function init() {
   function setSingleVisibility(visible, autoHide = true) {
     isSingleVisible = visible;
     secretSingle.type = visible ? "text" : "password";
-    toggleVisibility.textContent = visible ? "Hide Secret" : "Show Secret";
+    toggleVisibility.textContent = visible ? t("form.hideSecret") : t("form.showSecret");
 
     clearAutoHideTimer();
     if (visible && autoHide) {
@@ -204,9 +207,9 @@ async function init() {
     }
 
     if (metadata.description) {
-      const expiresAt = metadata.expiry ? new Date(metadata.expiry * 1000).toLocaleString() : null;
+      const expiresAt = metadata.expiry ? new Date(metadata.expiry * 1000).toLocaleString(document.documentElement.lang || undefined) : null;
       requestDetails.textContent = expiresAt
-        ? `${metadata.description} Expires: ${expiresAt}.`
+        ? t("requestDetails.expires", { description: metadata.description, expiresAt })
         : metadata.description;
       requestDetails.hidden = false;
     } else {
@@ -216,25 +219,25 @@ async function init() {
 
     if (mode === "preview") {
       previewNotice.hidden = false;
-      sessionCaption.textContent = "Local QA session code";
-      submitButton.textContent = "Simulate Secure Submit";
-      securityFootnote.textContent = "Preview mode stays local. No secret is encrypted, uploaded, or stored remotely.";
-      setModeLabels([topbarMode, sessionState], "Preview mode", "preview");
-      setStatus(status, "Preview mode is active. Inputs are unlocked for local QA without a live signed session.", "info");
+      sessionCaption.textContent = t("form.sessionCaptionPreview");
+      submitButton.textContent = t("form.submitPreview");
+      securityFootnote.textContent = t("form.footnotePreview");
+      setModeLabels([topbarMode, sessionState], t("topbar.previewMode"), "preview");
+      setStatus(status, t("status.previewReady"), "info");
       return;
     }
 
     previewNotice.hidden = true;
-    sessionCaption.textContent = "Identity session code";
-    submitButton.textContent = "Encrypt and Submit";
-    securityFootnote.textContent = "Client-side encryption happens before any payload leaves this page.";
-    setModeLabels([topbarMode, sessionState], "Signed session", "request");
-    setStatus(status, "Verify the session code, then enter the secret you want to encrypt for the agent.", "muted");
+    sessionCaption.textContent = t("form.sessionCaption");
+    submitButton.textContent = t("form.submit");
+    securityFootnote.textContent = t("form.footnote");
+    setModeLabels([topbarMode, sessionState], t("topbar.signedSession"), "request");
+    setStatus(status, t("status.requestReady"), "muted");
   }
 
   function showPreviewAssist(message, tone = "warning") {
     previewNotice.hidden = true;
-    setModeLabels([topbarMode, sessionState], "Session required", "locked");
+    setModeLabels([topbarMode, sessionState], t("topbar.sessionRequired"), "locked");
     setStatus(status, message, tone);
   }
 
@@ -258,7 +261,7 @@ async function init() {
   submitButton.addEventListener("click", async () => {
     const secretValue = currentSecretValue();
     if (!secretValue) {
-      setStatus(status, "Secret cannot be empty.", "warning");
+      setStatus(status, t("status.emptySecret"), "warning");
       return;
     }
 
@@ -268,19 +271,19 @@ async function init() {
       isSuccess = true;
       formContainer.hidden = true;
       successContainer.hidden = false;
-      successStatus.textContent = "Preview complete. The form flow worked, but no secret was transmitted.";
-      successDetail.textContent = "Use a signed session link when you want to exercise real encryption and submission.";
+      successStatus.textContent = t("success.statusPreview");
+      successDetail.textContent = t("success.detailPreview");
       clearAutoHideTimer();
       return;
     }
 
     if (!activeMetadata?.public_key) {
-      setStatus(status, "Request metadata is unavailable.", "danger");
+      setStatus(status, t("status.metadataUnavailable"), "danger");
       setEntryEnabled(true, ui);
       return;
     }
 
-    setStatus(status, "Encrypting and submitting...", "muted");
+    setStatus(status, t("status.encrypting"), "muted");
 
     try {
       const payload = await sealBase64(activeMetadata.public_key, secretValue);
@@ -299,28 +302,28 @@ async function init() {
         isSuccess = true;
         formContainer.hidden = true;
         successContainer.hidden = false;
-        successStatus.textContent = "Secret submitted successfully. You may safely close this window.";
-        successDetail.textContent = "The secret left this browser only as an encrypted payload scoped to the current request.";
+        successStatus.textContent = t("success.statusSubmitted");
+        successDetail.textContent = t("success.detailSubmitted");
         clearAutoHideTimer();
         return;
       }
 
       if (submitRes.status === 401) {
-        setStatus(status, "Workspace login is required before this secret can be submitted.", "danger");
+        setStatus(status, t("status.loginRequiredSubmit"), "danger");
       } else if (submitRes.status === 403) {
-        setStatus(status, "Link signature is invalid.", "danger");
+        setStatus(status, t("status.invalidSignature"), "danger");
       } else if (submitRes.status === 409) {
-        setStatus(status, "This request already has a submitted secret.", "danger");
+        setStatus(status, t("status.alreadySubmitted"), "danger");
       } else if (submitRes.status === 410) {
-        setStatus(status, "This request has expired.", "danger");
+        setStatus(status, t("status.requestExpired"), "danger");
       } else if (submitRes.status === 413) {
-        setStatus(status, "Secret is too large.", "danger");
+        setStatus(status, t("status.tooLarge"), "danger");
       } else {
-        setStatus(status, "Submission failed.", "danger");
+        setStatus(status, t("status.submitFailed"), "danger");
       }
     } catch (error) {
       console.error("Submission failed:", error);
-      setStatus(status, "Encryption or network failed.", "danger");
+      setStatus(status, t("status.encryptionNetworkFailed"), "danger");
     } finally {
       if (!isSuccess) {
         setEntryEnabled(true, ui);
@@ -332,7 +335,7 @@ async function init() {
   const bootstrapMode = getBootstrapMode(ctx);
 
   if (bootstrapMode === "invalid") {
-    showPreviewAssist("Invalid or expired secure session.", "danger");
+    showPreviewAssist(t("status.invalidSession"), "danger");
     setEntryEnabled(false, ui);
     return;
   }
@@ -356,11 +359,11 @@ async function init() {
 
     if (!metadataRes.ok) {
       if (metadataRes.status === 401) {
-        showPreviewAssist("Workspace login is required before this request can be opened.", "danger");
+        showPreviewAssist(t("status.loginRequiredOpen"), "danger");
       } else if (metadataRes.status === 403) {
-        showPreviewAssist("This request is not available in your current workspace session.", "danger");
+        showPreviewAssist(t("status.wrongWorkspace"), "danger");
       } else {
-        showPreviewAssist("Request expired or invalid.", "danger");
+        showPreviewAssist(t("status.requestInvalid"), "danger");
       }
       setEntryEnabled(false, ui);
       return;
@@ -380,7 +383,7 @@ async function init() {
     setSingleVisibility(false, false);
     setInputMode(false);
   } catch {
-    showPreviewAssist("Failed to connect to the server. Preview mode is available for local layout and interaction testing.", "danger");
+    showPreviewAssist(t("status.connectFailed"), "danger");
     setEntryEnabled(false, ui);
   }
 }
@@ -388,6 +391,6 @@ async function init() {
 init().catch(() => {
   const status = document.getElementById("status");
   if (status) {
-    setStatus(status, "Unexpected error.", "danger");
+    setStatus(status, t("status.unexpected"), "danger");
   }
 });

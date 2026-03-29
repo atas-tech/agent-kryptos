@@ -1,45 +1,105 @@
 {
-  "hero": {
-    "title": "Secure Secret Input",
-    "subtitle": "End-to-end encrypted secret delivery",
-    "securityNotice": "Verify the address bar and TLS certificate before entering any password, key, or credential."
+  "meta": {
+    "title": "Nhập bí mật an toàn | agent-BlindPass"
+  },
+  "banner": {
+    "important": "Quan trọng:",
+    "message": "Hãy kiểm tra thanh địa chỉ và chứng chỉ TLS trước khi nhập bất kỳ mật khẩu, khóa hay thông tin xác thực nào."
+  },
+  "brand": {
+    "name": "agent-BlindPass",
+    "subtitle": "Trao đổi bí mật an toàn"
+  },
+  "topbar": {
+    "clientEncryption": "Mã hóa phía trình duyệt",
+    "sessionRequired": "Cần có phiên",
+    "awaitingSession": "Đang chờ phiên",
+    "signedSession": "Phiên đã ký",
+    "previewMode": "Chế độ xem trước"
+  },
+  "trust": {
+    "sectionLabel": "Bàn giao zero-knowledge",
+    "title": "Nhập bí mật an toàn",
+    "body": "Bí mật của bạn được mã hóa cục bộ ngay trong trình duyệt. Dữ liệu đã mã hóa sau đó được gửi an toàn đến agent. Bản rõ không bao giờ rời khỏi trang này.",
+    "you": "Bạn",
+    "agent": "Agent",
+    "plaintextInput": "Nhập bản rõ",
+    "localEncryption": "Mã hóa cục bộ",
+    "secureTransfer": "Truyền an toàn",
+    "cards": {
+      "localKicker": "Mã hóa cục bộ",
+      "localTitle": "Dữ liệu của bạn, khóa của bạn",
+      "localBody": "Việc mã hóa diễn ra ngay trong trình duyệt. Không có bản rõ nào được tải lên.",
+      "signedKicker": "Truy cập đã ký",
+      "signedTitle": "Phiên an toàn",
+      "signedBody": "Trang này được bảo vệ bằng một liên kết bảo mật tạm thời, chỉ dùng một lần.",
+      "deliveryKicker": "Giao một lần",
+      "deliveryTitle": "Trực tiếp đến agent",
+      "deliveryBody": "Dữ liệu được giữ an toàn cho đến khi agent đích truy xuất."
+    },
+    "checklist": {
+      "first": "1. Kiểm tra địa chỉ trên thanh địa chỉ là chính xác.",
+      "second": "2. Đối chiếu mã phiên với yêu cầu của bạn.",
+      "third": "3. Đóng tab này khi hoàn tất."
+    }
   },
   "form": {
-    "secretLabel": "Secret value",
-    "secretPlaceholder": "Paste your password, API key, or credential here",
-    "confirmationLabel": "Confirmation code",
-    "confirmationPlaceholder": "Enter the confirmation code",
-    "submitButton": "Submit secret",
-    "submitting": "Encrypting and submitting..."
+    "sectionLabel": "Kênh an toàn",
+    "title": "Gửi bí mật cho agent",
+    "sessionAwaiting": "Đang chờ phiên",
+    "statusLoading": "Đang tải yêu cầu...",
+    "sessionCaption": "Mã phiên định danh",
+    "sessionCaptionPreview": "Mã phiên QA cục bộ",
+    "previewNotice": "Chế độ xem trước đang hoạt động. Các ô nhập chỉ được bật cho QA cục bộ và sẽ không gửi bí mật nào.",
+    "secretLabel": "Giá trị bí mật nhạy cảm",
+    "singlePlaceholder": "Nhập mật khẩu, token hoặc khóa API",
+    "multiPlaceholder": "Dán chứng chỉ, khối PEM hoặc thông tin JSON",
+    "multilineToggle": "Bí mật nhiều dòng (PEM/JSON)",
+    "clear": "Xóa",
+    "showSecret": "Hiện bí mật",
+    "hideSecret": "Ẩn bí mật",
+    "submit": "Mã hóa và gửi",
+    "submitPreview": "Mô phỏng gửi an toàn",
+    "footnote": "Mã hóa phía trình duyệt diễn ra trước khi bất kỳ dữ liệu nào rời khỏi trang này.",
+    "footnotePreview": "Chế độ xem trước chỉ hoạt động cục bộ. Không có bí mật nào được mã hóa, tải lên hoặc lưu từ xa.",
+    "assurance": {
+      "tls": "Được bảo vệ bởi TLS",
+      "zeroKnowledge": "Luồng zero-knowledge",
+      "oneTimeExchange": "Trao đổi một lần"
+    }
+  },
+  "success": {
+    "sectionLabel": "Đã nhận bí mật",
+    "title": "Bí mật đã được mã hóa an toàn",
+    "statusSubmitted": "Đã gửi bí mật thành công. Bạn có thể đóng cửa sổ này an toàn.",
+    "detailSubmitted": "Bí mật chỉ rời khỏi trình duyệt dưới dạng dữ liệu đã mã hóa gắn với yêu cầu hiện tại.",
+    "statusPreview": "Xem trước hoàn tất. Luồng biểu mẫu hoạt động đúng, nhưng không có bí mật nào được truyền đi.",
+    "detailPreview": "Hãy dùng liên kết phiên đã ký khi bạn muốn kiểm tra mã hóa và gửi thật.",
+    "pillEncrypted": "Chỉ có payload đã mã hóa",
+    "pillEphemeral": "Giao tạm thời",
+    "dismiss": "Đóng và tắt cửa sổ"
   },
   "status": {
-    "ready": "Ready to accept your secret.",
-    "loading": "Loading request details...",
-    "encrypting": "Encrypting your secret...",
-    "submitting": "Submitting encrypted secret...",
-    "success": "Secret delivered successfully. You may close this page.",
-    "expired": "This request has expired. Ask the requester for a new link.",
-    "alreadyUsed": "This request has already been fulfilled.",
-    "invalidLink": "Invalid or malformed secret link.",
-    "networkError": "Network error. Please check your connection and try again.",
-    "serverError": "Server error. Please try again later.",
-    "unknownError": "An unexpected error occurred."
+    "previewReady": "Chế độ xem trước đang hoạt động. Các ô nhập được mở cho QA cục bộ mà không cần phiên đã ký thực.",
+    "requestReady": "Hãy xác minh mã phiên, sau đó nhập bí mật bạn muốn mã hóa cho agent.",
+    "emptySecret": "Bí mật không được để trống.",
+    "metadataUnavailable": "Không có metadata của yêu cầu.",
+    "encrypting": "Đang mã hóa và gửi...",
+    "loginRequiredSubmit": "Cần đăng nhập không gian làm việc trước khi gửi bí mật này.",
+    "invalidSignature": "Chữ ký liên kết không hợp lệ.",
+    "alreadySubmitted": "Yêu cầu này đã có bí mật được gửi.",
+    "requestExpired": "Yêu cầu này đã hết hạn.",
+    "tooLarge": "Bí mật quá lớn.",
+    "submitFailed": "Gửi thất bại.",
+    "encryptionNetworkFailed": "Mã hóa hoặc mạng đã gặp lỗi.",
+    "invalidSession": "Phiên bảo mật không hợp lệ hoặc đã hết hạn.",
+    "loginRequiredOpen": "Cần đăng nhập không gian làm việc trước khi mở yêu cầu này.",
+    "wrongWorkspace": "Yêu cầu này không khả dụng trong phiên không gian làm việc hiện tại.",
+    "requestInvalid": "Yêu cầu đã hết hạn hoặc không hợp lệ.",
+    "connectFailed": "Không thể kết nối đến máy chủ. Chế độ xem trước vẫn khả dụng để kiểm tra bố cục và tương tác cục bộ.",
+    "unexpected": "Đã xảy ra lỗi không mong muốn."
   },
-  "validation": {
-    "emptySecret": "Secret cannot be empty.",
-    "emptyConfirmation": "Confirmation code is required.",
-    "invalidConfirmation": "Invalid confirmation code. Please check and try again."
-  },
-  "security": {
-    "encryptionLabel": "Encryption",
-    "encryptionValue": "HPKE (Hybrid Public Key Encryption)",
-    "storageLabel": "Server storage",
-    "storageValue": "Zero-knowledge — server never sees plaintext",
-    "deliveryLabel": "Delivery",
-    "deliveryValue": "One-time retrieval, auto-expires"
-  },
-  "footer": {
-    "poweredBy": "Powered by BlindPass",
-    "securityInfo": "Your secret is encrypted in the browser before transmission. The server never has access to the plaintext."
+  "requestDetails": {
+    "expires": "{{description}} Hết hạn: {{expiresAt}}."
   }
 }
