@@ -61,7 +61,7 @@ function verificationUrl(token: string): string {
 }
 
 function passwordResetUrl(token: string): string {
-  const baseUrl = process.env.SPS_UI_BASE_URL?.trim() || "http://localhost:5173";
+  const baseUrl = process.env.SPS_DASHBOARD_URL?.trim() || process.env.SPS_UI_BASE_URL?.trim() || "http://localhost:5173";
   return `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
 }
 

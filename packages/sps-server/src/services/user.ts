@@ -236,7 +236,7 @@ export function logPasswordResetUrl(email: string, resetToken: string): void {
     return;
   }
 
-  const baseUrl = process.env.SPS_UI_BASE_URL?.trim() || "http://localhost:5173";
+  const baseUrl = process.env.SPS_DASHBOARD_URL?.trim() || process.env.SPS_UI_BASE_URL?.trim() || "http://localhost:5173";
   console.info(`Password reset URL for ${email}: ${baseUrl}/reset-password?token=${encodeURIComponent(resetToken)}`);
 }
 

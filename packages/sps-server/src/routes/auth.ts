@@ -361,6 +361,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
       schema: {
         body: {
           type: "object",
+          nullable: true,
           additionalProperties: false,
           required: ["email", "password", "workspace_slug", "display_name"],
           properties: {
@@ -388,7 +389,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
       }
 
       try {
-        await verifyTurnstileToken(req.body.cf_turnstile_response, req.ip);
+        await verifyTurnstileToken(req.body?.cf_turnstile_response, req.ip);
         const result = await registerUser(
           opts.db,
           req.body.email,
@@ -412,6 +413,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
       schema: {
         body: {
           type: "object",
+          nullable: true,
           additionalProperties: false,
           required: ["email", "password"],
           properties: {
@@ -436,7 +438,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
       }
 
       try {
-        await verifyTurnstileToken(req.body.cf_turnstile_response, req.ip);
+        await verifyTurnstileToken(req.body?.cf_turnstile_response, req.ip);
         const result = await authenticateUser(
           opts.db,
           req.body.email,
@@ -457,6 +459,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
       schema: {
         body: {
           type: "object",
+          nullable: true,
           additionalProperties: false,
           properties: {
             refresh_token: { type: "string", minLength: 20, maxLength: 4096 }
@@ -511,6 +514,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
       schema: {
         body: {
           type: "object",
+          nullable: true,
           additionalProperties: false,
           required: ["current_password", "next_password"],
           properties: {
@@ -557,6 +561,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
       schema: {
         body: {
           type: "object",
+          nullable: true,
           additionalProperties: false,
           required: ["email"],
           properties: {
@@ -581,8 +586,8 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
 
       try {
         await withMinimumDuration(async () => {
-          await verifyTurnstileToken(req.body.cf_turnstile_response, req.ip);
-          await requestPasswordReset(opts.db, req.body.email, preferredLocaleFromHeader(req.headers["accept-language"]));
+          await verifyTurnstileToken(req.body?.cf_turnstile_response, req.ip);
+          await requestPasswordReset(opts.db, req.body?.email ?? "", preferredLocaleFromHeader(req.headers["accept-language"]));
         }, forgotPasswordMinimumResponseMs());
 
         return reply.code(200).send({
@@ -600,6 +605,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
       schema: {
         body: {
           type: "object",
+          nullable: true,
           additionalProperties: false,
           required: ["token", "next_password"],
           properties: {
@@ -611,7 +617,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
     },
     async (req, reply) => {
       try {
-        await resetPasswordWithToken(opts.db, req.body.token, req.body.next_password);
+        await resetPasswordWithToken(opts.db, req.body?.token ?? "", req.body?.next_password ?? "");
         clearRefreshTokenCookie(req, reply);
         return reply.code(200).send({ message: "Password reset complete" });
       } catch (error) {
@@ -622,11 +628,9 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
 
   app.get<{ Params: { token: string } }>("/verify-email/:token", async (req, reply) => {
     try {
-      const result = await verifyEmail(opts.db, req.params.token);
-      return reply.send({
-        user: toUserResponse(result.user),
-        workspace: toWorkspaceResponse(result.workspace)
-      });
+      await verifyEmail(opts.db, req.params.token);
+      const dashboardUrl = (process.env.SPS_DASHBOARD_URL?.trim() || process.env.SPS_UI_BASE_URL?.trim() || "http://localhost:5173").replace(/\/$/, "");
+      return reply.redirect(`${dashboardUrl}/login?verified=true`);
     } catch (error) {
       return sendServiceError(reply, error);
     }
@@ -636,6 +640,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
     schema: {
       body: {
         type: "object",
+        nullable: true,
         additionalProperties: false,
         properties: {
           cf_turnstile_response: { type: "string", minLength: 1, maxLength: 4096 }
@@ -687,6 +692,7 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
     schema: {
       body: {
         type: "object",
+        nullable: true,
         additionalProperties: false,
         required: ["preferred_locale"],
         properties: {

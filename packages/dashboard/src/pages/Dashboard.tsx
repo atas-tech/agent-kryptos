@@ -36,7 +36,7 @@ export function DashboardPage() {
         {
           method: "POST",
           body: JSON.stringify({
-            cf_turnstile_response: turnstileToken ?? undefined
+            cf_turnstile_response: turnstileToken || undefined
           })
         }
       );
