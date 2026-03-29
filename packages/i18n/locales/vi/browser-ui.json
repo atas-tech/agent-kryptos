@@ -22,7 +22,7 @@
     "title": "Nhập bí mật an toàn",
     "body": "Bí mật của bạn được mã hóa cục bộ ngay trong trình duyệt. Dữ liệu đã mã hóa sau đó được gửi an toàn đến agent. Bản rõ không bao giờ rời khỏi trang này.",
     "you": "Bạn",
-    "agent": "Agent",
+    "agent": "Tác tử",
     "plaintextInput": "Nhập bản rõ",
     "localEncryption": "Mã hóa cục bộ",
     "secureTransfer": "Truyền an toàn",

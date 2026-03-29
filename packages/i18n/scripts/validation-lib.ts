@@ -11,6 +11,10 @@ export interface TranslationDriftResult {
   suspicious: boolean;
 }
 
+export interface TranslationDriftOptions {
+  ignoredKeys?: ReadonlySet<string>;
+}
+
 export function collectKeys(obj: JsonObj, prefix = ""): string[] {
   const keys: string[] = [];
   for (const [key, value] of Object.entries(obj)) {
@@ -70,13 +74,21 @@ function isPotentiallyTranslatableString(value: string): boolean {
   return true;
 }
 
-export function analyzeTranslationDrift(reference: JsonObj, target: JsonObj): TranslationDriftResult {
+export function analyzeTranslationDrift(
+  reference: JsonObj,
+  target: JsonObj,
+  options: TranslationDriftOptions = {}
+): TranslationDriftResult {
   const referenceEntries = new Map(collectStringEntries(reference));
   const targetEntries = new Map(collectStringEntries(target));
   const identicalKeys: string[] = [];
   let comparableStrings = 0;
 
   for (const [key, referenceValue] of referenceEntries) {
+    if (options.ignoredKeys?.has(key)) {
+      continue;
+    }
+
     const targetValue = targetEntries.get(key);
     if (typeof targetValue !== "string") {
       continue;

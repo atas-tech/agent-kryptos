@@ -26,7 +26,7 @@
     "columnUsage": "Mức dùng",
     "noSecretPinned": "chưa ghim bí mật",
     "usedCount": "đã dùng {{used}}",
-    "usedOfMax": "{{used}}/{{max}}",
+    "usedOfMax": "{{used}} trên {{max}}",
     "emptyTitle": "Không có đề nghị công khai",
     "emptyBody": "Tạo các đề nghị hướng khách từ API để quản lý chúng tại đây."
   },

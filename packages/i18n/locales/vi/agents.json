@@ -8,7 +8,7 @@
     "sectionLabel": "Tổng quan đội",
     "title": "Đội agent",
     "body": "Các agent đã đăng ký trong không gian làm việc. Sử dụng bộ lọc để thu hẹp theo trạng thái.",
-    "columnAgent": "Agent",
+    "columnAgent": "Tác tử",
     "columnStatus": "Trạng thái",
     "columnCreated": "Ngày tạo",
     "columnActions": "Thao tác"

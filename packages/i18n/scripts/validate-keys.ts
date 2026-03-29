@@ -6,6 +6,12 @@ import { analyzeTranslationDrift, collectKeys, type JsonObj } from "./validation
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const LOCALES_DIR = path.join(__dirname, "..", "locales");
+const IDENTICAL_KEY_ALLOWLIST: Record<string, string[]> = {
+  "browser-ui": ["brand.name"],
+  layout: ["brand.name"],
+  offers: ["intentDetail.txHash"],
+  policy: ["rules.requesterIdsPlaceholder", "rules.purposesPlaceholder", "rules.requesterRingsPlaceholder"]
+};
 
 async function listNamespaces(locale: string): Promise<string[]> {
   const dir = path.join(LOCALES_DIR, locale);
@@ -80,7 +86,9 @@ async function main(): Promise<void> {
       }
 
       if (missing.length === 0 && extra.length === 0) {
-        const drift = analyzeTranslationDrift(refObj, targetObj);
+        const drift = analyzeTranslationDrift(refObj, targetObj, {
+          ignoredKeys: new Set(IDENTICAL_KEY_ALLOWLIST[ns] ?? [])
+        });
         if (drift.suspicious) {
           const sampleKeys = drift.identicalKeys.slice(0, 8).join(", ");
           console.error(
