@@ -145,11 +145,13 @@ export function Layout() {
               <div className="profile-card__role" data-testid="sidebar-user-role">{(user?.role ?? "workspace_viewer").replace("workspace_", "")}</div>
             </div>
           </div>
-          <LocaleSwitcher />
-          <button className="ghost-button" data-testid="logout-button" onClick={handleLogout} type="button">
-            <LogOut size={16} />
-            {t("nav.signOut")}
-          </button>
+          <div className="flex items-center gap-3 mt-4">
+            <LocaleSwitcher />
+            <button className="ghost-button flex-1" data-testid="logout-button" onClick={handleLogout} type="button">
+              <LogOut size={16} />
+              {t("nav.signOut")}
+            </button>
+          </div>
         </div>
       </aside>
 

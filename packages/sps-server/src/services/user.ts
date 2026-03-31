@@ -19,7 +19,7 @@ const PASSWORD_MIN_LENGTH = 8;
 const TEMPORARY_PASSWORD_MIN_LENGTH = 12;
 const WEAK_TEMPORARY_PASSWORDS = new Set(["password123", "password123!", "changeme123", "temporary123"]);
 const DEFAULT_MAX_ACTIVE_SESSIONS = 10;
-const EMAIL_VERIFICATION_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
+const EMAIL_VERIFICATION_TOKEN_TTL_SECONDS = 1 * 24 * 60 * 60;
 const PASSWORD_RESET_TOKEN_TTL_SECONDS = 60 * 60;
 
 type UserTokenType = "email_verification" | "password_reset";

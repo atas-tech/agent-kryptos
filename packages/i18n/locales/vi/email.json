@@ -5,7 +5,7 @@
     "heading": "Xác minh email",
     "body": "Nhấp vào nút bên dưới để xác minh địa chỉ email và kích hoạt không gian làm việc của bạn.",
     "ctaButton": "Xác minh địa chỉ email",
-    "expiry": "Liên kết này sẽ hết hạn sau 7 ngày.",
+    "expiry": "Liên kết này sẽ hết hạn sau 1 ngày.",
     "fallback": "Nếu nút không hoạt động, hãy sao chép và dán URL này vào trình duyệt của bạn:",
     "footer": "Bạn nhận được email này vì ai đó đã đăng ký một không gian làm việc BlindPass bằng địa chỉ này. Nếu đó không phải là bạn, bạn có thể bỏ qua email này."
   },

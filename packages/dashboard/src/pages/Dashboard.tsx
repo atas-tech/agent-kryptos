@@ -49,15 +49,18 @@ export function DashboardPage() {
   const [resendStatus, setResendStatus] = useState<"idle" | "success" | "logged" | "error">("idle");
   const [resendError, setResendError] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [showResendTurnstile, setShowResendTurnstile] = useState(false);
   const requiresTurnstile = turnstileEnabled();
+
   const handleTurnstileChange = useCallback((token: string | null) => {
     setTurnstileToken(token);
     setResendError((current) => (current === t("auth:login.errorTurnstile") ? null : current));
   }, [t]);
 
-  const handleResendVerification = async () => {
+  const handleResendVerification = useCallback(async () => {
     if (requiresTurnstile && !turnstileToken) {
-      setResendError(t("auth:login.errorTurnstile"));
+      setShowResendTurnstile(true);
+      setResendError(null);
       return;
     }
 
@@ -82,7 +85,13 @@ export function DashboardPage() {
     } finally {
       setResending(false);
     }
-  };
+  }, [requiresTurnstile, turnstileToken, t]);
+
+  useEffect(() => {
+    if (showResendTurnstile && turnstileToken && resendStatus === "idle" && !resending) {
+      void handleResendVerification();
+    }
+  }, [turnstileToken, showResendTurnstile, resendStatus, resending, handleResendVerification]);
 
   useEffect(() => {
     if (summary?.workspace) {
@@ -158,7 +167,7 @@ export function DashboardPage() {
           </div>
           <div>
             {resendError ? <div className="error-banner">{resendError}</div> : null}
-            {requiresTurnstile ? <TurnstileWidget onTokenChange={handleTurnstileChange} /> : null}
+            {requiresTurnstile && showResendTurnstile ? <TurnstileWidget onTokenChange={handleTurnstileChange} /> : null}
             {resendStatus !== "success" && resendStatus !== "logged" ? (
               <button
                 className="primary-button"
@@ -170,7 +179,9 @@ export function DashboardPage() {
                   ? t("auth:verificationBanner.resending")
                   : resendStatus === "error"
                     ? t("common:retry")
-                    : t("auth:verificationBanner.resendButton")}
+                    : showResendTurnstile && !turnstileToken
+                      ? t("auth:login.verifyPrompt")
+                      : t("auth:verificationBanner.resendButton")}
               </button>
             ) : null}
           </div>
