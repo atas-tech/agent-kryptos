@@ -15,7 +15,11 @@ const LOCALE_SHORT: Record<SupportedLocale, string> = {
   vi: "VI",
 };
 
-export function LocaleSwitcher() {
+export interface LocaleSwitcherProps {
+  position?: "top" | "bottom";
+}
+
+export function LocaleSwitcher({ position = "bottom" }: LocaleSwitcherProps) {
   const { i18n } = useTranslation();
   const { updatePreferredLocale } = useAuth();
   const [open, setOpen] = useState(false);
@@ -82,7 +86,11 @@ export function LocaleSwitcher() {
       </button>
 
       {open && (
-        <div className="locale-switcher__menu" role="listbox" aria-activedescendant={`locale-${currentLocale}`}>
+        <div 
+          className={`locale-switcher__menu locale-switcher__menu--${position}`} 
+          role="listbox" 
+          aria-activedescendant={`locale-${currentLocale}`}
+        >
           {(Object.keys(LOCALE_LABELS) as SupportedLocale[]).map((locale) => (
             <button
               key={locale}

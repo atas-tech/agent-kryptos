@@ -1432,15 +1432,19 @@
   }
 
   .locale-switcher__menu {
-    @apply absolute top-full left-0 mt-2 min-w-[160px] rounded-xl border p-1.5 z-50;
-    border-color: rgba(0, 245, 212, 0.2);
-    background: rgba(12, 18, 34, 0.92);
+    @apply absolute left-0 w-48 py-1 rounded-xl border border-white/10 shadow-2xl z-50;
+    background: rgba(12, 18, 34, 0.8);
     backdrop-filter: blur(24px);
-    box-shadow:
-      0 16px 48px rgba(0, 0, 0, 0.5),
-      0 0 0 1px rgba(0, 245, 212, 0.08) inset,
-      0 1px 0 rgba(255, 255, 255, 0.04) inset;
-    animation: locale-menu-in 0.15s ease-out;
+    transform-origin: center;
+    animation: locale-menu-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .locale-switcher__menu--bottom {
+    @apply top-full mt-2;
+  }
+
+  .locale-switcher__menu--top {
+    @apply bottom-full mb-2;
   }
 
   @keyframes locale-menu-in {
