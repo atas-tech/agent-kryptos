@@ -90,6 +90,7 @@ export function ResetPasswordPage() {
         {error ? <div className="error-banner">{error}</div> : null}
         <FormField
           autoComplete="new-password"
+          data-testid="reset-password-new"
           icon={<Lock size={18} />}
           label={t("auth:resetPassword.newPasswordLabel")}
           onChange={(event) => setNextPassword(event.target.value)}
@@ -99,6 +100,7 @@ export function ResetPasswordPage() {
         />
         <FormField
           autoComplete="new-password"
+          data-testid="reset-password-confirm"
           icon={<Lock size={18} />}
           label={t("auth:resetPassword.confirmPasswordLabel")}
           onChange={(event) => setConfirmPassword(event.target.value)}
@@ -106,7 +108,7 @@ export function ResetPasswordPage() {
           type="password"
           value={confirmPassword}
         />
-        <button className="primary-button primary-button--full" disabled={pending} type="submit">
+        <button className="primary-button primary-button--full" data-testid="reset-password-submit" disabled={pending} type="submit">
           {pending ? t("auth:resetPassword.submitting") : t("auth:resetPassword.submitButton")}
           <ArrowRight size={16} />
         </button>

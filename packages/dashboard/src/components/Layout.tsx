@@ -93,7 +93,7 @@ export function Layout() {
 
       {mobileOpen ? <button className="dashboard-overlay" onClick={() => setMobileOpen(false)} type="button" /> : null}
 
-      <aside className={`dashboard-sidebar ${mobileOpen ? "is-open" : ""}`}>
+      <aside className={`dashboard-sidebar ${mobileOpen ? "is-open" : ""}`} data-testid="nav-sidebar">
         <div className="dashboard-sidebar__brand">
           <div className="brand-mark">
             <ShieldCheck size={18} />
@@ -108,8 +108,8 @@ export function Layout() {
           <div className="section-label">Workspace</div>
           <div className="workspace-card">
             <div>
-              <div className="workspace-card__name">{workspace?.slug ?? "workspace"}</div>
-              <div className="workspace-card__tier">{workspace?.tier ?? "free"} tier</div>
+              <div className="workspace-card__name" data-testid="sidebar-workspace-name">{workspace?.display_name ?? "workspace"}</div>
+              <div className="workspace-card__tier" data-testid="sidebar-workspace-tier">{workspace?.tier ?? "free"} tier</div>
             </div>
             <div className="status-pill">live</div>
           </div>
@@ -123,6 +123,7 @@ export function Layout() {
               <NavLink
                 key={item.path}
                 className={({ isActive }) => `dashboard-nav__link${isActive ? " is-active" : ""}`}
+                data-testid={`nav-link-${item.path === "/" ? "dashboard" : item.path.replace("/", "")}`}
                 onClick={() => setMobileOpen(false)}
                 to={item.path}
               >
@@ -140,12 +141,12 @@ export function Layout() {
           <div className="profile-card">
             <div className="profile-card__avatar">{user?.email.slice(0, 2).toUpperCase() ?? "AK"}</div>
             <div>
-              <div className="profile-card__name">{user?.email ?? "operator@example.com"}</div>
-              <div className="profile-card__role">{(user?.role ?? "workspace_viewer").replace("workspace_", "")}</div>
+              <div className="profile-card__name" data-testid="sidebar-user-email">{user?.email ?? "operator@example.com"}</div>
+              <div className="profile-card__role" data-testid="sidebar-user-role">{(user?.role ?? "workspace_viewer").replace("workspace_", "")}</div>
             </div>
           </div>
           <LocaleSwitcher />
-          <button className="ghost-button" onClick={handleLogout} type="button">
+          <button className="ghost-button" data-testid="logout-button" onClick={handleLogout} type="button">
             <LogOut size={16} />
             {t("nav.signOut")}
           </button>

@@ -56,7 +56,9 @@
   "status": {
     "passwordResetRequired": "Password reset required",
     "added": "Added {{date}}",
-    "lastAdminError": "The last active admin cannot be demoted or suspended."
+    "lastAdminError": "The last active admin cannot be demoted or suspended.",
+    "roleUpdated": "Role updated",
+    "statusUpdated": "Status updated"
   },
   "errors": {
     "loadFailed": "Unable to load members",

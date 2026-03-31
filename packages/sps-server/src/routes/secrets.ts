@@ -37,6 +37,7 @@ export interface SecretRoutesOptions extends FastifyPluginOptions {
   requestTtlSeconds?: number;
   submittedTtlSeconds?: number;
   uiBaseUrl?: string;
+  baseUrl?: string;
   db?: Pool | null;
   quotaService?: QuotaService;
   rateLimitService?: RateLimitService;
@@ -202,6 +203,7 @@ export async function registerSecretRoutes(app: FastifyInstance, opts: SecretRou
         requestTtlSeconds: requestTtl,
         hmacSecret: opts.hmacSecret,
         uiBaseUrl,
+        apiBaseUrl: opts.baseUrl ?? process.env.SPS_BASE_URL ?? "http://localhost:3100",
         requestedByActorType: "agent"
       });
 

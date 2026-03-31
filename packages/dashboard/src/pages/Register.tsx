@@ -76,6 +76,7 @@ export function RegisterPage() {
         {error ? <div className="error-banner">{error}</div> : null}
         <FormField
           autoComplete="organization"
+          data-testid="register-display-name"
           icon={<User2 size={18} />}
           label={t("auth:register.displayNameLabel")}
           onChange={(event) => setDisplayName(event.target.value)}
@@ -85,6 +86,7 @@ export function RegisterPage() {
         />
         <FormField
           autoComplete="email"
+          data-testid="register-email"
           icon={<Mail size={18} />}
           label={t("auth:register.emailLabel")}
           onChange={(event) => setEmail(event.target.value)}
@@ -94,16 +96,18 @@ export function RegisterPage() {
           value={email}
         />
         <FormField
+          data-testid="register-slug"
           icon={<Workflow size={18} />}
           label={t("auth:register.workspaceSlugLabel")}
           onChange={(event) => setWorkspaceSlug(event.target.value)}
           placeholder={t("auth:register.workspaceSlugPlaceholder")}
           required
-          trailing={<span className="slug-suffix">.blindpass.atas.tech</span>}
+          trailing={<span className="slug-suffix">.blindpass.atas-tech</span>}
           value={workspaceSlug}
         />
         <FormField
           autoComplete="new-password"
+          data-testid="register-password"
           icon={<Lock size={18} />}
           label={t("auth:register.passwordLabel")}
           onChange={(event) => setPassword(event.target.value)}
@@ -119,7 +123,12 @@ export function RegisterPage() {
         />
 
         <label className="checkbox-row">
-          <input checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} type="checkbox" />
+          <input
+            checked={acceptedTerms}
+            data-testid="register-terms"
+            onChange={(event) => setAcceptedTerms(event.target.checked)}
+            type="checkbox"
+          />
           <span>
             {t("auth:register.terms")}
           </span>
@@ -127,7 +136,7 @@ export function RegisterPage() {
 
         <TurnstileWidget onTokenChange={handleTurnstileChange} />
 
-        <button className="primary-button primary-button--full" disabled={pending} type="submit">
+        <button className="primary-button primary-button--full" data-testid="register-submit" disabled={pending} type="submit">
           {pending ? t("auth:register.submitting") : t("auth:register.submitButton")}
           <ArrowRight size={16} />
         </button>

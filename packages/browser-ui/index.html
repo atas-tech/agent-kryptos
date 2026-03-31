@@ -106,7 +106,7 @@
           <div id="session-state" class="card-state" data-mode="locked" data-i18n="form.sessionAwaiting">Awaiting session</div>
         </div>
 
-        <p id="status" data-tone="muted" data-i18n="form.statusLoading">Loading request...</p>
+        <p id="status" data-tone="muted" data-i18n="form.statusLoading" data-testid="status">Loading request...</p>
 
         <div id="code-box" class="code-container" hidden>
           <span id="session-caption" class="code-label" data-i18n="form.sessionCaption">Identity session code</span>
@@ -126,9 +126,9 @@
 
           <div class="input-wrapper">
             <input id="secret-single" type="password" autocomplete="off" autocorrect="off" autocapitalize="off"
-              spellcheck="false" data-i18n-placeholder="form.singlePlaceholder" placeholder="Enter a password, token, or API key" />
+              spellcheck="false" data-i18n-placeholder="form.singlePlaceholder" placeholder="Enter a password, token, or API key" data-testid="secret-input" />
             <textarea id="secret-multi" hidden autocomplete="off" autocorrect="off" autocapitalize="off"
-              spellcheck="false" data-i18n-placeholder="form.multiPlaceholder" placeholder="Paste a certificate, PEM block, or JSON credential"></textarea>
+              spellcheck="false" data-i18n-placeholder="form.multiPlaceholder" placeholder="Paste a certificate, PEM block, or JSON credential" data-testid="secret-input-multi"></textarea>
           </div>
         </div>
 
@@ -144,7 +144,7 @@
           </div>
         </div>
 
-        <button id="submit" type="button" disabled data-i18n="form.submit">Encrypt and Submit</button>
+        <button id="submit" type="button" disabled data-i18n="form.submit" data-testid="submit-btn">Encrypt and Submit</button>
 
         <p id="security-footnote" class="security-footnote" data-i18n="form.footnote">
           Client-side encryption happens before any payload leaves this page.
@@ -161,7 +161,7 @@
         <div class="success-icon">✓</div>
         <p class="section-label" data-i18n="success.sectionLabel">Secret received</p>
         <h2 class="success-title" data-i18n="success.title">Secret securely encrypted</h2>
-        <p id="success-status" class="success-status" data-i18n="success.statusSubmitted">
+        <p id="success-status" class="success-status" data-i18n="success.statusSubmitted" data-testid="success-message">
           Secret submitted successfully. You may safely close this window.
         </p>
         <p id="success-detail" class="success-detail" data-i18n="success.detailSubmitted">

@@ -2,7 +2,7 @@ import { ArrowLeft, ArrowRight, RefreshCw, ScanSearch } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
-import { apiRequest } from "../api/client.js";
+import { apiRequest, ApiError } from "../api/client.js";
 import { DataTable } from "../components/DataTable.js";
 import { EmptyState } from "../components/EmptyState.js";
 import { ResourceLabel } from "../components/ResourceLabel.js";
@@ -212,8 +212,12 @@ export function AuditPage() {
       const payload = await apiRequest<ExchangeAuditResponse>(`/api/v2/audit/exchange/${id}`);
       setTimelineRecords(payload.records);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : t("audit:errors.timelineFailed"));
-      setTimelineRecords([]);
+      if (requestError instanceof ApiError && requestError.status === 404) {
+        setTimelineRecords([]);
+      } else {
+        setError(requestError instanceof Error ? requestError.message : t("audit:errors.timelineFailed"));
+        setTimelineRecords([]);
+      }
     } finally {
       setTimelineLoading(false);
     }
@@ -234,7 +238,7 @@ export function AuditPage() {
     const latestEvent = timelineRecords.at(-1)?.event_type ?? t("common:pending");
 
     return (
-      <section className="page-stack">
+      <section className="page-stack" data-testid="audit-page-exchange-view">
         <div className="hero-card hero-card--dashboard">
           <div className="toolbar">
             <div>
@@ -295,6 +299,7 @@ export function AuditPage() {
           ) : timelineRecords.length === 0 ? (
             <EmptyState
               body={t("audit:timeline.emptyBody")}
+              dataTestId="audit-empty-state"
               title={t("audit:timeline.emptyTitle")}
             />
           ) : (
@@ -337,7 +342,7 @@ export function AuditPage() {
   const approvalRecords = records.filter((record) => record.event_type.includes("approval")).length;
 
   return (
-    <section className="page-stack">
+    <section className="page-stack" data-testid="audit-page-list-view">
       <div className="hero-card hero-card--dashboard">
         <div className="toolbar">
           <div>

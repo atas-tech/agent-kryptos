@@ -261,7 +261,7 @@ export function ApprovalsPage() {
       </div>
 
       {!canDecide ? (
-        <div className="panel-card approvals-viewer-note">
+        <div className="panel-card approvals-viewer-note" data-testid="viewer-read-only-note">
           <ShieldAlert size={18} />
           <div>
             <div className="record-title">{t("approvals:viewerNote.title")}</div>
@@ -343,6 +343,7 @@ export function ApprovalsPage() {
                   <div className="inline-actions">
                     <button
                       className="ghost-button"
+                      data-testid="approval-deny-btn"
                       disabled={!canDecide || actionPending}
                       onClick={() => void handleDecision(approval, "reject")}
                       type="button"
@@ -352,6 +353,7 @@ export function ApprovalsPage() {
                     </button>
                     <button
                       className="primary-button"
+                      data-testid="approval-approve-btn"
                       disabled={!canDecide || actionPending}
                       onClick={() => void handleDecision(approval, "approve")}
                       type="button"

@@ -176,12 +176,12 @@ export function BillingPage() {
             {t("billing:actions.refresh")}
           </button>
           {isStandard ? (
-            <button className="primary-button" disabled={portalPending || loading} onClick={() => void handlePortal()} type="button">
+            <button className="primary-button" data-testid="billing-portal-btn" disabled={portalPending || loading} onClick={() => void handlePortal()} type="button">
               <BadgeDollarSign size={16} />
               {portalPending ? t("billing:actions.openingPortal") : t("billing:actions.manageSubscription")}
             </button>
           ) : (
-            <button className="primary-button" disabled={checkoutPending || loading} onClick={() => void handleCheckout()} type="button">
+            <button className="primary-button" data-testid="billing-upgrade-btn" disabled={checkoutPending || loading} onClick={() => void handleCheckout()} type="button">
               <BadgeDollarSign size={16} />
               {checkoutPending ? t("billing:actions.startingCheckout") : t("billing:actions.upgrade")}
             </button>
@@ -214,7 +214,7 @@ export function BillingPage() {
                 <p className="panel-card__body">{t("billing:subscription.body")}</p>
               </div>
               <div className="inline-actions">
-                <StatusBadge tone={isStandard ? "success" : "warning"}>
+                <StatusBadge data-testid="subscription-tier-badge" tone={isStandard ? "success" : "warning"}>
                   {summary.workspace.tier}
                 </StatusBadge>
                 <StatusBadge
@@ -282,6 +282,14 @@ export function BillingPage() {
                 tone={summary.quota.members.used >= summary.quota.members.limit ? "warning" : "default"}
                 used={summary.quota.members.used}
               />
+              <QuotaMeter
+                data-testid="quota-exchange-requests"
+                helper={t("billing:quota.exchangeRequestsHelper")}
+                label={t("billing:quota.exchangeRequests")}
+                limit={summary.quota.exchange_requests.limit}
+                tone={summary.quota.exchange_requests.used >= summary.quota.exchange_requests.limit ? "danger" : "default"}
+                used={summary.quota.exchange_requests.used}
+              />
             </div>
 
             <div className="turnstile-placeholder turnstile-placeholder--info">
@@ -307,6 +315,7 @@ export function BillingPage() {
                 <span>{t("billing:x402.agentLabel")}</span>
                 <select
                   className="dashboard-select"
+                  data-testid="billing-agent-select"
                   disabled={budgetPending || agents.length === 0}
                   onChange={(event) => setBudgetAgentId(event.target.value)}
                   value={budgetAgentId}
@@ -322,6 +331,7 @@ export function BillingPage() {
               </label>
 
               <FormField
+                data-testid="billing-budget-input"
                 hint={t("billing:x402.budgetHint")}
                 icon={<Wallet size={16} />}
                 label={t("billing:x402.budgetLabel")}
@@ -332,7 +342,7 @@ export function BillingPage() {
               />
 
               <div className="inline-actions">
-                <button className="primary-button" disabled={budgetPending || !budgetAgentId} type="submit">
+                <button className="primary-button" data-testid="billing-save-allowance" disabled={budgetPending || !budgetAgentId} type="submit">
                   <Wallet size={16} />
                   {budgetPending ? t("billing:x402.savingButton") : t("billing:x402.saveButton")}
                 </button>
@@ -395,8 +405,8 @@ export function BillingPage() {
                   header: t("billing:ledger.columnAgent"),
                   render: (transaction) => (
                     <div>
-                      <div className="record-title">{transaction.agent_id}</div>
-                      <div className="record-meta">{transaction.payment_id}</div>
+                      <div className="record-title" data-testid="ledger-agent-id">{transaction.agent_id}</div>
+                      <div className="record-meta" data-testid="ledger-payment-id">{transaction.payment_id}</div>
                     </div>
                   )
                 },
@@ -414,7 +424,7 @@ export function BillingPage() {
                   key: "status",
                   header: t("billing:ledger.columnStatus"),
                   render: (transaction) => (
-                    <StatusBadge tone={transaction.status === "settled" ? "success" : transaction.status === "failed" ? "warning" : "neutral"}>
+                    <StatusBadge data-testid="ledger-status-badge" tone={transaction.status === "settled" ? "success" : transaction.status === "failed" ? "warning" : "neutral"}>
                       {transaction.status}
                     </StatusBadge>
                   )

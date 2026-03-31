@@ -210,7 +210,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
       callback(null, isAllowed);
     },
-    credentials: true
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization", "Payment-Signature", "Payment-Identifier", "Payment-Required", "Accept"]
   });
 
   let store = options.store;
@@ -290,7 +291,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       hmacSecret,
       requestTtlSeconds: 180,
       submittedTtlSeconds: 60,
-      uiBaseUrl: options.uiBaseUrl ?? options.baseUrl ?? process.env.SPS_UI_BASE_URL
+      uiBaseUrl: options.uiBaseUrl ?? options.baseUrl ?? process.env.SPS_UI_BASE_URL ?? "http://localhost:5173",
+      baseUrl: options.baseUrl ?? process.env.SPS_BASE_URL ?? "http://localhost:3100"
     });
   }, { prefix: "/api/v2/secret" });
 
@@ -351,6 +353,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
         store,
         hmacSecret,
         uiBaseUrl: options.uiBaseUrl ?? options.baseUrl ?? process.env.SPS_UI_BASE_URL ?? "http://localhost:5173",
+        apiBaseUrl: options.baseUrl ?? process.env.SPS_BASE_URL ?? "http://localhost:3100",
         requestTtlSeconds: 180,
         revokedTtlSeconds: 300,
         rateLimitService,

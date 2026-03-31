@@ -37,28 +37,27 @@ To make the app support multiple themes easily, avoid hardcoding `rgba(12, 18, 3
 This will automatically re-skin the entire CSS without needing to modify the React components at all when `document.documentElement.setAttribute('data-theme', 'light')` is toggled.
 
 ## 2. Localization and i18n
-The dashboard is a Client-Side React Application. Adding multiple translations can be achieved by removing hardcoded text from the components.
+The dashboard is a client-side React application, and the repo now uses a shared i18n package instead of inline dashboard-only locale files.
 
-**Recommended Steps:**
-1. Install `react-i18next` and `i18next`:
-   ```bash
-   npm install react-i18next i18next
-   ```
-2. Create mapping files for text (e.g. `packages/dashboard/src/locales/en.json`, `es.json`).
-3. Inside your React components, wrap all presentation text in the `UseTranslation` hook.
+**Current pattern in this repo:**
+1. Shared locale JSON files live in `packages/i18n/locales/{locale}/*.json`.
+2. The dashboard wires `react-i18next` through `packages/dashboard/src/i18n/config.ts`.
+3. Components consume translated copy with `useTranslation()` and namespace keys.
+4. Locale support is declared centrally in `packages/i18n/src/supported.ts`.
+5. `npm run validate --workspace=packages/i18n` enforces key parity and flags suspicious untranslated locale copies before release.
 
 ```tsx
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from "react-i18next";
 
 export function LoginPage() {
-  const { t } = useTranslation();
+  const { t } = useTranslation(["auth"]);
   return (
     <div>
-      <label>{t('login.email_address')}</label>
+      <label>{t("auth:login.emailLabel")}</label>
       {/* ... */}
     </div>
   );
 }
 ```
 
-This completely decouples the design and functional logic from the copywriting, drastically improving maintainability.
+This keeps dashboard copy, browser-ui copy, and email copy aligned under one shared source of truth instead of drifting across packages.

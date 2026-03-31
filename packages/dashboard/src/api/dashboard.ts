@@ -36,6 +36,11 @@ export interface DashboardSummaryResponse {
       used: number;
       limit: number;
     };
+    exchange_requests: {
+      used: number;
+      limit: number;
+      reset_at: number;
+    };
     a2a_exchange_available: boolean;
   };
 }

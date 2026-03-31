@@ -94,6 +94,7 @@ export function ForgotPasswordPage() {
         {error ? <div className="error-banner">{error}</div> : null}
         <FormField
           autoComplete="email"
+          data-testid="forgot-password-email"
           icon={<Mail size={18} />}
           label={t("auth:forgotPassword.emailLabel")}
           onChange={(event) => setEmail(event.target.value)}
@@ -103,7 +104,7 @@ export function ForgotPasswordPage() {
           value={email}
         />
         <TurnstileWidget onTokenChange={handleTurnstileChange} />
-        <button className="primary-button primary-button--full" disabled={pending} type="submit">
+        <button className="primary-button primary-button--full" data-testid="forgot-password-submit" disabled={pending} type="submit">
           {pending ? t("auth:forgotPassword.submitting") : t("auth:forgotPassword.submitButton")}
           <ArrowRight size={16} />
         </button>

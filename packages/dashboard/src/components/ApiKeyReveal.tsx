@@ -48,21 +48,32 @@ export function ApiKeyReveal({ open, title, description, apiKey, onClose }: ApiK
 
         <p className="modal-card__body">{description}</p>
 
-        <div className="secret-reveal">
-          <code>{apiKey}</code>
-          <button className="ghost-button" onClick={() => void handleCopy()} type="button">
+        <div className="secret-reveal" data-testid="api-key-reveal">
+          <code data-testid="revealed-api-key">{apiKey}</code>
+          <button className="ghost-button" data-testid="copy-api-key-btn" onClick={() => void handleCopy()} type="button">
             {copied ? <Check size={16} /> : <Copy size={16} />}
             {copied ? "Copied" : "Copy key"}
           </button>
         </div>
 
         <label className="checkbox-row">
-          <input checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} type="checkbox" />
+          <input
+            checked={confirmed}
+            data-testid="reveal-save-checkbox"
+            onChange={(event) => setConfirmed(event.target.checked)}
+            type="checkbox"
+          />
           <span>I've saved this key and understand it will not be shown again.</span>
         </label>
 
         <div className="modal-card__actions">
-          <button className="primary-button" disabled={!confirmed} onClick={handleClose} type="button">
+          <button
+            className="primary-button"
+            data-testid="reveal-close-btn"
+            disabled={!confirmed}
+            onClick={handleClose}
+            type="button"
+          >
             I saved this key
           </button>
         </div>

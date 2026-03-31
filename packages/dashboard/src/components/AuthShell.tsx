@@ -1,5 +1,6 @@
 import { ShieldCheck } from "lucide-react";
 import type { PropsWithChildren, ReactNode } from "react";
+import { LocaleSwitcher } from "./LocaleSwitcher.js";
 
 interface AuthShellProps {
   title: string;
@@ -34,8 +35,8 @@ export function AuthShell({
           </div>
 
           <div className="auth-shell__hero-copy">
-            <div className="section-label">{eyebrow}</div>
-            <h1>{heroTitle}</h1>
+            <div className="section-label" data-testid="auth-eyebrow">{eyebrow}</div>
+            <h1 data-testid="auth-hero-title">{heroTitle}</h1>
             <p>{heroBody}</p>
           </div>
 
@@ -53,14 +54,17 @@ export function AuthShell({
       <section className="auth-shell__panel">
         <div className="auth-shell__panel-inner">
           <div className="auth-shell__panel-header">
-            <div className="auth-mobile-brand">
-              <div className="brand-mark">
-                <ShieldCheck size={18} />
+            <div className="auth-shell__panel-top">
+              <div className="auth-mobile-brand">
+                <div className="brand-mark">
+                  <ShieldCheck size={18} />
+                </div>
+                <span>agent-BlindPass</span>
               </div>
-              <span>agent-BlindPass</span>
+              <LocaleSwitcher />
             </div>
-            <div className="section-label">{eyebrow}</div>
-            <h2>{title}</h2>
+            <div className="section-label" data-testid="auth-eyebrow">{eyebrow}</div>
+            <h2 data-testid="login-title">{title}</h2>
             <p>{subtitle}</p>
           </div>
           {children}

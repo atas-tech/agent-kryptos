@@ -21,7 +21,7 @@ interface ApiClientConfig {
   handleAuthFailure: () => void;
 }
 
-const DEFAULT_API_URL = "http://localhost:3100";
+const DEFAULT_API_URL = "http://127.0.0.1:3100";
 
 let clientConfig: ApiClientConfig = {
   getAccessToken: () => null,

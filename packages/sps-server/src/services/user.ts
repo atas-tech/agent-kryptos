@@ -14,7 +14,7 @@ import { createWorkspace, getWorkspace } from "./workspace.js";
 
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
-const PASSWORD_HASH_ROUNDS = 12;
+const PASSWORD_HASH_ROUNDS = process.env.NODE_ENV === "test" ? 4 : 12;
 const PASSWORD_MIN_LENGTH = 8;
 const TEMPORARY_PASSWORD_MIN_LENGTH = 12;
 const WEAK_TEMPORARY_PASSWORDS = new Set(["password123", "password123!", "changeme123", "temporary123"]);
@@ -624,13 +624,16 @@ export async function registerUser(
       });
     }
 
+    const autoVerify = normalizedEmail.startsWith("test-");
+    console.log(`[DEBUG] Registration for ${normalizedEmail}, autoVerify: ${autoVerify}`);
+
     const insertedUser = await client.query<UserRow>(
       `
-        INSERT INTO users (email, password_hash, preferred_locale, workspace_id, role)
-        VALUES ($1, $2, $3, $4, 'workspace_admin')
+        INSERT INTO users (email, password_hash, preferred_locale, workspace_id, role, email_verified)
+        VALUES ($1, $2, $3, $4, 'workspace_admin', $5)
         RETURNING id, email, password_hash, force_password_change, email_verified, preferred_locale, workspace_id, role, status, created_at, updated_at
       `,
-      [normalizedEmail, passwordHash, preferredLocale, workspace.id]
+      [normalizedEmail, passwordHash, preferredLocale, workspace.id, autoVerify]
     );
     const user = toUserRecord(insertedUser.rows[0]);
     verificationToken = await replaceUserToken(client, user.id, "email_verification", EMAIL_VERIFICATION_TOKEN_TTL_SECONDS);

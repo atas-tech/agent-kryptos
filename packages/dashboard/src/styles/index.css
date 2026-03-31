@@ -285,6 +285,14 @@
     color: rgba(240, 244, 255, 0.88);
   }
 
+  .policy-success-banner {
+    @apply flex items-center gap-3 rounded-2xl border p-4 text-sm;
+    border-color: rgba(0, 245, 212, 0.45);
+    background: rgba(0, 245, 212, 0.12);
+    color: var(--primary);
+    box-shadow: 0 8px 32px rgba(0, 245, 212, 0.12);
+  }
+
   .turnstile-placeholder {
     @apply flex items-center gap-3 rounded-2xl border p-4 text-sm;
     border-color: rgba(0, 245, 212, 0.18);

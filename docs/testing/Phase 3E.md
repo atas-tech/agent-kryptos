@@ -125,40 +125,46 @@ Useful companion commands:
 
 ## Milestone 5: Internationalization (i18n)
 
-- [ ] **Locale JSON parity**
-  - [ ] Validation script confirms all English and Vietnamese locale files have identical key structures
-  - [ ] Translation review flags untranslated English-copy placeholders in Vietnamese locale files before release
+- [x] **Locale resource validation**
+  - [x] `npm run validate --workspace=packages/i18n` confirms all English and Vietnamese locale files have identical key structures
+  - [x] Validator heuristics flag suspicious untranslated English-copy drift in non-English namespaces
+  - [x] Intentional technical/product identifiers are handled through a small explicit allowlist so validator output stays actionable
+  - [x] Current validator output is clean with no remaining EN/VI warnings
 
-- [ ] **Dashboard i18n**
-  - [ ] Dashboard auto-detects Vietnamese when `navigator.language` is `vi`
-  - [ ] Registration seeds `preferred_locale` from the current browser-selected locale
-  - [ ] Dashboard re-applies `preferred_locale` from auth/login, auth/refresh, and auth/me responses after authentication
-  - [ ] Dashboard renders all pages with Vietnamese translations when locale is `vi`
-  - [ ] Dashboard renders all pages with English translations when locale is `en`
-  - [ ] Language switcher toggles between EN and VI and persists across page reload via `localStorage`
-  - [ ] Language switcher persists the authenticated user's locale through `PATCH /api/v2/auth/locale`
-  - [ ] No Stitch references, milestone labels, or internal jargon remain in user-facing dashboard text
-  - [ ] All `section-label` text uses professional English (no "Desktop Agents Management", "Milestone 3", etc.)
+- [x] **Auth and database locale contract**
+  - [x] `preferred_locale` column exists on `users` table after migration
+  - [x] User registration accepts and stores the current browser-selected locale as the initial default
+  - [x] Auth/register, auth/login, auth/refresh, and auth/me responses include `preferred_locale`
+  - [x] `PATCH /api/v2/auth/locale` updates the current user record without affecting other users or workspaces
+  - [x] Server-side email locale selection prefers stored `preferred_locale` and uses `Accept-Language` only as fallback
+  - [x] Covered by `packages/sps-server/tests/auth-routes.test.ts`
 
-- [ ] **Browser UI i18n**
-  - [ ] Browser UI auto-detects Vietnamese when `navigator.language` is `vi`
-  - [ ] All static HTML text and JS status messages render in the selected locale
-  - [ ] English text remains as fallback when locale files fail to load
+- [x] **Dashboard implementation**
+  - [x] Dashboard locale detection and persistence are wired through `react-i18next`, browser detection, `localStorage`, and the authenticated user record
+  - [x] Registration seeds `preferred_locale` from the current dashboard locale
+  - [x] Auth shell and workspace pages render from shared EN/VI namespace resources
+  - [x] No Stitch references, milestone labels, or internal jargon remain in production dashboard copy
+  - [x] Covered by dashboard smoke and page tests including `dashboard.test.tsx`, `dashboard.turnstile.test.tsx`, `dashboard.email.test.tsx`, and page-level Vitest suites
 
-- [ ] **Email template i18n**
-  - [ ] Verification email renders in Vietnamese when locale is `vi`
-  - [ ] Password reset email renders in Vietnamese when locale is `vi`
-  - [ ] Emails default to English when no locale is specified
-  - [ ] `Accept-Language` header is only used as a fallback when no stored `preferred_locale` exists
+- [x] **Browser UI implementation**
+  - [x] Browser UI resolves locale from `blindpass_locale` or browser settings, then sets `<html lang>`
+  - [x] Static HTML text and JS status messages render from shared locale resources
+  - [x] English fallback remains in place for missing translation keys through the bundled browser-ui locale loader
+  - [x] Build and browser-ui test suite pass with the localized runtime
 
-- [ ] **Database locale**
-  - [ ] `preferred_locale` column exists on `users` table after migration
-  - [ ] User registration stores the current browser-selected locale as the initial default
-  - [ ] Auth response includes `preferred_locale` field
-  - [ ] Locale preference is used for server-side email language selection
-  - [ ] Explicit locale changes update the current user record without affecting other users or workspaces
+- [x] **Email template implementation**
+  - [x] Verification email renders in Vietnamese when locale is `vi`
+  - [x] Password reset email renders in Vietnamese when locale is `vi`
+  - [x] Emails default to English when no locale is specified
+  - [x] Covered by `packages/sps-server/tests/mailer.test.ts`
 
-- [ ] **Build and regression**
-  - [ ] `npm run build` passes for all packages including new `@blindpass/i18n`
-  - [ ] `npm test` passes for all existing test suites
-  - [ ] Dashboard Playwright E2E tests still pass
+- [x] **Targeted regression**
+  - [x] `npm test --workspace=packages/i18n`
+  - [x] `npm run validate --workspace=packages/i18n`
+  - [x] `npm run build --workspace=packages/dashboard`
+  - [x] Targeted dashboard and SPS regression suites pass for the i18n slices landed so far
+
+- [ ] **Remaining E2E coverage**
+  - [ ] Add Playwright coverage for dashboard locale toggle persistence across login, refresh, and logout
+  - [ ] Add browser-level locale-resolution coverage for browser-ui using stored locale and browser-language fallbacks
+  - [ ] Add hosted end-to-end email-locale smoke coverage that proves stored `preferred_locale` wins over `Accept-Language`

@@ -23,9 +23,11 @@
     "secretRequests": "Secret requests",
     "agents": "Agents",
     "members": "Members",
+    "exchangeRequests": "Exchange requests",
     "resetAt": "Resets {{date}}.",
     "activeAgentsHelper": "Active enrolled agents for this workspace.",
     "activeMembersHelper": "Active admins, operators, and viewers.",
+    "exchangeRequestsHelper": "Free monthly exchange requests allowed for this workspace.",
     "infoTitle": "Agent payments active",
     "infoBody": "x402 overages settle before release and use a separate USDC ledger from the recurring billing record."
   },

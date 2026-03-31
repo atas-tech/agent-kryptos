@@ -90,6 +90,8 @@ paths:
                   type: string
                   minLength: 1
                   maxLength: 160
+                preferred_locale:
+                  $ref: '#/components/schemas/SupportedLocale'
                 cf_turnstile_response:
                   type: string
                   minLength: 1
@@ -174,6 +176,36 @@ paths:
       responses:
         '204':
           description: Session revoked and refresh cookie cleared
+        '401':
+          $ref: '#/components/responses/Error'
+  /api/v2/auth/locale:
+    patch:
+      tags: [Auth]
+      summary: Update the current user's preferred locale
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [preferred_locale]
+              properties:
+                preferred_locale:
+                  $ref: '#/components/schemas/SupportedLocale'
+      responses:
+        '200':
+          description: Updated current user locale
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                required: [user]
         '401':
           $ref: '#/components/responses/Error'
   /api/v2/auth/me:
@@ -902,6 +934,9 @@ components:
               enum: [up, down, skipped]
           required: [database, redis]
       required: [ok, checks]
+    SupportedLocale:
+      type: string
+      enum: [en, vi]
     User:
       type: object
       properties:
@@ -914,11 +949,13 @@ components:
           type: string
           enum: [active, suspended, deleted]
         email_verified: { type: boolean }
+        preferred_locale:
+          $ref: '#/components/schemas/SupportedLocale'
         force_password_change: { type: boolean }
         workspace_id: { type: string }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
-      required: [id, email, role, status, email_verified, force_password_change, workspace_id, created_at, updated_at]
+      required: [id, email, role, status, email_verified, preferred_locale, force_password_change, workspace_id, created_at, updated_at]
     Workspace:
       type: object
       properties:

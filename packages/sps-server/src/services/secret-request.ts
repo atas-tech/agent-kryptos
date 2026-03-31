@@ -10,6 +10,7 @@ export interface CreateSecretRequestInput {
   requestTtlSeconds: number;
   hmacSecret: string;
   uiBaseUrl: string;
+  apiBaseUrl: string;
   requireUserAuth?: boolean;
   requiredUserWorkspaceId?: string;
   requestedByActorType?: "user" | "agent" | "guest_agent" | "guest_human";
@@ -53,7 +54,7 @@ export async function createSecretRequest(
   await store.setRequest(record, input.requestTtlSeconds);
 
   const sigs = generateScopedSigs(requestId, expiresAt, deriveBrowserSigSecret(input.hmacSecret));
-  const secretUrl = `${input.uiBaseUrl}/?id=${requestId}&metadata_sig=${encodeURIComponent(sigs.metadataSig)}&submit_sig=${encodeURIComponent(sigs.submitSig)}`;
+  const secretUrl = `${input.uiBaseUrl}/?id=${requestId}&metadata_sig=${encodeURIComponent(sigs.metadataSig)}&submit_sig=${encodeURIComponent(sigs.submitSig)}&api_url=${encodeURIComponent(input.apiBaseUrl)}`;
 
   return {
     record,

@@ -57,6 +57,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (payload.workspace) {
       setWorkspace(payload.workspace);
     }
+    if (payload.refresh_token) {
+      localStorage.setItem("blindpass_refresh_token", payload.refresh_token);
+    }
     void applyLocalePreference(payload.user.preferred_locale);
   }
 
@@ -85,21 +88,32 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
     refreshPromise = (async () => {
       try {
+        const refreshToken = localStorage.getItem("blindpass_refresh_token");
+        if (import.meta.env.DEV) {
+          console.log(`[AuthContext] Attempting refresh. Token from LS: ${refreshToken ? "found" : "missing"}`);
+        }
+        
         const response = await fetch(`${apiBaseUrl()}/api/v2/auth/refresh`, {
           method: "POST",
-          credentials: "include",
+          credentials: refreshToken ? "omit" : "include",
           headers: {
             "content-type": "application/json"
           },
-          body: JSON.stringify({})
+          body: JSON.stringify({ refresh_token: refreshToken ?? undefined })
         });
 
         if (!response.ok) {
+          if (import.meta.env.DEV) {
+            console.warn(`[AuthContext] Refresh failed with status: ${response.status}`);
+          }
           clearAuth();
           return null;
         }
 
         const payload = (await response.json()) as AuthApiResponse;
+        if (import.meta.env.DEV) {
+          console.log(`[AuthContext] Refresh successful for user: ${payload.user.email}`);
+        }
         applyAuth(payload);
         return payload.access_token;
       } finally {

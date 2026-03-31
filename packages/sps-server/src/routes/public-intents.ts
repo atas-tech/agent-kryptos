@@ -72,6 +72,7 @@ export interface PublicIntentRoutesOptions extends FastifyPluginOptions {
   store: RequestStore;
   hmacSecret: string;
   uiBaseUrl: string;
+  apiBaseUrl: string;
   requestTtlSeconds?: number;
   revokedTtlSeconds?: number;
   rateLimitService?: RateLimitService;
@@ -326,6 +327,7 @@ async function issueGuestActivationArtifacts(
       requestTtlSeconds: Math.max(1, existingRequest.expiresAt - Math.floor(Date.now() / 1000)),
       hmacSecret: opts.hmacSecret,
       uiBaseUrl: opts.uiBaseUrl,
+      apiBaseUrl: opts.apiBaseUrl,
       requireUserAuth: isHostedModeEnabled(),
       requiredUserWorkspaceId: existingRequest.requiredUserWorkspaceId,
       requestedByActorType: existingRequest.requestedByActorType,
@@ -348,6 +350,7 @@ async function issueGuestActivationArtifacts(
       requestTtlSeconds: opts.requestTtlSeconds ?? 180,
       hmacSecret: opts.hmacSecret,
       uiBaseUrl: opts.uiBaseUrl,
+      apiBaseUrl: opts.apiBaseUrl,
       requireUserAuth: isHostedModeEnabled(),
       requiredUserWorkspaceId: intent.workspaceId,
       requestedByActorType: intent.actorType,

@@ -332,14 +332,14 @@ export function PolicyPage() {
                 <button className="ghost-button" disabled={loading || !hasUnsavedChanges} onClick={handleReset} type="button">
                   {t("policy:actions.resetChanges")}
                 </button>
-                <button className="ghost-button" disabled={loading || validating} onClick={() => void handleValidate()} type="button">
+                <button className="ghost-button" data-testid="validate-policy-btn" disabled={loading || validating} onClick={() => void handleValidate()} type="button">
                   <CheckCircle2 size={16} />
                   {validating ? t("policy:actions.validating") : t("policy:actions.validate")}
                 </button>
                 <button
                   className="primary-button"
                   data-testid="save-policy-btn"
-                  disabled={loading || saving || !hasUnsavedChanges}
+                  disabled={loading || saving || !hasUnsavedChanges || issues.length > 0}
                   onClick={() => void handleSave()}
                   type="button"
                 >
@@ -397,8 +397,8 @@ export function PolicyPage() {
         </div>
       ) : null}
 
-      {error ? <div className="error-banner">{error}</div> : null}
-      {success ? <div className="turnstile-placeholder">{success}</div> : null}
+      {error ? <div className="error-banner" data-testid="policy-error-banner">{error}</div> : null}
+      {success ? <div className="policy-success-banner" data-testid="policy-status-message">{success}</div> : null}
 
       <div className="policy-layout">
         <div className="page-stack">
@@ -543,7 +543,7 @@ export function PolicyPage() {
 
             <div className="policy-rule-grid">
               {draft.exchangePolicy.map((rule, index) => (
-                <article key={`rule-${index}`} className={`approval-card policy-rule-card policy-rule-card--${rule.mode ?? "allow"}`}>
+                <article key={`rule-${index}`} className={`approval-card policy-rule-card policy-rule-card--${rule.mode ?? "allow"}`} data-testid="policy-rule-card">
                   <div className="approval-card__header">
                     <div>
                       <div className="section-label">{t("policy:rules.ruleLabel", { index: index + 1 })}</div>
@@ -596,6 +596,7 @@ export function PolicyPage() {
                       <label htmlFor={`rule-id-${index}`}>{t("policy:rules.ruleId")}</label>
                       <input
                         className="policy-input"
+                        data-testid="rule-id-input"
                         disabled={isReadOnly}
                         id={`rule-id-${index}`}
                         onChange={(event) => updateRule(index, { ruleId: event.target.value })}
@@ -607,6 +608,7 @@ export function PolicyPage() {
                       <label htmlFor={`rule-secret-${index}`}>{t("policy:rules.secretName")}</label>
                       <input
                         className="policy-input"
+                        data-testid="rule-secret-input"
                         disabled={isReadOnly}
                         id={`rule-secret-${index}`}
                         onChange={(event) => updateRule(index, { secretName: event.target.value })}
@@ -805,7 +807,7 @@ export function PolicyPage() {
                 </div>
               </div>
             ) : (
-              <div className="policy-issue-list">
+              <div className="policy-issue-list" data-testid="policy-issue-list">
                 {issues.map((issue, index) => (
                   <div
                     key={`${issue.path}-${issue.code}-${index}`}
@@ -814,7 +816,7 @@ export function PolicyPage() {
                     <AlertTriangle className="policy-issue__icon" size={16} />
                     <div>
                       <div className="record-title">{issue.path}</div>
-                      <div>{issue.message}</div>
+                      <div data-testid="policy-issue-message">{issue.message}</div>
                     </div>
                   </div>
                 ))}

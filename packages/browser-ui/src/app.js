@@ -21,6 +21,7 @@ async function refreshHostedSession(apiUrl) {
 
   const response = await fetch(`${apiUrl}/api/v2/auth/refresh`, {
     method: "POST",
+    credentials: "include",
     headers: {
       "content-type": "application/json"
     },
@@ -49,6 +50,7 @@ async function fetchSignedRequest(url, apiUrl, authTokenRef, init = {}) {
 
   let response = await fetch(url, {
     ...init,
+    credentials: "include",
     headers
   });
 
@@ -66,6 +68,7 @@ async function fetchSignedRequest(url, apiUrl, authTokenRef, init = {}) {
   retryHeaders.set("authorization", `Bearer ${refreshedToken}`);
   response = await fetch(url, {
     ...init,
+    credentials: "include",
     headers: retryHeaders
   });
   return response;

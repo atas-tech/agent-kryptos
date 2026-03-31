@@ -63,6 +63,7 @@ export function ChangePasswordPage() {
         </div>
         <FormField
           autoComplete="current-password"
+          data-testid="change-password-current"
           icon={<Lock size={18} />}
           label={t("auth:changePassword.currentPasswordLabel")}
           onChange={(event) => setCurrentPassword(event.target.value)}
@@ -72,6 +73,7 @@ export function ChangePasswordPage() {
         />
         <FormField
           autoComplete="new-password"
+          data-testid="change-password-new"
           icon={<Lock size={18} />}
           label={t("auth:changePassword.newPasswordLabel")}
           onChange={(event) => setNextPassword(event.target.value)}
@@ -81,6 +83,7 @@ export function ChangePasswordPage() {
         />
         <FormField
           autoComplete="new-password"
+          data-testid="change-password-confirm"
           icon={<Lock size={18} />}
           label={t("auth:changePassword.confirmPasswordLabel")}
           onChange={(event) => setConfirmPassword(event.target.value)}
@@ -88,7 +91,7 @@ export function ChangePasswordPage() {
           type="password"
           value={confirmPassword}
         />
-        <button className="primary-button primary-button--full" disabled={pending} type="submit">
+        <button className="primary-button primary-button--full" data-testid="change-password-submit" disabled={pending} type="submit">
           {pending ? t("auth:changePassword.submitting") : t("auth:changePassword.submitButton")}
           <ArrowRight size={16} />
         </button>

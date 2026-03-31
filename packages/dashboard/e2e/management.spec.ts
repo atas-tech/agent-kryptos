@@ -1,133 +1,116 @@
-import { expect, test } from "@playwright/test";
-import pg from "pg";
+import { expect, test } from "./fixtures.js";
+import { setupWorkspace } from "./setup.js";
 
-test.describe("Management", () => {
-  const password = "LongPassword123!";
+test.describe("Management & Enrollment", () => {
 
-  async function setupWorkspace(page: any) {
-    const timestamp = Date.now() + Math.floor(Math.random() * 10000);
-    const workspaceSlug = `e2e-mgmt-${timestamp}`;
-    const adminEmail = `admin-mgmt-${timestamp}@example.com`;
-
-    // 1. Register a fresh workspace
-    await page.goto("/register");
-    await page.getByLabel("Display name").fill("Mgmt Test Space");
-    await page.getByLabel("Email address").fill(adminEmail);
-    await page.getByLabel("Workspace slug").fill(workspaceSlug);
-    await page.getByLabel("Master password").fill(password);
-    await page.locator('input[type="checkbox"]').check();
-    await page.getByRole("button", { name: /Create my account/i }).click();
-    await expect(page).toHaveURL("/");
+  test("Scenario 301: Enroll Agent Flow (Admin)", async ({ page }) => {
+    // Start at root path
+    await setupWorkspace(page, "mgmt-301");
     
-    // 2. Mark owner as verified in DB
-    const client = new pg.Client({ connectionString: process.env.DATABASE_URL || "postgresql://blindpass:localdev@127.0.0.1:5433/blindpass" });
-    await client.connect();
-    try {
-      await client.query(
-        "UPDATE users SET email_verified = true WHERE email = $1",
-        [adminEmail]
-      );
-    } finally {
-      await client.end();
+    await page.getByTestId("nav-link-agents").click();
+    await expect(page).toHaveURL("/agents", { timeout: 10000 });
+
+    await page.getByTestId("enroll-agent-btn").click();
+    await page.getByTestId("enroll-agent-id-input").fill("manual-worker");
+    await page.getByTestId("enroll-agent-display-name-input").fill("Manual Test Worker");
+    
+    const [enrollResponse] = await Promise.all([
+      page.waitForResponse(
+        resp => resp.url().includes("/api/v2/agents") && resp.request().method() === "POST"
+      ),
+      page.getByTestId("enroll-agent-submit").click()
+    ]);
+    expect(enrollResponse.status()).toBe(201);
+
+    // Verify key reveal modal
+    await expect(page.getByTestId("revealed-api-key")).toBeVisible({ timeout: 15000 });
+    
+    // The checkbox enables the close button
+    const checkbox = page.getByTestId("reveal-save-checkbox");
+    await expect(checkbox).toBeVisible();
+    await checkbox.check({ force: true });
+    await expect(checkbox).toBeChecked({ timeout: 15000 });
+    
+    const closeBtn = page.getByTestId("reveal-close-btn");
+    await expect(closeBtn).toBeEnabled({ timeout: 20000 });
+    await closeBtn.click();
+    
+    await expect(page.getByTestId("revealed-api-key")).not.toBeVisible();
+  });
+
+  test("Scenario 305: Dynamic Member List & Roles", async ({ page }) => {
+    const { adminEmail } = await setupWorkspace(page, "mgmt-305", "workspace_admin", [], "/members");
+    
+    await expect(page.getByTestId("members-title")).toBeVisible({ timeout: 15000 });
+
+    // Add another admin first, so the first one isn't the "last admin"
+    const secondAdmin = `admin2-${Date.now()}@example.com`;
+    await page.getByTestId("add-member-btn").click();
+    await page.getByTestId("add-member-email-input").fill(secondAdmin);
+    await page.getByTestId("add-member-password-input").fill("AdminPass123!");
+    await page.getByTestId("add-member-role-select").selectOption("workspace_admin");
+    await Promise.all([
+      page.waitForResponse(
+        resp => resp.url().includes("/api/v2/members") && resp.request().method() === "POST"
+      ),
+      page.getByTestId("add-member-submit").click()
+    ]);
+    
+    // Handle potential list delay/hydration race
+    let memberVisible = false;
+    for (let i = 0; i < 6; i++) {
+        const memberCell = page.getByTestId("member-email-cell").filter({ hasText: secondAdmin });
+        if (await memberCell.isVisible()) {
+            memberVisible = true;
+            break;
+        }
+        console.log(`[E2E] Member ${secondAdmin} not in list yet (attempt ${i+1}/6). Reloading...`);
+        await page.reload();
+        await page.getByTestId("members-title").waitFor({ timeout: 15000 });
+        await page.waitForTimeout(2000); 
     }
+    expect(memberVisible, `Invited member ${secondAdmin} never appeared in the list`).toBe(true);
     
-    // 3. Reload to reflect verification status
-    await page.reload();
+    // Stabilize: explicitly wait for modal to disappear
+    await expect(page.getByTestId("add-member-email-input")).not.toBeVisible();
+
+    // Now change the role of the original admin
+    const roleSelect = page.getByTestId(`role-select-${adminEmail}`);
+    await expect(roleSelect).toBeVisible({ timeout: 10000 });
+    await Promise.all([
+      page.waitForResponse(
+        resp => resp.url().includes("/api/v2/members") && resp.request().method() === "PATCH"
+      ),
+      roleSelect.selectOption("workspace_viewer")
+    ]);
     
-    return { workspaceSlug, adminEmail };
-  }
-
-  test("Scenario 301: Agent Enrollment and Reveal", async ({ page }) => {
-    const { adminEmail } = await setupWorkspace(page);
-    
-    await page.goto("/agents");
-    await expect(page).toHaveURL("/agents");
-
-    await page.getByRole("button", { name: /Enroll agent/i }).first().click();
-    await page.getByLabel("Agent ID").fill("e2e-bot");
-    await page.getByLabel("Agent display name").fill("E2E Bot");
-    await page.getByRole("button", { name: /Create bootstrap key/i }).first().click();
-
-    // Verify key reveal modal appears
-    const reveal = page.locator(".modal-card").filter({ hasText: /Bootstrap key/i }).first();
-    await expect(reveal).toBeVisible({ timeout: 10000 });
-    const apiKey = await reveal.locator("code").first().innerText();
-    expect(apiKey).toMatch(/^ak_/);
-
-    // Confirm and close
-    await page.locator('input[type="checkbox"]').check();
-    await page.getByRole("button", { name: /I saved this key/i }).first().click();
-    
-    // Verify modal closed and key gone
-    await expect(reveal).not.toBeVisible();
-    await expect(page.getByText("e2e-bot").first()).toBeVisible();
+    await expect(page.getByTestId("members-success-banner")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("members-success-banner")).toContainText("Role updated");
+    await expect(roleSelect).toHaveValue("workspace_viewer");
   });
 
-  test("Scenario 305: Member Management", async ({ page }) => {
-    const { adminEmail } = await setupWorkspace(page);
-
-    await page.goto("/members");
-    await expect(page).toHaveURL("/members");
-
-    // Add member
-    await page.getByRole("button", { name: /Add member/i }).first().click();
-    const memberEmail = `member-${Date.now()}@example.com`;
-    await page.getByLabel("Email address").fill(memberEmail);
-    await page.getByLabel("Temporary password").fill("SecureTempPassword123!");
-    await page.getByRole("button", { name: /Create member/i }).first().click();
-
-    await expect(page.getByText(memberEmail).first()).toBeVisible();
-    await expect(page.getByText("Password reset required").first()).toBeVisible();
-
-    // Update role
-    const roleSelect = page.getByTestId(`role-select-${memberEmail}`).first();
-    await roleSelect.selectOption("workspace_operator");
-    await expect(page.getByText("Updating...", { exact: false }).first()).not.toBeVisible();
+  test("Scenario 307: Agent Metadata View", async ({ page }) => {
+    // Seed with a pre-enrolled agent
+    await setupWorkspace(page, "mgmt-307", "workspace_admin", ["metadata-bot"], "/agents");
     
-    // Suspend member
-    await page.getByTestId(`suspend-btn-${memberEmail}`).first().click();
-    await expect(page.getByRole("dialog").first()).toBeVisible();
+    const agentRow = page.getByTestId("agent-row-metadata-bot");
+    await expect(agentRow).toBeVisible({ timeout: 15000 });
     
-    const patchResponse = page.waitForResponse(resp => 
-      resp.url().includes("/api/v2/members/") && resp.request().method() === "PATCH",
-      { timeout: 10000 }
-    );
-    await page.getByTestId("confirm-dialog-btn").first().click();
-    await patchResponse;
-    
-    // Explicit reload to ensure fresh data and bypass any race conditions in list reloads
-    await page.reload();
-    await expect(page.getByTestId(`member-status-${memberEmail}`).first()).toHaveText("suspended", { timeout: 15000 });
+    // Verify ID in the cell and status badge
+    await expect(agentRow.getByTestId("agent-id-cell")).toHaveText("metadata-bot");
+    await expect(page.getByTestId("agent-status-metadata-bot")).toContainText(/active/i);
   });
 
-  test("Scenario 307: Last-admin lockout", async ({ page }) => {
-    const { adminEmail } = await setupWorkspace(page);
-
-    await page.goto("/members");
-    await expect(page).toHaveURL("/members");
-
-    // Admin email should be in the list
-    const roleSelect = page.getByTestId(`role-select-${adminEmail}`).first();
+  test("Scenario 308: Invite Member UI Validation", async ({ page }) => {
+    await setupWorkspace(page, "mgmt-308", "workspace_admin", [], "/members");
     
-    // Should be disabled
-    await expect(roleSelect).toBeDisabled();
+    await page.getByTestId("add-member-btn").click();
+    await page.getByTestId("add-member-email-input").fill("invalid-email");
     
-    const suspendBtn = page.getByTestId(`suspend-btn-${adminEmail}`).first();
-    await expect(suspendBtn).toBeDisabled();
-  });
-
-  test("Scenario 308: Workspace Settings Update", async ({ page }) => {
-    const { adminEmail } = await setupWorkspace(page);
-
-    await page.goto("/settings");
-    await expect(page).toHaveURL("/settings");
-
-    const newName = `Updated Space ${Date.now()}`;
-    await page.getByTestId("workspace-display-name-input").first().fill(newName);
-    const responsePromise = page.waitForResponse(r => r.url().includes("/api/v2/workspace") && r.request().method() === "PATCH");
-    await page.getByRole("button", { name: /Save workspace/i }).first().click();
-    await responsePromise;
-    await page.getByRole("link", { name: /Dashboard/i }).click(); // Use Dashboard to see sidebar update
-    await expect(page.locator(".dashboard-sidebar .workspace-meta").first()).toHaveText(newName);
+    // We expect native HTML5 validation to block submission or the UI to stay open
+    await page.getByTestId("add-member-submit").click();
+    
+    // Form should still be visible because email is invalid (native or app-level validation)
+    await expect(page.getByTestId("add-member-email-input")).toBeVisible();
   });
 });

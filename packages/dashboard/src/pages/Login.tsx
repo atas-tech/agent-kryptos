@@ -74,6 +74,7 @@ export function LoginPage() {
         {error ? <div className="error-banner">{error}</div> : null}
         <FormField
           autoComplete="email"
+          data-testid="login-email"
           icon={<Mail size={18} />}
           label={t("auth:login.emailLabel")}
           onChange={(event) => setEmail(event.target.value)}
@@ -84,6 +85,7 @@ export function LoginPage() {
         />
         <FormField
           autoComplete="current-password"
+          data-testid="login-password"
           icon={<Lock size={18} />}
           label={t("auth:login.passwordLabel")}
           onChange={(event) => setPassword(event.target.value)}
@@ -104,7 +106,7 @@ export function LoginPage() {
           <Link className="text-link" to="/forgot-password">
             {t("auth:login.forgotPassword")}
           </Link>
-          <button className="primary-button" disabled={pending} type="submit">
+          <button className="primary-button" data-testid="login-submit" disabled={pending} type="submit">
             {pending ? t("auth:login.submitting") : t("auth:login.submitButton")}
             <ArrowRight size={16} />
           </button>

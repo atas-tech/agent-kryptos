@@ -27,18 +27,23 @@ export function LocaleSwitcher() {
   const currentLocale = (i18n.language?.startsWith("vi") ? "vi" : "en") as SupportedLocale;
 
   return (
-    <div className="locale-switcher" role="radiogroup" aria-label="Language">
-      {SUPPORTED_LOCALES.map((locale) => (
-        <button
+    <div className="locale-switcher" role="radiogroup">
+      {(["en", "vi"] as const).map((locale) => (
+        <label
           key={locale}
-          aria-checked={currentLocale === locale}
           className={`locale-switcher__option${currentLocale === locale ? " locale-switcher__option--active" : ""}`}
-          onClick={() => handleChange(locale)}
-          role="radio"
-          type="button"
+          data-testid={`locale-label-${locale}`}
         >
+          <input
+            className="locale-switcher__input"
+            name="locale-switcher"
+            onChange={() => handleChange(locale)}
+            type="radio"
+            checked={currentLocale === locale}
+            data-testid={`locale-toggle-${locale}`}
+          />
           {LOCALE_LABELS[locale]}
-        </button>
+        </label>
       ))}
     </div>
   );

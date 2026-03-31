@@ -4,6 +4,7 @@ interface QuotaMeterProps {
   limit: number;
   helper?: string;
   tone?: "default" | "warning" | "danger";
+  "data-testid"?: string;
 }
 
 function resolvePercent(used: number, limit: number): number {
@@ -14,17 +15,17 @@ function resolvePercent(used: number, limit: number): number {
   return Math.max(0, Math.min(100, Math.round((used / limit) * 100)));
 }
 
-export function QuotaMeter({ label, used, limit, helper, tone = "default" }: QuotaMeterProps) {
+export function QuotaMeter({ label, used, limit, helper, tone = "default", "data-testid": testId }: QuotaMeterProps) {
   const percent = resolvePercent(used, limit);
 
   return (
-    <article className={`quota-meter quota-meter--${tone}`}>
+    <article className={`quota-meter quota-meter--${tone}`} data-testid={testId}>
       <div className="quota-meter__header">
         <div>
           <div className="card-title">{label}</div>
           {helper ? <p className="hero-card__body">{helper}</p> : null}
         </div>
-        <strong className="quota-meter__value">
+        <strong className="quota-meter__value" data-testid="quota-value">
           {used}/{limit}
         </strong>
       </div>

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type { FastifyInstance, FastifyPluginOptions, FastifyReply, FastifyRequest } from "fastify";
 import { DEFAULT_LOCALE, type SupportedLocale } from "@blindpass/i18n";
 import type { Pool } from "pg";
@@ -21,6 +22,7 @@ import { MailerServiceError } from "../services/mailer.js";
 import { TurnstileServiceError, verifyTurnstileToken } from "../services/turnstile.js";
 import type { AuthResult, UserRecord } from "../services/user.js";
 import type { WorkspaceRecord } from "../services/workspace.js";
+import { enrollAgent } from "../services/agent.js";
 
 export interface AuthRoutesOptions extends FastifyPluginOptions {
   db: Pool;
@@ -136,7 +138,7 @@ function setRefreshTokenCookie(req: FastifyRequest, reply: FastifyReply, token: 
     expires: new Date(expiresAtEpochSeconds * 1000),
     maxAge,
     httpOnly: true,
-    sameSite: "Strict",
+    sameSite: "Lax",
     secure: shouldUseSecureCookies(req)
   }));
 }
@@ -148,24 +150,25 @@ function clearRefreshTokenCookie(req: FastifyRequest, reply: FastifyReply): void
     expires: new Date(0),
     maxAge: 0,
     httpOnly: true,
-    sameSite: "Strict",
+    sameSite: "Lax",
     secure: shouldUseSecureCookies(req)
   }));
 }
 
 function getRefreshTokenFromRequest(req: FastifyRequest): string | null {
-  const cookieHeader = req.headers.cookie;
-  const normalizedCookieHeader = Array.isArray(cookieHeader) ? cookieHeader.join("; ") : cookieHeader;
-  const cookieToken = parseCookies(normalizedCookieHeader)[REFRESH_COOKIE_NAME];
-  if (cookieToken) {
-    return cookieToken;
-  }
-
+  // Check body first - this is more reliable for our E2E cross-origin token injection
   if (req.body && typeof req.body === "object" && "refresh_token" in req.body) {
     const refreshToken = (req.body as { refresh_token?: unknown }).refresh_token;
     if (typeof refreshToken === "string" && refreshToken.trim()) {
       return refreshToken;
     }
+  }
+
+  const cookieHeader = req.headers.cookie;
+  const normalizedCookieHeader = Array.isArray(cookieHeader) ? cookieHeader.join("; ") : cookieHeader;
+  const cookieToken = parseCookies(normalizedCookieHeader)[REFRESH_COOKIE_NAME];
+  if (cookieToken) {
+    return cookieToken;
   }
 
   return null;
@@ -256,6 +259,9 @@ function buildAuthResponse(
   if (isHostedModeEnabled()) {
     setRefreshTokenCookie(req, reply, result.tokens.refreshToken, result.tokens.refreshTokenExpiresAt);
     payload.verification_email_delivery = result.verificationEmailDelivery;
+    if (process.env.NODE_ENV === "test") {
+      payload.refresh_token = result.tokens.refreshToken;
+    }
     return payload;
   }
 
@@ -735,4 +741,95 @@ export async function registerAuthRoutes(app: FastifyInstance, opts: AuthRoutesO
       workspace: toWorkspaceResponse(context.workspace)
     });
   });
+
+  const seedRoutesEnabled =
+    process.env.NODE_ENV === "test" &&
+    process.env.SPS_ENABLE_TEST_SEED_ROUTES === "1" &&
+    typeof process.env.SPS_E2E_SEED_TOKEN === "string" &&
+    process.env.SPS_E2E_SEED_TOKEN.length > 0;
+
+  if (seedRoutesEnabled) {
+    app.post<{ Body: { prefix: string; role?: string; agents?: string[]; initial_usage?: number } }>(
+      "/test/seed-workspace",
+      {
+        schema: {
+          body: {
+            type: "object",
+            nullable: false,
+            properties: {
+              prefix: { type: "string", minLength: 1, maxLength: 64 },
+              role: { type: "string", enum: ["workspace_admin", "workspace_operator", "workspace_viewer"] },
+              agents: { type: "array", items: { type: "string" } },
+              initial_usage: { type: "integer", minimum: 0 }
+            },
+            required: ["prefix"]
+          }
+        }
+      },
+      async (req, reply) => {
+        if (req.headers["x-blindpass-e2e-seed-token"] !== process.env.SPS_E2E_SEED_TOKEN) {
+          return reply.code(404).send();
+        }
+
+        const { prefix, role = "workspace_admin", agents = [], initial_usage = 0 } = req.body;
+        const shortTs = Date.now().toString().slice(-6); // Last 6 digits
+        const rand = crypto.randomBytes(3).toString("hex"); // 6 chars
+        const email = `test-${prefix}-${shortTs}-${rand}@example.com`;
+        const password = "LongPassword123!";
+        const slug = `test-${prefix.slice(0, 20)}-${shortTs}-${rand}`;
+        const displayName = `${prefix.toUpperCase()} E2E Space`;
+
+        try {
+          const result = await registerUser(
+            opts.db,
+            email,
+            password,
+            slug,
+            displayName,
+            "en",
+            sessionContextForRequest(req.ip, userAgentFromHeaders(req.headers["user-agent"]))
+          );
+
+          // Bypass email verification and set requested role
+          await opts.db.query(
+            "UPDATE users SET email_verified = true, role = $1 WHERE id = $2",
+            [role, result.user.id]
+          );
+
+          if (initial_usage > 0) {
+            const now = new Date();
+            const usageMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+            await opts.db.query(
+              `INSERT INTO workspace_exchange_usage (workspace_id, usage_month, free_exchange_used, updated_at)
+               VALUES ($1, $2, $3, now())
+               ON CONFLICT (workspace_id, usage_month) DO UPDATE SET free_exchange_used = EXCLUDED.free_exchange_used, updated_at = now()`,
+              [result.workspace.id, usageMonth, initial_usage]
+            );
+          }
+
+          // Enroll requested agents
+          const enrolledAgents: Record<string, string> = {};
+          for (const agentId of agents) {
+            const { apiKey } = await enrollAgent(opts.db, result.workspace.id, agentId, `${agentId} Display`);
+            enrolledAgents[agentId] = apiKey;
+          }
+
+          return reply.code(201).send({
+            access_token: result.tokens.accessToken,
+            refresh_token: result.tokens.refreshToken,
+            access_token_expires_at: result.tokens.accessTokenExpiresAt,
+            refresh_token_expires_at: result.tokens.refreshTokenExpiresAt,
+            workspace_id: result.workspace.id,
+            user_id: result.user.id,
+            email,
+            password,
+            workspace_slug: slug,
+            agents: enrolledAgents
+          });
+        } catch (error) {
+          return sendServiceError(reply, error);
+        }
+      }
+    );
+  }
 }

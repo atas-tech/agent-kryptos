@@ -147,6 +147,7 @@ export function AnalyticsPage() {
   }
 
   useEffect(() => {
+    console.log("[DEBUG] AnalyticsPage mounted, loading:", loading);
     void loadAnalytics(days, hours);
   }, [days, hours]);
 
@@ -161,7 +162,7 @@ export function AnalyticsPage() {
         <div className="toolbar">
           <div>
             <div className="section-label">{t("analytics:hero.sectionLabel")}</div>
-            <h2 className="hero-card__title">{t("analytics:hero.title")}</h2>
+            <h2 className="hero-card__title" data-testid="analytics-title">{t("analytics:hero.title")}</h2>
             <p className="hero-card__body">{t("analytics:hero.body")}</p>
           </div>
 
@@ -204,7 +205,7 @@ export function AnalyticsPage() {
         <div className="stats-row">
           <article className="metric-panel">
             <span>{t("analytics:stats.requestVolume")}</span>
-            <strong>{requestCount}</strong>
+            <strong data-testid="analytics-request-count-value">{requestCount}</strong>
             <div className="analytics-metric-copy">
               <BarChart3 size={16} />
               <small>{t("analytics:stats.requestVolumeHelper", { days })}</small>
@@ -212,7 +213,7 @@ export function AnalyticsPage() {
           </article>
           <article className="metric-panel">
             <span>{t("analytics:stats.successfulExchanges")}</span>
-            <strong>{successfulExchanges}</strong>
+            <strong data-testid="analytics-successful-exchanges">{successfulExchanges}</strong>
             <div className="analytics-metric-copy">
               <ShieldCheck size={16} />
               <small>{t("analytics:stats.successfulExchangesHelper")}</small>
@@ -220,7 +221,7 @@ export function AnalyticsPage() {
           </article>
           <article className="metric-panel">
             <span>{t("analytics:stats.failedExpired")}</span>
-            <strong>{failedExchanges}</strong>
+            <strong data-testid="analytics-failed-exchanges">{failedExchanges}</strong>
             <div className="analytics-metric-copy">
               <ShieldAlert size={16} />
               <small>{t("analytics:stats.failedExpiredHelper")}</small>
@@ -228,7 +229,7 @@ export function AnalyticsPage() {
           </article>
           <article className="metric-panel">
             <span>{t("analytics:stats.activeAgents")}</span>
-            <strong>{activeAgents?.active_agents ?? 0}</strong>
+            <strong data-testid="analytics-active-agents">{activeAgents?.active_agents ?? 0}</strong>
             <div className="analytics-metric-copy">
               <Activity size={16} />
               <small>{t("analytics:stats.activeAgentsHelper", { hours: activeAgents?.hours ?? hours })}</small>
@@ -260,7 +261,7 @@ export function AnalyticsPage() {
 
       {(requestSeries.length > 0 || exchangeSeries.length > 0 || activeAgents) ? (
         <div className="section-grid">
-          <div className="panel-card">
+          <div className="panel-card" data-testid="metric-request-volume">
             <div className="panel-card__header">
               <div>
                 <div className="section-label">{t("analytics:requestVolume.sectionLabel")}</div>
@@ -276,7 +277,7 @@ export function AnalyticsPage() {
             />
           </div>
 
-          <div className="panel-card">
+          <div className="panel-card" data-testid="metric-delivery-rate">
             <div className="panel-card__header">
               <div>
                 <div className="section-label">{t("analytics:exchangeOutcomes.sectionLabel")}</div>

@@ -60,12 +60,18 @@ async function buildDashboardSummary(db: Pool, quotaService: QuotaService, works
     throw new BillingServiceError(404, "workspace_not_found", "Workspace not found");
   }
 
-  const [billing, activeAgents, activeMembers, secretRequestQuota] = await Promise.all([
+  const [billing, activeAgents, activeMembers, secretRequestQuota, exchangeRequestQuota] = await Promise.all([
     getBillingRecord(db, workspaceId),
     countActiveAgents(db, workspaceId),
     countActiveWorkspaceUsers(db, workspaceId),
-    quotaService.getDailyQuotaUsage(workspaceId, "secret_request", workspace.tier)
+    quotaService.getDailyQuotaUsage(workspaceId, "secret_request", workspace.tier),
+    db.query<{ free_exchange_used: number }>(`
+      SELECT free_exchange_used FROM workspace_exchange_usage
+      WHERE workspace_id = $1 AND usage_month = date_trunc('month', now())
+    `, [workspaceId])
   ]);
+
+  const exchangeUsed = exchangeRequestQuota.rows[0]?.free_exchange_used ?? 0;
 
   if (!billing) {
     throw new BillingServiceError(404, "workspace_not_found", "Workspace not found");
@@ -91,6 +97,11 @@ async function buildDashboardSummary(db: Pool, quotaService: QuotaService, works
       members: {
         used: activeMembers,
         limit: activeMemberLimit(workspace.tier)
+      },
+      exchange_requests: {
+        used: exchangeUsed,
+        limit: 10,
+        reset_at: Math.floor(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).getTime() / 1000)
       },
       a2a_exchange_available: exchangeQuotaIncluded(workspace.tier)
     }

@@ -2,6 +2,16 @@
 
 This document captures the design rationale, trade-off analysis, and future expansion patterns for multi-language support in the BlindPass ecosystem.
 
+## Current Status
+
+As of 2026-03-29, the first EN/VI rollout is shipped across the main user-facing surfaces:
+
+- `preferred_locale` is persisted on `users`, returned in auth payloads, and updated via `PATCH /api/v2/auth/locale`
+- The dashboard auth shell and workspace pages render from shared EN/VI locale resources
+- The browser UI resolves locale from `blindpass_locale` or browser settings and sets `<html lang>` accordingly
+- Transactional verification and password-reset emails render from locale-aware templates
+- `packages/i18n` validation now checks both key parity and suspicious untranslated English-copy drift, with a small explicit allowlist for product names and schema examples
+
 ## Why i18n Now?
 
 BlindPass targets operators and enterprise users across Southeast Asia and globally. Vietnamese is the first non-English locale because the founding team and early adopters are Vietnamese-speaking. The architecture must support adding new languages with minimal code changes.
@@ -15,8 +25,8 @@ BlindPass targets operators and enterprise users across Southeast Asia and globa
 **Rationale**: All three UI surfaces (dashboard, browser-ui, email templates) need the same translated strings for shared concepts like "Save", "Cancel", "Workspace", "Agent", etc. A shared package ensures:
 
 - Single source of truth for all translations
-- One validation script catches missing keys across all locales
-- Adding a new language = adding one JSON folder, no code changes needed
+- One validation script catches missing keys and suspicious untranslated locale copies across all locales
+- Adding a new language is primarily a locale-resource change, with small registration updates in the dashboard and browser-ui loaders
 - TypeScript types can be generated from the English JSON structure
 
 **Alternative considered**: Inline translations per package. Rejected because it leads to drift between packages and duplicate maintenance.
@@ -89,7 +99,7 @@ Localizing API errors would require every consumer to handle locale negotiation.
 
 **Why**: The highest-risk failure mode is divergence between browser state and server state. Fixing the user-preference contract first gives every later translation pass a stable source of truth.
 
-Rollout order:
+Completed rollout order:
 
 1. Add `preferred_locale` to auth responses and a dedicated locale update endpoint
 2. Sync dashboard locale from the authenticated user record and persist manual switches server-side
@@ -123,17 +133,23 @@ locales/en/
 
 ### Key Naming Convention
 
-Keys follow a flat dot notation within each namespace:
+Locale files use nested JSON objects, while components reference them with dotted paths inside a namespace:
 
 ```json
 {
-  "hero.sectionLabel": "Agent management",
-  "hero.title": "Agent enrollment and rotation",
-  "hero.body": "Manage agent credentials, rotate bootstrap keys...",
-  "table.sectionLabel": "Fleet overview",
-  "table.title": "Workspace fleet",
-  "emptyState.title": "No agents enrolled",
-  "emptyState.body": "No agents have been enrolled yet."
+  "hero": {
+    "sectionLabel": "Agent management",
+    "title": "Agent enrollment and rotation",
+    "body": "Manage agent credentials, rotate bootstrap keys..."
+  },
+  "table": {
+    "sectionLabel": "Fleet overview",
+    "title": "Workspace fleet"
+  },
+  "emptyState": {
+    "title": "No agents enrolled",
+    "body": "No agents have been enrolled yet."
+  }
 }
 ```
 
@@ -156,7 +172,12 @@ Two different checks are needed:
 - **Key parity**: every locale file must expose the same key structure
 - **Translation completeness**: non-English locales should not silently ship large English-copy placeholders
 
-The current validator only guarantees key parity. Translation-review checks must be added separately so a copied English file does not count as "done" for Vietnamese.
+The shipped validator now enforces both:
+
+- key parity between English and each supported locale
+- suspicious untranslated-copy detection for non-English locales
+
+The drift check intentionally ignores a small allowlist of technical or product identifiers such as brand names, transaction-hash labels, and schema-example placeholders where identical copy is expected.
 
 ## Future Expansion
 
@@ -164,9 +185,11 @@ The current validator only guarantees key parity. Translation-review checks must
 
 1. Create `locales/{code}/` directory with copies of all English JSON files
 2. Translate all values (keys stay identical)
-3. Add the locale code to `supported.ts`
-4. Run the validation script to ensure key parity
-5. No code changes needed in dashboard, browser-ui, or server packages
+3. Add the locale code to `packages/i18n/src/supported.ts`
+4. Register the locale in `packages/dashboard/src/i18n/config.ts` and `packages/browser-ui/src/i18n.js`
+5. Run `npm run validate --workspace=packages/i18n` to ensure key parity and clean drift output
+6. Review the validator allowlist only if the new locale intentionally keeps technical identifiers identical
+7. No server-side route changes should be needed unless a new locale code must be accepted by request schemas
 
 ### Plural Rules
 

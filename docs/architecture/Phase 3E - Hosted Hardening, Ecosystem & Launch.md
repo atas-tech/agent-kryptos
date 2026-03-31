@@ -280,7 +280,7 @@ Update the SPS egress URL filter allowlist to match the production domains:
 
 ## Milestone 5: Internationalization (i18n)
 
-Add multi-language support across all user-facing text, starting with English (en) and Vietnamese (vi). The rollout is staged: first land a stable server-backed locale preference contract, then migrate dashboard copy, then wire browser-ui and email rendering.
+Multi-language support now ships across the main user-facing BlindPass surfaces in English (en) and Vietnamese (vi). The rollout landed in the planned order: server-backed locale contract first, then dashboard copy migration, then browser-ui and email rendering. The remaining follow-up work is verification depth, not foundational plumbing.
 
 ### Goals
 
@@ -290,7 +290,7 @@ Add multi-language support across all user-facing text, starting with English (e
 - Store explicit user locale preference in the database for server-side email localization
 - Establish a scalable translation architecture for adding future languages
 
-### Rollout Order
+### Implemented Rollout
 
 1. Locale contract: `preferred_locale` in auth responses, registration seed, and a dedicated locale update endpoint
 2. Dashboard synchronization: server-backed locale reapplied after login/refresh, manual switch persisted to both `localStorage` and the database
@@ -298,20 +298,21 @@ Add multi-language support across all user-facing text, starting with English (e
 4. Browser UI migration: lightweight translation loader using the shared locale package
 5. Email rendering: locale-aware template selection in the mailer
 
-### [NEW] `packages/i18n/`
+### `packages/i18n/`
 
 A shared workspace package containing all locale resources:
 
 - `locales/en/*.json` and `locales/vi/*.json` — namespace-organized translation files (auth, dashboard, agents, billing, audit, policy, settings, browser-ui, email, common, etc.)
 - `index.ts` — locale resolver utility and TypeScript key types
 - `supported.ts` — list of supported locale codes
-- Validation script to ensure English and Vietnamese files have identical key structures
+- `scripts/validate-keys.ts` + `scripts/validation-lib.ts` — validation for both key parity and suspicious untranslated-copy drift
+- `tests/validate-keys.test.ts` — regression coverage for the validator heuristics
 
 No runtime dependencies. Pure JSON exports consumed by downstream packages.
 
-### [MODIFY] `packages/dashboard`
+### `packages/dashboard`
 
-Integrate `react-i18next` with `i18next-browser-languagedetector`:
+Integrated `react-i18next` with `i18next-browser-languagedetector`:
 
 - `src/i18n/config.ts` — i18next initialization with namespace-based lazy loading
 - `src/components/LocaleSwitcher.tsx` — language toggle in sidebar footer and auth shell
@@ -320,28 +321,31 @@ Integrate `react-i18next` with `i18next-browser-languagedetector`:
 - All 15 pages and 12 components migrated from hardcoded strings to `t('namespace:key')` calls
 - Simultaneous cleanup of Stitch references, milestone labels, and internal jargon across all pages
 
-### [MODIFY] `packages/browser-ui`
+### `packages/browser-ui`
 
-Lightweight custom i18n (~50 lines) without a framework dependency:
+Lightweight custom i18n without a framework dependency:
 
 - `src/i18n.js` — minimal translation loader with `t(key)` function and `data-i18n` attribute scanner
 - `index.html` updated with `data-i18n` attributes; English text remains as fallback content
 - `app.js` status messages and UI text replaced with `t()` calls
+- Locale resolves from `localStorage("blindpass_locale")` first, then browser language, then English fallback
+- `document.documentElement.lang` is updated during initialization
 
-### [MODIFY] `packages/sps-server/src/services/mailer.ts`
+### `packages/sps-server/src/services/mailer.ts`
 
 - Add `locale` parameter (default `"en"`) to `sendVerificationEmail()` and `sendPasswordResetEmail()`
 - Load locale-appropriate email strings from `@blindpass/i18n`
 - Set `<html lang="...">` on rendered email templates
 
-### [MODIFY] `packages/sps-server/src/routes/auth.ts`
+### `packages/sps-server/src/routes/auth.ts`
 
 - Seed registration locale from the dashboard-selected locale
 - Add `PATCH /api/v2/auth/locale` for explicit preference updates
+- Return `preferred_locale` from auth/register, auth/login, auth/refresh, and auth/me user payloads
 - Extract locale from `Accept-Language` only as a fallback for email-triggering flows where no stored preference exists
 - Pass resolved locale to mailer functions
 
-### [NEW] Migration: `017_user_preferred_locale.sql`
+### Migration: `017_user_preferred_locale.sql`
 
 Add `preferred_locale` column to the `users` table:
 
@@ -349,7 +353,7 @@ Add `preferred_locale` column to the `users` table:
 ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_locale TEXT DEFAULT 'en';
 ```
 
-### [MODIFY] `packages/sps-server/src/services/user.ts`
+### `packages/sps-server/src/services/user.ts`
 
 - Include `preferred_locale` in `UserRecord` and `UserRow` types
 - Read and write locale on registration and explicit locale updates
@@ -366,15 +370,17 @@ Registration uses the current browser-selected locale as the initial default. Ex
 
 ### Placeholder Text Cleanup
 
-Remove all internal references that leak into the production UI:
+The production UI no longer exposes internal references such as:
 
 - **Stitch references**: `"Stitch layout reference"`, `"Stitch-designed operations grid"`, `"Stitch table treatment"`, etc.
 - **Milestone labels**: `"Milestone 3"`, `"Milestone 4"`, `"Desktop Agents Management"`, etc.
 - **Developer jargon**: `"operator shell"`, `"header chrome"`, `"x402 overages settle before release"`, etc.
 
-These are replaced with professional, user-facing English copy before translation to Vietnamese.
+These have been replaced with professional, user-facing English copy before translation to Vietnamese.
 
-**Acceptance**: Dashboard, browser-ui, and emails render correctly in both English and Vietnamese. Language auto-detection works from `navigator.language`. Manual toggle persists through both `localStorage` and the authenticated user record. User locale is stored in the database and returned by auth/me flows. No Stitch references, milestone labels, or developer jargon remain in production UI text. Adding a new language requires only adding a new JSON folder under `locales/`.
+**Current shipped state**: Dashboard, browser-ui, and emails render correctly in both English and Vietnamese. Locale detection works from browser settings with English fallback. Manual toggle persists through both `localStorage` and the authenticated user record. User locale is stored in the database and returned by auth/register, auth/login, auth/refresh, and auth/me flows. No Stitch references, milestone labels, or developer jargon remain in production UI text. Adding a new language is mostly a locale-resource change, but the current implementation also requires registering the locale in `packages/i18n/src/supported.ts`, `packages/dashboard/src/i18n/config.ts`, and `packages/browser-ui/src/i18n.js`.
+
+**Remaining follow-up**: add browser-level locale E2E coverage for the dashboard toggle, browser-ui locale resolution, and hosted end-to-end email locale behavior.
 
 ---
 

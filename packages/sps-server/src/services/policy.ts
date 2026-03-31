@@ -123,44 +123,23 @@ export class ExchangePolicyEngine {
 
     const requesterRing = ringFromAgentId(input.requesterId);
     const fulfillerRing = ringFromAgentId(input.fulfillerHint);
+    
     const matchedRule = this.rules.find((rule) => {
-      if (rule.secretName !== input.secretName) {
-        return false;
-      }
-
-      if (rule.requesterIds && !rule.requesterIds.includes(input.requesterId)) {
-        return false;
-      }
-
-      if (rule.fulfillerIds && !rule.fulfillerIds.includes(input.fulfillerHint)) {
-        return false;
-      }
-
-      if (!listIncludes(rule.purposes, input.purpose)) {
-        return false;
-      }
-
-      if (!listIncludes(rule.requesterRings, requesterRing ?? "")) {
-        return false;
-      }
-
-      if (!listIncludes(rule.fulfillerRings, fulfillerRing ?? "")) {
-        return false;
-      }
-
+      if (rule.secretName !== input.secretName) return false;
+      if (rule.requesterIds && !rule.requesterIds.includes(input.requesterId)) return false;
+      if (rule.fulfillerIds && !rule.fulfillerIds.includes(input.fulfillerHint)) return false;
+      if (!listIncludes(rule.purposes, input.purpose)) return false;
+      if (!listIncludes(rule.requesterRings, requesterRing ?? "")) return false;
+      if (!listIncludes(rule.fulfillerRings, fulfillerRing ?? "")) return false;
       if (rule.sameRing) {
-        if (!requesterRing || !fulfillerRing || requesterRing !== fulfillerRing) {
-          return false;
-        }
-        if (rule.allowedRings && !rule.allowedRings.includes(requesterRing)) {
-          return false;
-        }
+        if (!requesterRing || !fulfillerRing || requesterRing !== fulfillerRing) return false;
+        if (rule.allowedRings && !rule.allowedRings.includes(requesterRing)) return false;
       }
-
       return true;
     });
 
     if (!matchedRule) {
+      console.log("[EVALUATE DEBUG] No matched rule found for input:", JSON.stringify(input));
       return null;
     }
 

@@ -187,11 +187,11 @@ export function AgentsPage() {
           </div>
 
           <div className="toolbar__actions">
-            <button className="ghost-button" onClick={() => void loadAgents(true)} type="button">
+            <button className="ghost-button" data-testid="refresh-agents-btn" onClick={() => void loadAgents(true)} type="button">
               <RefreshCw size={16} />
               {t("common:refresh")}
             </button>
-            <button className="primary-button" onClick={() => setShowEnroll(true)} type="button">
+            <button className="primary-button" data-testid="enroll-agent-btn" onClick={() => setShowEnroll(true)} type="button">
               <Plus size={16} />
               {t("agents:actions.enroll")}
             </button>
@@ -201,11 +201,11 @@ export function AgentsPage() {
         <div className="stats-row">
           <article className="metric-panel">
             <span>{t("agents:stats.activeAgents")}</span>
-            <strong>{activeCount}</strong>
+            <strong data-testid="active-agents-count">{activeCount}</strong>
           </article>
           <article className="metric-panel">
             <span>{t("agents:stats.revokedAgents")}</span>
-            <strong>{revokedCount}</strong>
+            <strong data-testid="revoked-agents-count">{revokedCount}</strong>
           </article>
           <article className="metric-panel">
             <span>{t("agents:stats.revealPolicy")}</span>
@@ -228,6 +228,7 @@ export function AgentsPage() {
             <select
               aria-label={t("agents:filter.label")}
               className="dashboard-select"
+              data-testid="agents-status-filter"
               onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
               value={statusFilter}
             >
@@ -244,8 +245,8 @@ export function AgentsPage() {
               key: "agent",
               header: t("agents:table.columnAgent"),
               render: (agent) => (
-                <div>
-                  <div className="record-title">{agent.agent_id}</div>
+                <div data-testid={`agent-row-${agent.agent_id}`}>
+                  <div className="record-title" data-testid="agent-id-cell">{agent.agent_id}</div>
                   <div className="record-meta">{agent.display_name ?? t("common:noDisplayName")}</div>
                 </div>
               )
@@ -253,7 +254,7 @@ export function AgentsPage() {
             {
               key: "status",
               header: t("agents:table.columnStatus"),
-              render: (agent) => <StatusBadge tone={toneForStatus(agent.status)}>{t(`common:${agent.status}`)}</StatusBadge>
+              render: (agent) => <StatusBadge data-testid={`agent-status-${agent.agent_id}`} tone={toneForStatus(agent.status)}>{t(`common:${agent.status}`)}</StatusBadge>
             },
             {
               key: "created",
@@ -274,6 +275,7 @@ export function AgentsPage() {
                 <div className="inline-actions">
                   <button
                     className="ghost-button"
+                    data-testid={`rotate-agent-btn-${agent.agent_id}`}
                     disabled={agent.status !== "active"}
                     onClick={() => setConfirmAction({ type: "rotate", agent })}
                     type="button"
@@ -283,6 +285,7 @@ export function AgentsPage() {
                   </button>
                   <button
                     className="ghost-button"
+                    data-testid={`revoke-agent-btn-${agent.agent_id}`}
                     disabled={agent.status !== "active"}
                     onClick={() => setConfirmAction({ type: "revoke", agent })}
                     type="button"
@@ -297,7 +300,7 @@ export function AgentsPage() {
           emptyState={
             <EmptyState
               action={
-                <button className="primary-button" onClick={() => setShowEnroll(true)} type="button">
+                <button className="primary-button" data-testid="enroll-first-agent-btn" onClick={() => setShowEnroll(true)} type="button">
                   <Plus size={16} />
                   {t("agents:enroll.enrollFirstAgent")}
                 </button>
@@ -308,10 +311,10 @@ export function AgentsPage() {
           }
           footer={
             <>
-              <span className="helper-copy">
+              <span className="helper-copy" data-testid="agents-count-footer">
                 {loading ? t("agents:footer.loadingAgents") : t("common:rowsLoaded", { count: agents.length })}
               </span>
-              <button className="ghost-button" disabled={!nextCursor || loadingMore} onClick={() => void loadAgents()} type="button">
+              <button className="ghost-button" data-testid="load-more-agents-btn" disabled={!nextCursor || loadingMore} onClick={() => void loadAgents()} type="button">
                 {loadingMore ? t("common:loading") : nextCursor ? t("common:loadMore") : t("common:noMoreRows")}
               </button>
             </>
@@ -344,6 +347,7 @@ export function AgentsPage() {
                   <label htmlFor="agent-id">{t("agents:enroll.agentIdLabel")}</label>
                   <input
                     className="dashboard-input"
+                    data-testid="enroll-agent-id-input"
                     id="agent-id"
                     onChange={(event) => setAgentId(event.target.value)}
                     placeholder={t("agents:enroll.agentIdPlaceholder")}
@@ -357,6 +361,7 @@ export function AgentsPage() {
                   <label htmlFor="agent-display-name">{t("agents:enroll.displayNameLabel")}</label>
                   <input
                     className="dashboard-input"
+                    data-testid="enroll-agent-display-name-input"
                     id="agent-display-name"
                     onChange={(event) => setDisplayName(event.target.value)}
                     placeholder={t("agents:enroll.displayNamePlaceholder")}
@@ -367,10 +372,10 @@ export function AgentsPage() {
               </div>
 
               <div className="modal-card__actions">
-                <button className="ghost-button" onClick={() => setShowEnroll(false)} type="button">
+                <button className="ghost-button" data-testid="enroll-agent-cancel" onClick={() => setShowEnroll(false)} type="button">
                   {t("common:cancel")}
                 </button>
-                <button className="primary-button" disabled={formPending} type="submit">
+                <button className="primary-button" data-testid="enroll-agent-submit" disabled={formPending} type="submit">
                   {formPending ? t("agents:enroll.submitting") : t("agents:enroll.submitButton")}
                 </button>
               </div>

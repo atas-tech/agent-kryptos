@@ -1,15 +1,15 @@
-const REFRESH_TOKEN_KEY = "sps_refresh_token";
+const REFRESH_TOKEN_KEY = "blindpass_refresh_token";
 
-function resolveSessionStorage() {
+function resolveStorage() {
   try {
-    return globalThis.window?.sessionStorage ?? null;
+    return globalThis.window?.localStorage ?? null;
   } catch {
     return null;
   }
 }
 
 export function getStoredRefreshToken() {
-  const storage = resolveSessionStorage();
+  const storage = resolveStorage();
   if (!storage) {
     return null;
   }
@@ -22,7 +22,7 @@ export function getStoredRefreshToken() {
 }
 
 export function setStoredRefreshToken(refreshToken) {
-  const storage = resolveSessionStorage();
+  const storage = resolveStorage();
   if (!storage) {
     return;
   }

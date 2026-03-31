@@ -97,6 +97,7 @@ export function MembersPage() {
   const [confirmSuspend, setConfirmSuspend] = useState<MemberRecord | null>(null);
   const [actionPendingId, setActionPendingId] = useState<string | null>(null);
   const [activeAdminIds, setActiveAdminIds] = useState<Set<string>>(new Set());
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const passwordStrength = describePasswordStrength(temporaryPassword);
 
@@ -216,6 +217,8 @@ export function MembersPage() {
         body: JSON.stringify(payload)
       });
       setConfirmSuspend(null);
+      setSuccessMessage(payload.role ? t("members:status.roleUpdated") : t("members:status.statusUpdated"));
+      setTimeout(() => setSuccessMessage(null), 3000);
       await Promise.all([loadMembers(true), refreshActiveAdmins()]);
     } catch (requestError) {
       if (requestError instanceof ApiError && requestError.code === "last_admin_lockout") {
@@ -237,12 +240,12 @@ export function MembersPage() {
         <div className="toolbar">
           <div>
             <div className="section-label">{t("members:hero.sectionLabel")}</div>
-            <h2 className="hero-card__title">{t("members:hero.title")}</h2>
+            <h2 className="hero-card__title" data-testid="members-title">{t("members:hero.title")}</h2>
             <p className="hero-card__body">{t("members:hero.body")}</p>
           </div>
 
           <div className="toolbar__actions">
-            <button className="primary-button" onClick={() => setShowAddMember(true)} type="button">
+            <button className="primary-button" data-testid="add-member-btn" onClick={() => setShowAddMember(true)} type="button">
               <UserPlus size={16} />
               {t("members:actions.addMember")}
             </button>
@@ -252,20 +255,21 @@ export function MembersPage() {
         <div className="stats-row">
           <article className="metric-panel">
             <span>{t("members:stats.activeMembers")}</span>
-            <strong>{activeCount}</strong>
+            <strong data-testid="active-members-count">{activeCount}</strong>
           </article>
           <article className="metric-panel">
             <span>{t("members:stats.suspendedMembers")}</span>
-            <strong>{suspendedCount}</strong>
+            <strong data-testid="suspended-members-count">{suspendedCount}</strong>
           </article>
           <article className="metric-panel">
             <span>{t("members:stats.adminSafety")}</span>
-            <strong>{t(activeAdminIds.size === 1 ? "members:stats.activeAdmin" : "members:stats.activeAdmins", { count: activeAdminIds.size })}</strong>
+            <strong data-testid="admin-safety-count">{t(activeAdminIds.size === 1 ? "members:stats.activeAdmin" : "members:stats.activeAdmins", { count: activeAdminIds.size })}</strong>
           </article>
         </div>
       </div>
 
       {error ? <div className="error-banner">{error}</div> : null}
+      {successMessage ? <div className="success-banner" data-testid="members-success-banner">{successMessage}</div> : null}
 
       <div className="panel-card">
         <div className="panel-card__header">
@@ -279,6 +283,7 @@ export function MembersPage() {
             <select
               aria-label={t("members:filter.label")}
               className="dashboard-select"
+              data-testid="members-status-filter"
               onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
               value={statusFilter}
             >
@@ -295,8 +300,8 @@ export function MembersPage() {
               key: "member",
               header: t("members:table.columnMember"),
               render: (member) => (
-                <div>
-                  <div className="record-title">{member.email}</div>
+                <div data-testid={`member-row-${member.email}`}>
+                  <div className="record-title" data-testid="member-email-cell">{member.email}</div>
                   <div className="record-meta">
                     {t("members:status.added", { date: formatDate(member.created_at) })} · {member.email_verified ? t("common:verified") : t("common:unverified")}
                   </div>
@@ -355,7 +360,7 @@ export function MembersPage() {
           emptyState={
             <EmptyState
               action={
-                <button className="primary-button" onClick={() => setShowAddMember(true)} type="button">
+                <button className="primary-button" data-testid="add-first-member-btn" onClick={() => setShowAddMember(true)} type="button">
                   <UserPlus size={16} />
                   {t("members:addMember.addFirstMember")}
                 </button>
@@ -366,10 +371,10 @@ export function MembersPage() {
           }
           footer={
             <>
-              <span className="helper-copy">
+              <span className="helper-copy" data-testid="members-count-footer">
                 {loading ? t("members:footer.loadingMembers") : t("common:rowsLoaded", { count: members.length })}
               </span>
-              <button className="ghost-button" disabled={!nextCursor || loadingMore} onClick={() => void loadMembers()} type="button">
+              <button className="ghost-button" data-testid="load-more-members-btn" disabled={!nextCursor || loadingMore} onClick={() => void loadMembers()} type="button">
                 {loadingMore ? t("common:loading") : nextCursor ? t("common:loadMore") : t("common:noMoreRows")}
               </button>
             </>
@@ -402,6 +407,7 @@ export function MembersPage() {
                   <label htmlFor="member-email">{t("members:addMember.emailLabel")}</label>
                   <input
                     className="dashboard-input"
+                    data-testid="add-member-email-input"
                     id="member-email"
                     onChange={(event) => setEmail(event.target.value)}
                     placeholder={t("members:addMember.emailPlaceholder")}
@@ -416,6 +422,7 @@ export function MembersPage() {
                   <label htmlFor="member-role">{t("members:addMember.roleLabel")}</label>
                   <select
                     className="dashboard-select"
+                    data-testid="add-member-role-select"
                     id="member-role"
                     onChange={(event) => setRole(event.target.value as UserRole)}
                     value={role}
@@ -433,6 +440,7 @@ export function MembersPage() {
                   <label htmlFor="temporary-password">{t("members:addMember.tempPasswordLabel")}</label>
                   <input
                     className="dashboard-input"
+                    data-testid="add-member-password-input"
                     id="temporary-password"
                     minLength={12}
                     onChange={(event) => setTemporaryPassword(event.target.value)}
@@ -443,17 +451,17 @@ export function MembersPage() {
                   <div className="strength-meter">
                     <span style={{ width: `${passwordStrength.percent}%` }} />
                   </div>
-                  <div className="strength-copy">
+                  <div className="strength-copy" data-testid="password-strength-label">
                     {t("members:addMember.tempPasswordStrength", { label: t(`members:passwordStrength.${passwordStrength.key}`) })}
                   </div>
                 </div>
               </div>
 
               <div className="modal-card__actions">
-                <button className="ghost-button" onClick={() => setShowAddMember(false)} type="button">
+                <button className="ghost-button" data-testid="add-member-cancel" onClick={() => setShowAddMember(false)} type="button">
                   {t("common:cancel")}
                 </button>
-                <button className="primary-button" disabled={formPending} type="submit">
+                <button className="primary-button" data-testid="add-member-submit" disabled={formPending} type="submit">
                   {formPending ? t("members:addMember.submitting") : t("members:addMember.submitButton")}
                 </button>
               </div>

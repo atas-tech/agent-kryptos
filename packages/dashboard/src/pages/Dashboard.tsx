@@ -262,12 +262,12 @@ export function DashboardPage() {
               : t("dashboard:cards.provider.notConnected")
           }
         ].map(({ icon: Icon, title, value, copy }) => (
-          <article key={title} className="info-card">
+          <article key={title} className="info-card" data-testid={`summary-card-${title.toLowerCase().replace(/\s+/g, '-')}`}>
             <div className="info-card__icon">
               <Icon size={18} />
             </div>
-            <div className="card-title">{title}</div>
-            <div className="metric-value">{value}</div>
+            <div className="card-title" data-testid="summary-card-title">{title}</div>
+            <div className="metric-value" data-testid="summary-card-value">{value}</div>
             <p className="hero-card__body">{copy}</p>
           </article>
         ))}
