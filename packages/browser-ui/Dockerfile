@@ -21,7 +21,7 @@ ENV VITE_SPS_API_URL=${VITE_SPS_API_URL}
 COPY packages/browser-ui packages/browser-ui
 COPY packages/i18n packages/i18n
 
-RUN npm run build --workspace=packages/browser-ui
+RUN npm run build --workspace=@blindpass/browser-ui
 
 FROM nginx:1.29-alpine AS runtime
 

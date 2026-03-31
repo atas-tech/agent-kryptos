@@ -4,16 +4,23 @@
   "license": "AGPL-3.0-only",
   "version": "0.1.0",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./src/index.ts"
+    },
     "./locales/*": "./locales/*"
   },
   "scripts": {
     "test": "node --import tsx --test tests/validate-keys.test.ts",
     "validate": "node --import tsx scripts/validate-keys.ts",
-    "build": "echo 'No build step needed for i18n package'"
+    "build": "tsc"
   },
   "devDependencies": {
-    "tsx": "^4.19.0"
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.3"
   }
 }

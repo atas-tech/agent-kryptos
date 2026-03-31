@@ -20,7 +20,7 @@ COPY packages/sps-server/tsconfig.json packages/sps-server/tsconfig.json
 COPY packages/sps-server/src packages/sps-server/src
 COPY packages/i18n packages/i18n
 
-RUN npm run build --workspace=packages/sps-server
+RUN npm run build --workspace=@blindpass/i18n && npm run build --workspace=@blindpass/sps-server
 
 FROM node:22-alpine AS runtime
 WORKDIR /app
@@ -37,6 +37,8 @@ COPY packages/agent-skill/package.json packages/agent-skill/package.json
 COPY packages/gateway/package.json packages/gateway/package.json
 COPY packages/openclaw-plugin/package.json packages/openclaw-plugin/package.json
 COPY packages/i18n/package.json packages/i18n/package.json
+COPY --from=build /app/packages/i18n/dist packages/i18n/dist
+COPY packages/i18n/locales packages/i18n/locales
 
 RUN npm ci --omit=dev
 
