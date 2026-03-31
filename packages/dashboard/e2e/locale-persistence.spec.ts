@@ -9,23 +9,27 @@ test.describe("Locale Persistence & Switching", () => {
     const submitBtn = page.getByTestId("login-submit");
     await expect(submitBtn).toContainText(/Sign in/i, { timeout: 15000 });
     
-    // Switch to VI via data-testid
-    const viLabel = page.getByTestId("locale-label-vi");
-    await expect(viLabel).toBeVisible({ timeout: 15000 });
+    // Switch to VI via data-testid dropdown
+    const localeSelect = page.getByTestId("locale-select");
+    await expect(localeSelect).toBeVisible({ timeout: 15000 });
+    await expect(localeSelect).toContainText("EN");
     
-    const viToggle = page.getByTestId("locale-toggle-vi");
-    await viToggle.check({ force: true });
+    await localeSelect.click();
+    const viOption = page.getByTestId("locale-option-vi");
+    await expect(viOption).toBeVisible();
+    await viOption.click();
     
-    // Check if the toggle is checked
-    await expect(viToggle).toBeChecked();
+    // Check if the selector now shows VI
+    await expect(localeSelect).toContainText("VI");
     
     // Reload and check persistence
     await page.reload();
-    await expect(page.getByTestId("locale-toggle-vi")).toBeChecked({ timeout: 15000 });
+    await expect(page.getByTestId("locale-select")).toContainText("VI", { timeout: 15000 });
     
     // Switch back to EN
-    await page.getByTestId("locale-toggle-en").check({ force: true });
-    await expect(page.getByTestId("locale-toggle-en")).toBeChecked();
+    await localeSelect.click();
+    await page.getByTestId("locale-option-en").click();
+    await expect(localeSelect).toContainText("EN");
   });
 
   test("Scenario 402: Browser Language Detection", async ({ browser }) => {
