@@ -25,7 +25,7 @@ COPY tsconfig.base.json ./
 COPY packages/dashboard packages/dashboard
 COPY packages/i18n packages/i18n
 
-RUN npm run build --workspace=@blindpass/dashboard
+RUN npm run build --workspace=@blindpass/i18n && npm run build --workspace=@blindpass/dashboard
 
 FROM nginx:1.29-alpine AS runtime
 
