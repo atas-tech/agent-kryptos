@@ -163,8 +163,8 @@ async function testFailsWhenNoTransportAvailable() {
 
         const result = await getTool(api, "request_secret").execute("id-4", { description: "Need token" }, {});
         const output = result?.content?.[0]?.text ?? "";
-        assert.match(output, /Error: request_secret requires routing params/);
-        assert.equal(captured.length, 0, "Should fail before transport attempts when routing params are missing");
+        assert.match(output, /Could not deliver secure link to chat channel/);
+        assert.equal(captured.length, 1, "Should log transport failure details to console.error when routing params are missing");
     } finally {
         console.error = originalError;
     }

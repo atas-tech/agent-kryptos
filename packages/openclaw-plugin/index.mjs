@@ -581,17 +581,8 @@ export default function register(api, runtime = {}) {
                 };
             }
 
-            const explicitChannelId = typeof params.channel_id === "string" ? params.channel_id.trim() : "";
-            const explicitChannel = typeof params.channel === "string" ? params.channel.trim() : "";
-            const explicitTarget = typeof params.target === "string" ? params.target.trim() : "";
-            if (!explicitChannelId && !(explicitChannel && explicitTarget)) {
-                return {
-                    content: [{
-                        type: "text",
-                        text: "Error: request_secret requires routing params. Pass either `channel_id` (e.g. `telegram:123456789`) OR both `channel` and `target`.",
-                    }],
-                };
-            }
+            // Routing params are optional if the context runtime provides sendText/sendMessage helpers.
+            // We defer routing failures to the actual transport loop below to allow graceful fallbacks.
 
             try {
                 const spsBaseUrl = process.env.SPS_BASE_URL ?? "http://localhost:3100";

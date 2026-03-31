@@ -146,11 +146,14 @@ export async function requestSecretFlow(params) {
     const keyPair = await modules.keyManager.generateKeyPair();
 
     try {
+        const apiKey = process.env.BLINDPASS_API_KEY?.trim() || process.env.SPS_AGENT_API_KEY?.trim();
+
         // 2. Create secret request via Gateway SPS client
         const gatewayToken = await getAgentAuthToken(modules, resolvedAgentId, spsBaseUrl, identityOptions);
         const gatewayClient = new modules.GatewaySpsClient({
             baseUrl: spsBaseUrl,
             gatewayBearerToken: gatewayToken,
+            bootstrapApiKey: apiKey || undefined,
         });
 
         const request = await gatewayClient.createSecretRequest({
@@ -166,6 +169,7 @@ export async function requestSecretFlow(params) {
         const agentClient = new modules.SpsClient({
             baseUrl: spsBaseUrl,
             gatewayBearerToken: agentToken,
+            bootstrapApiKey: apiKey || undefined,
         });
 
         await agentClient.pollStatus(request.requestId, 1000, 180_000, 60_000);
