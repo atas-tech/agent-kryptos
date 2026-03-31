@@ -170,9 +170,9 @@ body {
   width: min(1320px, 100%);
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(420px, 560px);
+  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
   gap: 2rem;
-  align-items: center;
+  align-items: start;
   padding: 2.25rem 1.5rem 3rem;
 }
 
@@ -188,7 +188,7 @@ body {
 }
 
 .trust-panel {
-  padding: 2.5rem;
+  padding: 1.75rem;
 }
 
 .secret-card {
@@ -218,10 +218,10 @@ body {
 .trust-panel h1,
 .card-header h2,
 .success-title {
-  font-size: clamp(2rem, 3vw, 3.4rem);
-  line-height: 1.02;
+  font-size: clamp(1.4rem, 2vw, 1.8rem);
+  line-height: 1.15;
   font-weight: 900;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.03em;
 }
 
 .card-header h2,
@@ -238,17 +238,17 @@ body {
 
 .trust-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-  margin-top: 2rem;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
 }
 
 .trust-card {
-  border-radius: 20px;
+  border-radius: 16px;
   border: 1px solid rgba(0, 245, 212, 0.14);
   background: rgba(255, 255, 255, 0.03);
-  padding: 1.15rem;
-  min-height: 180px;
+  padding: 1rem;
+  min-height: 0;
 }
 
 .trust-kicker {
@@ -304,11 +304,11 @@ body {
 }
 
 .handoff-visualizer {
-  margin-top: 2.5rem;
-  margin-bottom: 2rem;
-  padding: 1.5rem;
+  margin-top: 1.5rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem;
   background: rgba(255, 255, 255, 0.02);
-  border-radius: 24px;
+  border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
@@ -330,16 +330,16 @@ body {
 }
 
 .node-icon {
-  width: 3.5rem;
-  height: 3.5rem;
+  width: 2.5rem;
+  height: 2.5rem;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 1rem;
+  border-radius: 0.75rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.5rem;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  font-size: 1.1rem;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.2);
 }
 
 .node-label {
@@ -699,6 +699,14 @@ button.secondary:hover {
   .workspace {
     grid-template-columns: 1fr;
     padding-top: 1.5rem;
+  }
+
+  .trust-panel {
+    order: 2;
+  }
+
+  .secret-card {
+    order: 1;
   }
 
   .trust-grid {
