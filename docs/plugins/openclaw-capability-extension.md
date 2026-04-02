@@ -194,17 +194,18 @@ A compiled Node.js CLI binary that:
 #### 3.2 SOPS-encrypted secret store
 
 ```
-<gateway-config-dir>/blindpass/  (or ~/.blindpass/ for MCP)
+<gateway-config-dir>/blindpass/  (or platform-specific default for MCP)
 ├── secrets.enc.json    # SOPS-encrypted JSON
 └── .sops.yaml          # SOPS config (age key, KMS refs, etc.)
 ```
 
 Default store locations:
 - **OpenClaw**: `<gateway-config-dir>/blindpass/secrets.enc.json` (per gateway)
-- **MCP Agents**: `~/.blindpass/secrets.enc.json` (user home directory)
+- **MCP Agents (Linux/macOS)**: `~/.blindpass/secrets.enc.json` (user home directory)
+- **MCP Agents (Windows)**: `%LOCALAPPDATA%\blindpass\secrets.enc.json`
 
-The location is fully configurable via:
-- `BLINDPASS_STORE_PATH` env var
+The plugin detects the platform at runtime and resolves the convention path accordingly (using `process.env.LOCALAPPDATA` on Windows, `$HOME/.blindpass/` on POSIX). The location is fully configurable via:
+- `BLINDPASS_STORE_PATH` env var (overrides platform detection)
 - `--store` CLI flag on the resolver
 
 **Why per-gateway?** OpenClaw supports [multiple gateways](https://docs.openclaw.ai/gateway/multiple-gateways). Each gateway has its own config directory, so secrets are naturally scoped per-gateway. This avoids concurrent read/write issues and follows the OpenClaw convention.
@@ -356,7 +357,6 @@ api.registerTool({
             description: { type: "string" },
             secret_name: { type: "string" },
             persist: { type: "boolean", default: true },
-            expose_plaintext: { type: "boolean", default: false },
         },
         required: ["description"],
     },
@@ -365,12 +365,33 @@ api.registerTool({
 
 Managed-mode behavior:
 
-- Default managed flow: `secret_name` + `persist=true` + `expose_plaintext=false`
-- BlindPass decrypts the secret, writes it to the encrypted store, and returns **metadata only** such as storage status and reload guidance
+- Default managed flow: `secret_name` + `persist=true`
+- BlindPass decrypts the secret, writes it to the encrypted store, and returns **metadata only** (storage status, reload guidance)
 - If `persist=true` and the managed store is unavailable, the tool fails closed
-- `expose_plaintext=true` is a legacy escape hatch for explicit ephemeral/runtime-only flows and should not be used for shared gateway secrets
+- If the deployment sets `BLINDPASS_ALLOW_EXPOSE_PLAINTEXT=true`, the tool returns the decrypted value alongside metadata. Default is `false` — only the operator can enable this, not the model
+
+> **Deployment-level plaintext control:** Whether decrypted secret values are ever returned to the model is controlled exclusively by the `BLINDPASS_ALLOW_EXPOSE_PLAINTEXT` environment variable (default: `false`). This cannot be overridden per-call by the model. Operators who need the "use it now" flow (e.g., agent writes an API key into a config file) enable this at the deployment level and accept that the secret passes through model context.
 
 **`request_secret_exchange`** should support the same `secret_name` / `persist` / metadata-only return path so agent-to-agent delivery can also avoid exposing plaintext to the model.
+
+**`store_secret`** — Explicitly store a secret the agent already has:
+
+```javascript
+api.registerTool({
+    name: "store_secret",
+    description: "Store a secret in the BlindPass encrypted store for SecretRef or MCP resolution.",
+    parameters: {
+        type: "object",
+        properties: {
+            secret_name: { type: "string" },
+            secret_value: { type: "string" },
+        },
+        required: ["secret_name", "secret_value"],
+    },
+});
+```
+
+> **Trade-off:** `store_secret` accepts plaintext in params (passes through LLM context). This is unavoidable for agent-originated secrets (e.g., generated API tokens, key pairs). For human-originated secrets, `request_secret` remains preferred (client-side HPKE encryption, no LLM exposure). Returns metadata only — never echoes the value back.
 
 **`list_secrets`** — List available secret names (never values):
 
@@ -382,12 +403,12 @@ api.registerTool({
 });
 ```
 
-**`delete_secret`** — Remove a secret from the BlindPass SOPS store:
+**`delete_secret`** — Remove a secret from the BlindPass managed store:
 
 ```javascript
 api.registerTool({
     name: "delete_secret",
-    description: "Delete a secret from the BlindPass SOPS store.",
+    description: "Delete a secret from the BlindPass managed store.",
     parameters: {
         type: "object",
         properties: {
@@ -438,6 +459,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         { name: "request_secret", description: "...", inputSchema: { ... } },
         { name: "request_secret_exchange", description: "...", inputSchema: { ... } },
         { name: "fulfill_secret_exchange", description: "...", inputSchema: { ... } },
+        { name: "store_secret",   description: "...", inputSchema: { ... } },
         { name: "list_secrets",   description: "...", inputSchema: { ... } },
         { name: "delete_secret",  description: "...", inputSchema: { ... } },
     ]
@@ -643,7 +665,8 @@ npx @blindpass/mcp-server
 │  ┌─────────────────────────────────┐                                 │
 │  │       blindpass-core.mjs        │  (shared tool logic)            │
 │  │  request_secret | request_secret_exchange                         │
-│  │  fulfill_secret_exchange | list_secrets | delete_secret           │
+│  │  fulfill_secret_exchange | store_secret                           │
+│  │  list_secrets | delete_secret                                     │
 │  └────────┬──────────────┬─────────┘                                 │
 │           │              │                                           │
 │  ┌────────▼─────┐  ┌─────▼───────────┐                               │
@@ -691,7 +714,7 @@ npx @blindpass/mcp-server
 | Managed mode contract: fail closed if persistence is enabled but store backend is unavailable | S |
 | Modify `persistSecret()` with `BLINDPASS_AUTO_PERSIST` flag | S |
 | Extend `request_secret` / `request_secret_exchange` with metadata-only managed-store mode | M |
-| Add `list_secrets` and `delete_secret` tools | S |
+| Add `store_secret`, `list_secrets`, and `delete_secret` tools | M |
 | Unit tests for SOPS store module | M |
 | Metadata-only audit logging (provision/rotation events) | S |
 

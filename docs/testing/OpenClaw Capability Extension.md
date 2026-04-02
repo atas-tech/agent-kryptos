@@ -47,9 +47,22 @@ This plan covers:
   - [ ] Runtime-only secrets are not resolvable by `blindpass-resolver`
 
 - [ ] **Managed-store maintenance operations**
+  - [ ] `store_secret` writes to the managed store and returns metadata only (never echoes the value)
+  - [ ] `store_secret` fails closed if managed store is unavailable
   - [ ] `list_secrets` returns names only
   - [ ] `delete_secret` removes the managed secret and records a metadata-only audit event
   - [ ] Rotation via `request_secret` with `re_request=true` replaces the stored value atomically
+
+- [ ] **Deployment-level plaintext control**
+  - [ ] With `BLINDPASS_ALLOW_EXPOSE_PLAINTEXT=false` (default), `request_secret` returns metadata only
+  - [ ] With `BLINDPASS_ALLOW_EXPOSE_PLAINTEXT=true`, `request_secret` returns the decrypted value alongside metadata
+  - [ ] The model cannot override this setting via tool parameters
+  - [ ] `store_secret` never echoes the value back regardless of the plaintext control setting
+
+- [ ] **Platform-aware store path resolution**
+  - [ ] On Linux/macOS, convention path resolves to `$HOME/.blindpass/`
+  - [ ] On Windows, convention path resolves to `%LOCALAPPDATA%\blindpass\`
+  - [ ] `BLINDPASS_STORE_PATH` overrides platform detection on all platforms
 
 ## Milestone 3: Resolver and OpenClaw SecretRef Integration
 
@@ -75,6 +88,7 @@ This plan covers:
   - [ ] MCP server exposes `request_secret`
   - [ ] MCP server exposes `request_secret_exchange`
   - [ ] MCP server exposes `fulfill_secret_exchange`
+  - [ ] MCP server exposes `store_secret`
   - [ ] MCP server exposes `list_secrets`
   - [ ] MCP server exposes `delete_secret`
 
@@ -110,7 +124,9 @@ This plan covers:
 
 ## Exit Criteria
 
-- Managed-secret mode never returns plaintext to the model by default
+- Managed-secret mode never returns plaintext to the model by default (`BLINDPASS_ALLOW_EXPOSE_PLAINTEXT=false`)
+- Plaintext exposure is exclusively operator-controlled via deployment environment variable
 - OpenClaw SecretRef behavior is documented and validated as reload-based, not live-updating
 - Cross-agent MCP support ships from the same shared core without regressing the OpenClaw plugin path
+- Platform-aware store path resolution works on Linux, macOS, and Windows
 - Release artifacts are bounded, auditable, and free from local development leakage
