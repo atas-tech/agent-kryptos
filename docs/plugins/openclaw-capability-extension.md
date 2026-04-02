@@ -51,16 +51,20 @@ The `packages/openclaw-plugin` is a native OpenClaw plugin that registers three 
 
 ### Distribution channels
 
-BlindPass will be distributed through **four channels**:
+BlindPass should ship through **two primary channels** plus manual fallbacks:
 
-| Channel | Install command | Audience |
-|---|---|---|
-| **ClawHub** | `openclaw skills install blindpass` | OpenClaw users |
-| **npm** | `npm install -g @blindpass/openclaw-plugin` | Advanced / self-host users |
-| **Git** | `./scripts/install_skill.sh --mode global --agent all` | Any agent (Codex, Claude, Antigravity) |
-| **MCP** | `npx @blindpass/mcp-server` | Any MCP-compatible agent |
+| Channel | Install command | Audience | Role |
+|---|---|---|---|
+| **ClawHub** | `openclaw skills install blindpass` | OpenClaw users | Primary OpenClaw distribution |
+| **npm (MCP)** | `npm install -g @blindpass/mcp-server` | Codex, Claude Code, Antigravity, other MCP clients | Primary cross-agent distribution |
+| **npx (MCP)** | `npx @blindpass/mcp-server` | Any MCP-compatible agent | Zero-install evaluation path |
+| **Git dist repo** | `./scripts/install_skill.sh --mode global --agent all` | Offline/manual installs | Fallback/manual channel |
 
-ClawHub, npm, and git channels receive the same **compiled bundle** — not raw source.
+Recommendation for Phase 1 packaging:
+
+- Publish the OpenClaw plugin through **ClawHub**
+- Publish the MCP server plus `blindpass-resolver` through **npm** as `@blindpass/mcp-server`
+- Use the dist repo to mirror compiled artifacts and installers, not as the primary package boundary
 
 ### Reference: How dependency-guard does it
 
@@ -97,11 +101,11 @@ The bundle inlines the needed exports from `@blindpass/gateway` and `@blindpass/
 name: "blindpass"
 version: "0.1.0"
 description: "Zero-knowledge secret provisioning via HPKE encryption. Request secrets from humans or other agents without exposing plaintext."
-metadata: {"openclaw":{"emoji":"🔐","requires":{"bins":[]}}}
+metadata: {"openclaw":{"emoji":"🔐","requires":{"bins":["sops"]}}}
 ---
 ```
 
-> Once we ship `blindpass-resolver` as a standalone CLI, add it to `requires.bins`.
+> Managed secret persistence and `blindpass-resolver` both depend on the `sops` CLI. If we ever ship a request-only ephemeral profile, that should be a separate lightweight install target.
 
 #### 2.3 Scripts
 
@@ -129,6 +133,17 @@ Three version fields exist: `SKILL.md` frontmatter, `openclaw.plugin.json`, and 
 ---
 
 ## 3. Capability B: OpenClaw Secrets Manager Integration
+
+### Two separate secret planes
+
+BlindPass has two distinct secret concerns that should stay separate in the design:
+
+| Concern | Purpose | Required config |
+|---|---|---|
+| **SPS bootstrap auth** | Authenticate BlindPass to SPS so it can request or fulfill secret flows | `BLINDPASS_API_KEY` or gateway JWT-based auth |
+| **Managed secret persistence** | Store received secrets for later SecretRef or MCP resolution | Encrypted store path plus `sops` runtime |
+
+`BLINDPASS_API_KEY` is only for connecting BlindPass to the SPS service. It is **not** the same thing as the encrypted store backend for secrets received afterward.
 
 ### How OpenClaw Secrets Management Works
 
@@ -174,7 +189,7 @@ A compiled Node.js CLI binary that:
 3. Resolves each requested ID from the decrypted data
 4. Returns values via stdout (never logs plaintext)
 
-**Key constraint:** The exec provider runs at **activation time** (startup/reload), not lazily. Secrets must be pre-provisioned before the gateway starts.
+**Key constraint:** The exec provider runs at **activation time** (startup/reload), not lazily. Secrets must be pre-provisioned before the gateway starts or before the next secrets reload.
 
 #### 3.2 SOPS-encrypted secret store
 
@@ -196,12 +211,13 @@ The location is fully configurable via:
 
 #### 3.3 SOPS key bootstrapping
 
-On first use (when no store exists), the plugin:
-1. Auto-generates an `age` identity key at `<store-dir>/.age-key.txt` using Node's native `crypto.generateKeyPairSync('x25519')` and formatting it to the `age` identity string format. This avoids needing the external `age-keygen` binary.
-2. Creates a `.sops.yaml` config pointing to the age key
-3. Initializes an empty encrypted store
+On first managed-store use (when no store exists), BlindPass:
+1. Verifies the `sops` CLI is available
+2. Generates or writes an **age-compatible** identity at `<store-dir>/.age-key.txt`
+3. Creates a `.sops.yaml` config pointing to that identity
+4. Initializes an empty encrypted store
 
-This gives users SOPS encryption with zero configuration. Advanced users can reconfigure `.sops.yaml` to use AWS KMS, GCP KMS, Azure Key Vault, or PGP instead.
+This removes manual key bootstrapping, but it does **not** remove the `sops` runtime dependency. Advanced users can reconfigure `.sops.yaml` to use AWS KMS, GCP KMS, Azure Key Vault, or PGP instead.
 
 #### 3.4 OpenClaw configuration example
 
@@ -240,22 +256,31 @@ This gives users SOPS encryption with zero configuration. Advanced users can rec
 
 #### 3.5 Simplified onboarding flow
 
-When a user installs the BlindPass plugin, the only configuration needed is:
+For **interactive secret delivery only**, the minimum BlindPass configuration is:
 
 | Config | Default | Notes |
 |---|---|---|
 | `SPS_BASE_URL` | `https://sps.blindpass.dev` | Hosted service by default |
 | `BLINDPASS_AGENT_ID` | `blindpass-agent` | Stable agent identity |
-| `BLINDPASS_API_KEY` | *(required)* | Agent bootstrap API key — the **only secret** users need to provision manually |
+| `BLINDPASS_API_KEY` | *(required unless gateway JWT auth is used)* | BlindPass bootstrap credential for talking to SPS |
 
-The `BLINDPASS_API_KEY` can itself be a SecretRef (env source), keeping the setup minimal. All subsequent secrets (API keys, tokens, etc.) are provisioned through the `request_secret` tool and automatically persisted to the SOPS store.
+For **managed SecretRef persistence**, add:
 
-**Onboarding in 3 steps:**
+| Config | Default | Notes |
+|---|---|---|
+| `BLINDPASS_STORE_PATH` | convention path | Optional override for encrypted store location |
+| `BLINDPASS_AUTO_PERSIST` | `true` | Managed-store mode by default |
+| `sops` CLI | *(required)* | Required for encrypt/decrypt operations |
+
+`BLINDPASS_API_KEY` can itself be a SecretRef or env var, keeping SPS bootstrap simple. Secrets received afterward are a separate concern and are persisted through the managed store only when that store is configured and available.
+
+**Onboarding in 4 steps:**
 1. `openclaw skills install blindpass`
-2. Set `BLINDPASS_API_KEY` env var (or use `openclaw secrets configure` to store it as a SecretRef)
-3. The agent calls `request_secret` when it needs a secret → user enters via browser → stored in SOPS
+2. Configure SPS auth via `BLINDPASS_API_KEY` or gateway JWT-based auth
+3. Install/configure `sops` if you want persistent SecretRef support
+4. The agent calls `request_secret` with a `secret_name` when it needs a managed secret → user enters via browser → BlindPass stores it in the encrypted store
 
-> **Note on Runtime Propagation:** When a new secret is provisioned, the plugin caches it in memory for its own immediate use. However, the OpenClaw gateway's `exec` provider only reads the SOPS file during startup or a secret reload. If other plugins or core models need the newly provisioned secret immediately via the `exec` provider, a **manual reload** is required (e.g., `openclaw secrets reload` or gateway restart).
+> **Note on Runtime Propagation:** When a new secret is provisioned, BlindPass can cache it in its own runtime for immediate local follow-up work. However, OpenClaw SecretRef consumers do **not** see that new value immediately. The `exec` provider materializes values into the gateway's active snapshot on startup, config reload, or `openclaw secrets reload`. Writing the SOPS file alone is not enough for other plugins or core model providers to observe the change.
 
 #### 3.6 Secret lifecycle with OpenClaw integration
 
@@ -273,15 +298,16 @@ The `BLINDPASS_API_KEY` can itself be a SecretRef (env source), keeping the setu
 │     <gateway-config>/blindpass/secrets.enc.json                     │
 │     Config: BLINDPASS_AUTO_PERSIST=true (default)                   │
 │                                                                     │
-│  3. REFERENCE (at gateway activation)                               │
-│     OpenClaw gateway starts → calls blindpass-resolver              │
+│  3. REFERENCE (at gateway activation / reload)                      │
+│     OpenClaw gateway starts or reloads secrets                      │
+│     → calls blindpass-resolver                                      │
 │     → resolver decrypts SOPS store → returns to gateway             │
 │     → gateway holds in active snapshot                               │
 │                                                                     │
 │  4. ROTATE                                                          │
 │     Agent calls request_secret (re_request: true)                   │
 │     → new value replaces old in SOPS store                          │
-│     → openclaw secrets reload refreshes snapshot                    │
+│     → openclaw secrets reload (or restart/config reload) refreshes snapshot │
 │                                                                     │
 │  5. AUDIT                                                           │
 │     openclaw secrets audit → verifies all refs resolve              │
@@ -296,48 +322,55 @@ The `BLINDPASS_API_KEY` can itself be a SecretRef (env source), keeping the setu
 
 #### 3.7 Changes to existing plugin code
 
-**`persistSecret()` — add SOPS backend:**
+**`persistSecret()` — managed store becomes the source of truth for shared secrets:**
 
 ```javascript
 async function persistSecret(api, context, name, value) {
-    // 1. Try runtime store (existing behavior)
-    for (const target of runtimeTargets) { ... }
-
-    // 2. Write to SOPS store if auto-persist is enabled (NEW)
+    // 1. Persist to the managed encrypted store when enabled
     if (isAutoPersistEnabled()) {
-        await writeToSopsStore(name, value);
+        const store = await requireManagedStore();
+        await store.write(name, value);
     }
 
-    // 3. Also keep in memory for immediate access
+    // 2. Also keep a short-lived runtime copy for plugin-local follow-up work
     setInMemorySecret(name, value);
-    return isAutoPersistEnabled() ? "sops-store" : "plugin";
+    return isAutoPersistEnabled() ? "managed-store" : "runtime-only";
 }
 ```
 
 **Config flag:** `BLINDPASS_AUTO_PERSIST` (default: `true`)
-- `true`: Every secret received via `request_secret` is automatically persisted to the SOPS store
-- `false`: Secrets live only in memory (current behavior)
+- `true`: Managed-secret mode. Every secret received for persistence must be written to the encrypted store. If the store backend is unavailable, the tool fails closed.
+- `false`: Explicit ephemeral mode. Secrets live only in runtime memory for plugin-local use and are **not** available to OpenClaw SecretRef consumers.
 
-#### 3.8 New tools
+#### 3.8 Tool changes
 
-**`store_secret`** — Explicitly store a secret the agent already has:
+**`request_secret`** — extend it to support secure persistence without exposing plaintext to the model:
 
 ```javascript
 api.registerTool({
-    name: "store_secret",
-    description: "Store a secret in the BlindPass SOPS store for OpenClaw SecretRef reference.",
+    name: "request_secret",
+    description: "Request a secret through BlindPass and optionally persist it to the managed encrypted store.",
     parameters: {
         type: "object",
         properties: {
+            description: { type: "string" },
             secret_name: { type: "string" },
-            secret_value: { type: "string" },
+            persist: { type: "boolean", default: true },
+            expose_plaintext: { type: "boolean", default: false },
         },
-        required: ["secret_name", "secret_value"],
+        required: ["description"],
     },
 });
 ```
 
-> **Trade-off:** `store_secret` accepts plaintext in params (passes through LLM context). For human-originated secrets, `request_secret` remains preferred (client-side encryption).
+Managed-mode behavior:
+
+- Default managed flow: `secret_name` + `persist=true` + `expose_plaintext=false`
+- BlindPass decrypts the secret, writes it to the encrypted store, and returns **metadata only** such as storage status and reload guidance
+- If `persist=true` and the managed store is unavailable, the tool fails closed
+- `expose_plaintext=true` is a legacy escape hatch for explicit ephemeral/runtime-only flows and should not be used for shared gateway secrets
+
+**`request_secret_exchange`** should support the same `secret_name` / `persist` / metadata-only return path so agent-to-agent delivery can also avoid exposing plaintext to the model.
 
 **`list_secrets`** — List available secret names (never values):
 
@@ -403,7 +436,8 @@ const server = new Server({
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
         { name: "request_secret", description: "...", inputSchema: { ... } },
-        { name: "store_secret",   description: "...", inputSchema: { ... } },
+        { name: "request_secret_exchange", description: "...", inputSchema: { ... } },
+        { name: "fulfill_secret_exchange", description: "...", inputSchema: { ... } },
         { name: "list_secrets",   description: "...", inputSchema: { ... } },
         { name: "delete_secret",  description: "...", inputSchema: { ... } },
     ]
@@ -608,8 +642,8 @@ npx @blindpass/mcp-server
 │                   ▼                                                  │
 │  ┌─────────────────────────────────┐                                 │
 │  │       blindpass-core.mjs        │  (shared tool logic)            │
-│  │  request_secret | store_secret  │                                 │
-│  │  list_secrets   | delete_secret │                                 │
+│  │  request_secret | request_secret_exchange                         │
+│  │  fulfill_secret_exchange | list_secrets | delete_secret           │
 │  └────────┬──────────────┬─────────┘                                 │
 │           │              │                                           │
 │  ┌────────▼─────┐  ┌─────▼───────────┐                               │
@@ -645,7 +679,7 @@ npx @blindpass/mcp-server
 | Set up esbuild bundle pipeline (3 entry points) | M |
 | Create `scripts/build_bundle.sh` | M |
 | Update `SKILL.md` frontmatter with ClawHub metadata | S |
-| Prepare `package.json` for npm publish (`@blindpass/mcp-server`) | S |
+| Prepare npm packaging for cross-agent distribution (`@blindpass/mcp-server`) | S |
 | Security validation in publish pipeline | S |
 
 ### Phase 2: SOPS-backed encrypted store (~3 days)
@@ -653,10 +687,11 @@ npx @blindpass/mcp-server
 | Task | Effort |
 |---|---|
 | Implement `encrypted-store.mjs` module (SOPS read/write) | M |
-| Auto-bootstrap: generate age key via Node crypto + `.sops.yaml` | M |
-| Graceful degradation: detect SOPS → fallback to in-memory | S |
+| Auto-bootstrap: create age-compatible identity + `.sops.yaml` | M |
+| Managed mode contract: fail closed if persistence is enabled but store backend is unavailable | S |
 | Modify `persistSecret()` with `BLINDPASS_AUTO_PERSIST` flag | S |
-| Add `store_secret`, `list_secrets`, `delete_secret` tools | M |
+| Extend `request_secret` / `request_secret_exchange` with metadata-only managed-store mode | M |
+| Add `list_secrets` and `delete_secret` tools | S |
 | Unit tests for SOPS store module | M |
 | Metadata-only audit logging (provision/rotation events) | S |
 
@@ -697,6 +732,10 @@ npx @blindpass/mcp-server
 
 **Total estimated effort:** ~11 days
 
+### Testing plan linkage
+
+The required E2E and integration scenarios for these phases are tracked in [../testing/OpenClaw Capability Extension.md](../testing/OpenClaw%20Capability%20Extension.md).
+
 ---
 
 ## 8. Resolved Decisions
@@ -705,11 +744,11 @@ npx @blindpass/mcp-server
 |---|---|---|---|
 | Q1 | Plugin vs. Skill? | **Full compiled plugin** | Published as compiled bundle — no source-code risk, no split install confusion |
 | Q2 | SPS bundling? | **SPS is separate** | SPS runs as hosted service (`sps.blindpass.dev`) or self-hosted. Plugin only needs the URL |
-| Q3 | npm too? | **Yes, dual publish** | `openclaw skills install blindpass` + `npm install -g @blindpass/mcp-server` |
+| Q3 | npm too? | **Yes, but audience-specific** | ClawHub is primary for OpenClaw. npm `@blindpass/mcp-server` is primary for MCP agents |
 | Q4 | Encryption? | **SOPS** | Built-in OpenClaw support, multiple KMS backends, widely adopted |
 | Q5 | Store location? | **Follow gateway config, configurable** | Default: `<gateway-config-dir>/blindpass/`. Override via env var or `--store` flag |
-| Q6 | Pre-provision UX? | **Minimal — only `BLINDPASS_API_KEY`** | Plugin defaults to hosted SPS. Users only need the bootstrap API key |
-| Q7 | Auto-persist on rotation? | **Yes by default, configurable** | `BLINDPASS_AUTO_PERSIST=true` (default). Disable with `false` for memory-only |
+| Q6 | Pre-provision UX? | **Minimal for SPS bootstrap** | Users need `BLINDPASS_API_KEY` for SPS access. Managed SecretRef persistence additionally needs the encrypted-store backend |
+| Q7 | Auto-persist on rotation? | **Yes by default, fail closed if unavailable** | `BLINDPASS_AUTO_PERSIST=true` means managed-store mode. `false` is explicit runtime-only mode |
 | Q8 | Multi-gateway? | **Per-gateway store** | Each gateway has its own config dir → its own SOPS store. No shared-state conflicts |
 | Q9 | Multi-agent? | **MCP server** | Standalone MCP server wrapping same core. Works with Codex, Claude, Antigravity |
 | Q10 | Repo split? | **Monorepo dev → dist repo publish** | Build in `atas-tech/blindpass`, publish compiled to `atas-tech/blindpass-skill` |
@@ -719,7 +758,7 @@ npx @blindpass/mcp-server
 
 ## 9. Additional Considerations (All Resolved)
 
-### 7.1 Compiled bundle dependencies ✅
+### 9.1 Compiled bundle dependencies ✅
 
 **Decision:** Inline monorepo dependencies via esbuild.
 
@@ -736,31 +775,33 @@ For the compiled bundle:
 - Ensure the HPKE/crypto code works with `node:crypto` (no browser polyfills)
 - **Test risk:** `@blindpass/agent-skill` key-manager uses `crypto.subtle` for HPKE — should bundle cleanly but needs validation
 
-### 7.2 SOPS storage — graceful degradation ✅
+### 9.2 Managed store contract ✅
 
-**Decision:** Detect SOPS availability at runtime. If configured → use it. If not → fall back to in-memory (current behavior). Expose config for users to set up SOPS later.
+**Decision:** Make persistence behavior explicit and predictable. Managed mode persists to the encrypted store or fails closed. Runtime-only mode is opt-in.
 
 Storage resolution order:
 
 ```
-1. Check if SOPS store is configured & accessible
-   ├── YES → read/write to SOPS-encrypted store
-   │         (secrets survive restarts)
-   └── NO  → fall back to in-memory Map
-             (current behavior, volatile)
-             Log: "[blindpass] SOPS not configured — secrets stored in memory only.
-                   Configure SOPS for persistent storage: https://docs.blindpass.dev/sops"
+1. If BLINDPASS_AUTO_PERSIST=true
+   ├── Require store path (explicit or convention)
+   ├── Require `sops` on PATH
+   ├── Bootstrap store if needed
+   └── If any requirement fails → fail the managed-secret request with an actionable error
+
+2. If BLINDPASS_AUTO_PERSIST=false
+   └── Use runtime-only memory mode
+      (ephemeral, plugin-local, not shared with SecretRef consumers)
 ```
 
-SPS detection logic:
+Managed store detection logic:
 - Check for `BLINDPASS_STORE_PATH` env var → SOPS store path
 - Check for `<gateway-config-dir>/blindpass/secrets.enc.json` → convention path
 - Check for `sops` CLI on `PATH` → needed for encrypt/decrypt operations
-- If none found → gracefully degrade to in-memory
+- If managed mode requirements are not met → fail closed
 
 > **Important Limitation:** The `blindpass-resolver` CLI reads exclusively from the SOPS file on disk. If the plugin falls back to in-memory storage (or `BLINDPASS_AUTO_PERSIST=false`), the `exec` provider will NOT be able to resolve those secrets for other OpenClaw gateway components. In-memory mode is strictly for immediate plugin use.
 
-When auto-bootstrapping (user explicitly opts in via `BLINDPASS_STORE_PATH` or `BLINDPASS_AUTO_PERSIST=true`):
+When auto-bootstrapping:
 1. First `request_secret` call triggers store initialization
 2. Plugin generates age identity → `<store>/.age-key.txt`
 3. Plugin creates `.sops.yaml` → `creation_rules: [{ age: "<public-key>" }]`
@@ -771,7 +812,7 @@ For advanced users:
 - Use SOPS's built-in key rotation (`sops updatekeys`)
 - If already using an external secret manager (Vault, 1Password), they simply don't enable SOPS — BlindPass stays in-memory and the external manager handles persistence
 
-### 7.3 Secret scoping ✅
+### 9.3 Secret scoping ✅
 
 **Decision:** Flat namespace per-gateway. Use descriptive names for multi-agent differentiation.
 
@@ -783,7 +824,7 @@ If two agents on the same gateway need different Stripe keys, use descriptive na
 
 Keeps the store simple. Per-agent namespacing can be added later if needed.
 
-### 7.4 Audit trail ✅
+### 9.4 Audit trail ✅
 
 **Decision:** Add metadata-only logging (never values) when secrets are provisioned or rotated.
 
@@ -798,7 +839,7 @@ Keeps the store simple. Per-agent namespacing can be added later if needed.
 
 Useful for compliance without sacrificing zero-knowledge.
 
-### 7.5 Hosted SPS ✅
+### 9.5 Hosted SPS ✅
 
 **Decision:** Default to BlindPass hosted SPS at `https://sps.blindpass.dev`.
 
@@ -808,9 +849,9 @@ Useful for compliance without sacrificing zero-knowledge.
 | Free tier | Rate-limited, suitable for individual use |
 | Self-host | Users set `SPS_BASE_URL` to their own instance |
 
-### 7.6 TTL / forced re-provision ✅
+### 9.6 TTL / forced re-provision ✅
 
-**Decision:** Optional, user-configurable. Phase 4 nice-to-have.
+**Decision:** Optional, user-configurable. Phase 5 nice-to-have.
 
 Add optional TTL metadata to stored secrets:
 
@@ -838,17 +879,17 @@ User configures TTL via:
 |---|---|---|
 | Q1 | Plugin vs. Skill? | Full compiled plugin — no source-code risk |
 | Q2 | SPS bundling? | SPS is separate (hosted `sps.blindpass.dev` or self-hosted) |
-| Q3 | npm too? | Yes, dual publish: ClawHub + npm |
+| Q3 | npm too? | Yes, but split by audience: ClawHub for OpenClaw, npm for MCP agents |
 | Q4 | Encryption? | SOPS (built-in OpenClaw support) |
 | Q5 | Store location? | Follow gateway config dir, configurable via env |
-| Q6 | Pre-provision UX? | Minimal — only `BLINDPASS_API_KEY` needed |
-| Q7 | Auto-persist? | Default on if SOPS configured, configurable |
+| Q6 | Pre-provision UX? | Minimal for SPS bootstrap; managed persistence also needs the encrypted-store backend |
+| Q7 | Auto-persist? | Default on for managed mode, fail closed if unavailable; `false` enables explicit runtime-only mode |
 | Q8 | Multi-gateway? | Per-gateway store, no shared state |
 | Q9 | Multi-agent? | MCP server wrapping shared core |
 | Q10 | Repo split? | Monorepo dev → dist repo publish |
 | Q11 | Git install? | Yes, via dist repo + install_skill.sh |
 | 9.1 | Bundle deps? | Inline via esbuild into single-file ESM |
-| 9.2 | SOPS vs. in-memory? | **Graceful degradation** — SOPS if available, else in-memory fallback |
+| 9.2 | SOPS vs. in-memory? | **Explicit contract** — managed mode persists or fails closed; runtime-only mode is explicit |
 | 9.3 | Secret scoping? | Flat namespace per-gateway, descriptive names |
 | 9.4 | Audit trail? | Yes — metadata-only, never values |
 | 9.5 | Hosted SPS? | Yes — `sps.blindpass.dev` as default |
@@ -860,6 +901,7 @@ User configures TTL via:
 
 - [OpenClaw Secrets Management](https://docs.openclaw.ai/gateway/secrets) — SecretRef contract, exec protocol, SOPS examples
 - [OpenClaw SecretRef Credential Surface](https://docs.openclaw.ai/reference/secretref-credential-surface)
+- [OpenClaw Gateway Runbook](https://docs.openclaw.ai/gateway/index) — runtime snapshot model, restart/reload behavior, `openclaw secrets reload`
 - [atas-tech/dependency-guard](https://github.com/atas-tech/dependency-guard) — ClawHub publishing reference
 - [SOPS](https://github.com/getsops/sops) — Encrypted secrets at rest (Mozilla)
 - [Age](https://github.com/FiloSottile/age) — Modern encryption CLI (default SOPS backend)
