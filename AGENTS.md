@@ -46,3 +46,6 @@ PRs should include:
 
 ## Security & Configuration Tips
 Never commit plaintext secrets or `.env` files. Use environment variables (for example `SPS_HMAC_SECRET`, `SPS_BASE_URL`) for local config, and avoid logging sensitive values at any layer.
+
+## Agent Instructions
+When tasked with adding, upgrading, removing, or reviewing software dependencies, agents MUST utilize the global `dependency-guard` skill. Stop to apply the Socket-based supply-chain guardrail and evaluate the risk signals before applying changes to manifests or lockfiles.
