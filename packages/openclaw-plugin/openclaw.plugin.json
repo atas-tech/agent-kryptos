@@ -12,8 +12,8 @@
         "properties": {
             "SPS_BASE_URL": {
                 "type": "string",
-                "description": "Base URL of the Secret Provisioning Service (e.g., http://localhost:3100)",
-                "default": "http://localhost:3100"
+                "description": "Base URL of the Secret Provisioning Service (for example https://sps.blindpass.dev)",
+                "default": "https://sps.blindpass.dev"
             },
             "BLINDPASS_AGENT_ID": {
                 "type": "string",

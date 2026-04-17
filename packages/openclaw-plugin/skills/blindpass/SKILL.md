@@ -1,6 +1,8 @@
 ---
-name: blindpass
-description: Secure secret provisioning skill for BlindPass.
+name: "blindpass"
+version: "0.1.0"
+description: "Zero-knowledge secret provisioning via HPKE encryption. Request secrets from humans or other agents without exposing plaintext."
+metadata: {"openclaw":{"emoji":"🔐","requires":{"bins":[]}}}
 ---
 
 # BlindPass Secret Provisioning

@@ -11,24 +11,22 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-// Dynamic imports so this module works without compiling the monorepo
-// (it references the dist/ outputs of sibling packages).
+// Dynamic imports so tests can override modules while production builds bundle
+// these compiled workspace package outputs.
 let _gatewayIdentity = null;
 let _jwksPath = null;
 let _tempDir = null;
 
 /**
- * Lazy-load the compiled sibling packages.
+ * Lazy-load compiled workspace packages.
  * Callers can override individual modules via `opts` for testing.
  */
 async function loadModules(opts = {}) {
-    const base = opts.basePath ?? path.resolve(import.meta.dirname ?? ".", "../..");
-
-    const identity = opts.identity ?? await import(path.join(base, "packages/gateway/dist/identity.js"));
-    const keyManager = opts.keyManager ?? await import(path.join(base, "packages/agent-skill/dist/key-manager.js"));
-    const AgentSkillRuntimeMod = opts.AgentSkillRuntimeModule ?? await import(path.join(base, "packages/agent-skill/dist/index.js"));
-    const SpsClientMod = opts.SpsClientModule ?? await import(path.join(base, "packages/agent-skill/dist/sps-client.js"));
-    const GatewaySpsClientMod = opts.GatewaySpsClientModule ?? await import(path.join(base, "packages/gateway/dist/sps-client.js"));
+    const identity = opts.identity ?? await import("../gateway/dist/identity.js");
+    const keyManager = opts.keyManager ?? await import("../agent-skill/dist/key-manager.js");
+    const AgentSkillRuntimeMod = opts.AgentSkillRuntimeModule ?? await import("../agent-skill/dist/index.js");
+    const SpsClientMod = opts.SpsClientModule ?? await import("../agent-skill/dist/sps-client.js");
+    const GatewaySpsClientMod = opts.GatewaySpsClientModule ?? await import("../gateway/dist/sps-client.js");
 
     return {
         identity,
@@ -132,7 +130,7 @@ async function getAgentAuthToken(modules, agentId, spsBaseUrl, identityOptions) 
 export async function requestSecretFlow(params) {
     const {
         description,
-        spsBaseUrl = process.env.SPS_BASE_URL ?? "http://localhost:3100",
+        spsBaseUrl = process.env.SPS_BASE_URL ?? "https://sps.blindpass.dev",
         onSecretLink,
         agentId,
         moduleOverrides = {},
@@ -188,7 +186,7 @@ export async function fulfillExchangeFlow(params) {
     const {
         fulfillmentToken,
         resolveSecret,
-        spsBaseUrl = process.env.SPS_BASE_URL ?? "http://localhost:3100",
+        spsBaseUrl = process.env.SPS_BASE_URL ?? "https://sps.blindpass.dev",
         agentId,
         moduleOverrides = {},
         identityOptions = {},
@@ -231,7 +229,7 @@ export async function requestExchangeFlow(params) {
         priorExchangeId,
         transport,
         reservedTimeoutMs,
-        spsBaseUrl = process.env.SPS_BASE_URL ?? "http://localhost:3100",
+        spsBaseUrl = process.env.SPS_BASE_URL ?? "https://sps.blindpass.dev",
         agentId,
         moduleOverrides = {},
         identityOptions = {},
