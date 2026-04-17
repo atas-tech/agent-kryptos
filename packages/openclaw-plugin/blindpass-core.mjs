@@ -13,6 +13,7 @@
 
 import { buildExchangeDeliveryMessage, createOpenClawAgentTransport, resolveOpenClawAgentTarget } from "./agent-transport.mjs";
 import { fulfillExchangeFlow, requestExchangeFlow, requestSecretFlow, cleanup } from "./sps-bridge.mjs";
+import { persistManagedSecret as persistManagedSecretToEncryptedStore } from "./encrypted-store.mjs";
 import { spawn } from "node:child_process";
 
 const SECRET_NAME_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
@@ -52,7 +53,18 @@ function disposeAllInMemorySecrets() {
     _inMemorySecrets.clear();
 }
 
-async function persistSecret(api, context, name, value) {
+async function persistSecret(api, context, name, value, options = {}) {
+    if (typeof options.persistManagedSecretFn === "function") {
+        const managedResult = await options.persistManagedSecretFn({
+            name,
+            value: Buffer.from(value),
+        });
+        if (managedResult?.persisted) {
+            setInMemorySecret(name, value);
+            return managedResult.storage ?? "managed";
+        }
+    }
+
     const targets = [
         { owner: context, fn: context?.setSecret },
         { owner: context, fn: context?.storeSecret },
@@ -402,6 +414,7 @@ export default function register(api, runtime = {}) {
     const runRequestExchangeFlow = runtime.requestExchangeFlowFn ?? requestExchangeFlow;
     const runFulfillExchangeFlow = runtime.fulfillExchangeFlowFn ?? fulfillExchangeFlow;
     const runCleanup = runtime.cleanupFn ?? cleanup;
+    const runPersistManagedSecret = runtime.persistManagedSecretFn ?? persistManagedSecretToEncryptedStore;
     const buildAgentTransport = runtime.createOpenClawAgentTransportFn ?? createOpenClawAgentTransport;
     const execFileFn = runtime.execFileFn ?? spawn;
 
@@ -490,7 +503,9 @@ export default function register(api, runtime = {}) {
 
                 let storedIn = "plugin";
                 try {
-                    storedIn = await persistSecret(api, context, secretName, result.secret);
+                    storedIn = await persistSecret(api, context, secretName, result.secret, {
+                        persistManagedSecretFn: runPersistManagedSecret,
+                    });
                 } finally {
                     disposeBuffer(result.secret);
                 }
@@ -499,7 +514,9 @@ export default function register(api, runtime = {}) {
                     content: [{
                         type: "text",
                         text: [
-                            "Secret exchange completed and stored securely in memory.",
+                            storedIn === "managed"
+                                ? "Secret exchange completed and stored in managed encrypted storage."
+                                : "Secret exchange completed and stored securely in memory.",
                             `exchange_id: ${result.exchangeId}`,
                             `secret_name: ${secretName}`,
                             `fulfilled_by: ${result.fulfilledBy ?? fulfillerId}`,
@@ -665,7 +682,9 @@ export default function register(api, runtime = {}) {
 
                 let storedIn = "plugin";
                 try {
-                    storedIn = await persistSecret(api, context, secretName, secret);
+                    storedIn = await persistSecret(api, context, secretName, secret, {
+                        persistManagedSecretFn: runPersistManagedSecret,
+                    });
                 } finally {
                     disposeBuffer(secret);
                 }
@@ -674,7 +693,9 @@ export default function register(api, runtime = {}) {
                     content: [{
                         type: "text",
                         text: [
-                            "Secret received and stored securely in memory.",
+                            storedIn === "managed"
+                                ? "Secret received and stored in managed encrypted storage."
+                                : "Secret received and stored securely in memory.",
                             `secret_name: ${secretName}`,
                             `storage: ${storedIn}`,
                             "Continue the task without asking the user to share secrets in chat.",

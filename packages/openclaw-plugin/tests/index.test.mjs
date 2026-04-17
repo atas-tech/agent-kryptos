@@ -50,6 +50,30 @@ function createMockChild(exitCode = 0, stderrText = "") {
     return child;
 }
 
+async function withEnv(overrides, fn) {
+    const original = new Map();
+    for (const [key, value] of Object.entries(overrides)) {
+        original.set(key, process.env[key]);
+        if (value == null) {
+            delete process.env[key];
+        } else {
+            process.env[key] = String(value);
+        }
+    }
+
+    try {
+        await fn();
+    } finally {
+        for (const [key, value] of original.entries()) {
+            if (value == null) {
+                delete process.env[key];
+            } else {
+                process.env[key] = value;
+            }
+        }
+    }
+}
+
 async function testNoPlaintextExposure() {
     const api = createMockApi();
     const outbound = [];
@@ -80,6 +104,76 @@ async function testNoPlaintextExposure() {
     assert.equal(stored.toString("utf8"), "super-secret-value");
 
     disposeStoredSecret("aws_token");
+}
+
+async function testRequestSecretFailsClosedWhenManagedBackendUnsupported() {
+    await withEnv(
+        {
+            BLINDPASS_AUTO_PERSIST: "true",
+            BLINDPASS_STORE_BACKEND: "unsupported-backend",
+        },
+        async () => {
+            const api = createMockApi();
+            const outbound = [];
+
+            register(api, {
+                requestSecretFlowFn: async ({ onSecretLink }) => {
+                    await onSecretLink("https://secrets.example/r/managed-fail", "BLUE-FOX-99");
+                    return Buffer.from("super-secret-value", "utf8");
+                },
+                cleanupFn: async () => { },
+            });
+
+            const result = await getTool(api, "request_secret").execute(
+                "managed-fail",
+                { description: "Managed store path", secret_name: "managed_fail", channel_id: "telegram:111" },
+                { sendText: async (message) => outbound.push(message) },
+            );
+
+            assert.equal(outbound.length, 1, "Secret link should still be delivered before persistence error");
+            const output = result?.content?.[0]?.text ?? "";
+            assert.match(output, /Unsupported managed-store backend/);
+            assert.equal(getStoredSecret("managed_fail"), null, "Secret must not be stored when managed mode fails closed");
+        }
+    );
+}
+
+async function testRequestSecretUsesManagedPersistenceWhenConfigured() {
+    const api = createMockApi();
+    const outbound = [];
+    const managedCalls = [];
+
+    register(api, {
+        requestSecretFlowFn: async ({ onSecretLink }) => {
+            await onSecretLink("https://secrets.example/r/managed-ok", "GREEN-WOLF-55");
+            return Buffer.from("managed-secret", "utf8");
+        },
+        persistManagedSecretFn: async ({ name, value }) => {
+            managedCalls.push({ name, value: Buffer.from(value).toString("utf8") });
+            return { persisted: true, storage: "managed" };
+        },
+        cleanupFn: async () => { },
+    });
+
+    const result = await getTool(api, "request_secret").execute(
+        "managed-ok",
+        { description: "Managed store path", secret_name: "managed_ok", channel_id: "telegram:111" },
+        { sendText: async (message) => outbound.push(message) },
+    );
+
+    assert.equal(outbound.length, 1);
+    assert.equal(managedCalls.length, 1);
+    assert.equal(managedCalls[0].name, "managed_ok");
+    assert.equal(managedCalls[0].value, "managed-secret");
+
+    const output = result?.content?.[0]?.text ?? "";
+    assert.match(output, /managed encrypted storage/);
+    assert.match(output, /storage: managed/);
+
+    const stored = getStoredSecret("managed_ok");
+    assert.ok(stored, "Secret should remain available in runtime memory after managed persistence");
+    assert.equal(stored.toString("utf8"), "managed-secret");
+    disposeStoredSecret("managed_ok");
 }
 
 async function testUsesOpenClawCliFallback() {
@@ -650,6 +744,14 @@ const tests = [
     {
         name: "request_secret does not return plaintext and stores secret in memory",
         run: testNoPlaintextExposure,
+    },
+    {
+        name: "request_secret fails closed when managed backend is unsupported",
+        run: testRequestSecretFailsClosedWhenManagedBackendUnsupported,
+    },
+    {
+        name: "request_secret uses managed encrypted persistence when configured",
+        run: testRequestSecretUsesManagedPersistenceWhenConfigured,
     },
     {
         name: "request_secret formats message correctly for re_request: true",

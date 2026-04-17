@@ -12,12 +12,27 @@ This plan covers:
 - MCP server support for Codex, Claude Code, Antigravity, and other MCP-compatible agents
 - Dist-repo and npm release integrity
 
+## Implementation Snapshot (April 17, 2026)
+
+Current implemented baseline in this repository:
+
+- Phase 1 scaffolding is in place:
+  - shared plugin core (`blindpass-core.mjs`)
+  - bundled `build:skill` pipeline producing `blindpass.mjs`, `mcp-server.mjs`, and `blindpass-resolver.mjs`
+  - packaging scripts: `build_bundle.sh`, `install_skill.sh`, `publish_clawhub.sh`, and `publish_dist.sh`
+  - ClawHub frontmatter metadata + version synchronization wiring
+- Phase 2 initial slice is in place:
+  - `encrypted-store.mjs` introduced with managed-store config resolution
+  - `BLINDPASS_AUTO_PERSIST` fail-closed behavior wired into plugin persistence
+  - initial tests for managed persistence success path (injected backend) and unsupported-backend fail-closed behavior
+- Remaining Phase 2/3/4/5 items below are still authoritative and mostly pending.
+
 ## Milestone 1: Build, Bundle, and Package Boundaries
 
-- [ ] **Bundle outputs are self-contained**
-  - [ ] `npm run build:skill` emits `blindpass.mjs`, `mcp-server.mjs`, and `blindpass-resolver.mjs`
-  - [ ] Published bundle output contains no monorepo-relative import paths such as `packages/gateway/dist` or `packages/agent-skill/dist`
-  - [ ] Bundle output contains no `.env` files, private keys, workspace paths, or local SPS URLs
+- [x] **Bundle outputs are self-contained**
+  - [x] `npm run build:skill` emits `blindpass.mjs`, `mcp-server.mjs`, and `blindpass-resolver.mjs`
+  - [x] Published bundle output contains no monorepo-relative import paths such as `packages/gateway/dist` or `packages/agent-skill/dist`
+  - [x] Bundle output contains no `.env` files, private keys, workspace paths, or local SPS URLs
 
 - [ ] **Release metadata stays synchronized**
   - [ ] `SKILL.md`, `openclaw.plugin.json`, and dist `package.json` report the same release version
@@ -45,9 +60,9 @@ This plan covers:
   - [ ] Audit entries record metadata only and never include plaintext, ciphertext, tokens, or key material
 
 - [ ] **Managed mode fails closed when persistence is unavailable**
-  - [ ] If `BLINDPASS_AUTO_PERSIST=true` and no usable managed-store backend is available, the request fails with an actionable error
+  - [x] If `BLINDPASS_AUTO_PERSIST=true` and no usable managed-store backend is available, the request fails with an actionable error
   - [ ] If the configured store path is invalid or unwritable, the request fails without downgrading silently to runtime-only mode
-  - [ ] The plugin does not claim the secret is stored when persistence failed
+  - [x] The plugin does not claim the secret is stored when persistence failed
 
 - [ ] **Explicit runtime-only mode is isolated**
   - [ ] If `BLINDPASS_AUTO_PERSIST=false`, the secret is kept only in runtime memory
