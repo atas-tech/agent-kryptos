@@ -21,10 +21,23 @@ Current implemented baseline in this repository:
   - bundled `build:skill` pipeline producing `blindpass.mjs`, `mcp-server.mjs`, and `blindpass-resolver.mjs`
   - packaging scripts: `build_bundle.sh`, `install_skill.sh`, `publish_clawhub.sh`, and `publish_dist.sh`
   - ClawHub frontmatter metadata + version synchronization wiring
-- Phase 2 initial slice is in place:
+- Phase 2 managed-store slice is in place:
   - `encrypted-store.mjs` introduced with managed-store config resolution
   - `BLINDPASS_AUTO_PERSIST` fail-closed behavior wired into plugin persistence
-  - initial tests for managed persistence success path (injected backend) and unsupported-backend fail-closed behavior
+  - SOPS auto-bootstrap creates `.age-key.txt` + `.sops.yaml`, writes initial encrypted store metadata, and emits recovery guidance
+  - startup reminder + `BLINDPASS_BACKUP_ACKNOWLEDGED=true` flow are implemented for `bootstrap_backup_pending`
+  - write serialization uses lockfile + PID ownership checks + in-process queue + atomic rename
+  - managed-store maintenance APIs now include `store_secret` (deployment-gated), `list_secrets`, and two-step `delete_secret`/`confirm_delete_secret`
+  - `request_secret`/`request_secret_exchange` support `persist=false` for interactive runtime-only mode
+  - deployment-level plaintext control is enforced via `BLINDPASS_ALLOW_EXPOSE_PLAINTEXT` (model parameters cannot override)
+  - OpenClaw vs MCP default store-path selection is covered (`gateway-config-dir` convention for OpenClaw, user convention for MCP)
+  - unit tests cover bootstrap, reminder/ack, concurrent writes, lock timeout, stale-lock break, and inconclusive PID handling
+  - unit tests cover store-tool gating, metadata-only store/list responses, and delete confirmation-token expiry/mismatch/single-use protections
+  - unit tests cover invalid-path fail-closed behavior, rotation replacement, atomic-rename safety under failed writes, and metadata-only audit logging
+- Phase 3 initial resolver slice is in place:
+  - `blindpass-resolver.mjs` now implements exec-provider protocol v1 over stdin/stdout
+  - batch ID resolution returns `values` + per-ID `errors` without leaking plaintext through logs
+  - resolver timeout (`BLINDPASS_RESOLVER_TIMEOUT_MS`, default 10s) and malformed-input protocol-safe error responses are covered by unit tests
 - Remaining Phase 2/3/4/5 items below are still authoritative and mostly pending.
 
 ## Milestone 1: Build, Bundle, and Package Boundaries
@@ -46,76 +59,76 @@ Current implemented baseline in this repository:
 
 ## Milestone 2: Managed Secret Storage
 
-- [ ] **SOPS auto-bootstrap on first use**
-  - [ ] First `request_secret` call with no existing store triggers age key generation, `.sops.yaml` creation, and empty store initialization
-  - [ ] Bootstrap prints the store path, age public key, and recovery guidance to stderr
-  - [ ] A `bootstrap_backup_pending` flag is recorded in store metadata
-  - [ ] Plugin startup with `bootstrap_backup_pending=true` emits a reminder warning
-  - [ ] Running `blindpass acknowledge-backup` (or setting `BLINDPASS_BACKUP_ACKNOWLEDGED=true`) clears the pending flag and suppresses the warning
-  - [ ] Subsequent `request_secret` calls reuse the existing key and config without re-bootstrapping
+- [x] **SOPS auto-bootstrap on first use**
+  - [x] First `request_secret` call with no existing store triggers age key generation, `.sops.yaml` creation, and empty store initialization
+  - [x] Bootstrap prints the store path, age public key, and recovery guidance to stderr
+  - [x] A `bootstrap_backup_pending` flag is recorded in store metadata
+  - [x] Plugin startup with `bootstrap_backup_pending=true` emits a reminder warning
+  - [x] Running `blindpass acknowledge-backup` (or setting `BLINDPASS_BACKUP_ACKNOWLEDGED=true`) clears the pending flag and suppresses the warning
+  - [x] Subsequent `request_secret` calls reuse the existing key and config without re-bootstrapping
 
-- [ ] **Managed mode persists without exposing plaintext**
-  - [ ] `request_secret` with `secret_name` and default managed settings stores the secret in the encrypted store
-  - [ ] Tool output returns metadata only and never includes the secret value
-  - [ ] Audit entries record metadata only and never include plaintext, ciphertext, tokens, or key material
+- [x] **Managed mode persists without exposing plaintext**
+  - [x] `request_secret` with `secret_name` and default managed settings stores the secret in the encrypted store
+  - [x] Tool output returns metadata only and never includes the secret value
+  - [x] Audit entries record metadata only and never include plaintext, ciphertext, tokens, or key material
 
-- [ ] **Managed mode fails closed when persistence is unavailable**
+- [x] **Managed mode fails closed when persistence is unavailable**
   - [x] If `BLINDPASS_AUTO_PERSIST=true` and no usable managed-store backend is available, the request fails with an actionable error
-  - [ ] If the configured store path is invalid or unwritable, the request fails without downgrading silently to runtime-only mode
+  - [x] If the configured store path is invalid or unwritable, the request fails without downgrading silently to runtime-only mode
   - [x] The plugin does not claim the secret is stored when persistence failed
 
-- [ ] **Explicit runtime-only mode is isolated**
-  - [ ] If `BLINDPASS_AUTO_PERSIST=false`, the secret is kept only in runtime memory
-  - [ ] Runtime-only secrets are not listed by the managed-store listing tool
-  - [ ] Runtime-only secrets are not resolvable by `blindpass-resolver`
-  - [ ] `request_secret` with `persist=false` supports the interactive-only path without requiring managed persistence
+- [x] **Explicit runtime-only mode is isolated**
+  - [x] If `BLINDPASS_AUTO_PERSIST=false`, the secret is kept only in runtime memory
+  - [x] Runtime-only secrets are not listed by the managed-store listing tool
+  - [x] Runtime-only secrets are not resolvable by `blindpass-resolver`
+  - [x] `request_secret` with `persist=false` supports the interactive-only path without requiring managed persistence
 
-- [ ] **Managed-store maintenance operations**
-  - [ ] `store_secret` is not registered when `BLINDPASS_ENABLE_STORE_TOOL=false` (default) — tool does not appear in `tools/list`
-  - [ ] `store_secret` is registered and functional when `BLINDPASS_ENABLE_STORE_TOOL=true`
-  - [ ] `store_secret` writes to the managed store and returns metadata only (never echoes the value)
-  - [ ] `store_secret` fails closed if managed store is unavailable
-  - [ ] `list_secrets` returns names only
-  - [ ] `delete_secret` returns a pending confirmation token without performing deletion
-  - [ ] `confirm_delete_secret` with a valid token completes the deletion and records a metadata-only audit event
-  - [ ] `confirm_delete_secret` with an expired token (>60s) fails with a clear error
-  - [ ] `confirm_delete_secret` with a mismatched `secret_name` fails without deleting anything
-  - [ ] Confirmation tokens are single-use — reusing a consumed token fails
-  - [ ] Rotation via `request_secret` with `re_request=true` replaces the stored value atomically
+- [x] **Managed-store maintenance operations**
+  - [x] `store_secret` is not registered when `BLINDPASS_ENABLE_STORE_TOOL=false` (default) — tool does not appear in `tools/list`
+  - [x] `store_secret` is registered and functional when `BLINDPASS_ENABLE_STORE_TOOL=true`
+  - [x] `store_secret` writes to the managed store and returns metadata only (never echoes the value)
+  - [x] `store_secret` fails closed if managed store is unavailable
+  - [x] `list_secrets` returns names only
+  - [x] `delete_secret` returns a pending confirmation token without performing deletion
+  - [x] `confirm_delete_secret` with a valid token completes the deletion and records a metadata-only audit event
+  - [x] `confirm_delete_secret` with an expired token (>60s) fails with a clear error
+  - [x] `confirm_delete_secret` with a mismatched `secret_name` fails without deleting anything
+  - [x] Confirmation tokens are single-use — reusing a consumed token fails
+  - [x] Rotation via `request_secret` with `re_request=true` replaces the stored value atomically
 
-- [ ] **Write serialization under concurrency**
-  - [ ] Two simultaneous `request_secret` calls complete without data loss — both secrets are present in the store
-  - [ ] A write that cannot acquire the lockfile within 5 seconds fails with an actionable error
-  - [ ] A stale lockfile whose owning PID is no longer running is automatically broken and does not block subsequent writes
-  - [ ] A lockfile whose owning PID is still running is treated as live — the write fails rather than breaking the lock
-  - [ ] If PID ownership check is inconclusive (e.g., permission denied), the lock is treated as live
-  - [ ] The store file is updated via atomic rename — a crash mid-write does not corrupt the store
+- [x] **Write serialization under concurrency**
+  - [x] Two simultaneous `request_secret` calls complete without data loss — both secrets are present in the store
+  - [x] A write that cannot acquire the lockfile within 5 seconds fails with an actionable error
+  - [x] A stale lockfile whose owning PID is no longer running is automatically broken and does not block subsequent writes
+  - [x] A lockfile whose owning PID is still running is treated as live — the write fails rather than breaking the lock
+  - [x] If PID ownership check is inconclusive (e.g., permission denied), the lock is treated as live
+  - [x] The store file is updated via atomic rename — a crash mid-write does not corrupt the store
 
-- [ ] **Managed-store backend selection**
-  - [ ] OpenClaw plugin mode prefers the gateway config directory convention by default
-  - [ ] MCP mode prefers the platform-aware user convention path by default
-  - [ ] An explicit operator-selected backend overrides the default backend choice
-  - [ ] The default SOPS backend is selected automatically when available, OpenClaw is configured for managed persistence, and no override is present
+- [x] **Managed-store backend selection**
+  - [x] OpenClaw plugin mode prefers the gateway config directory convention by default
+  - [x] MCP mode prefers the platform-aware user convention path by default
+  - [x] An explicit operator-selected backend overrides the default backend choice
+  - [x] The default SOPS backend is selected automatically when available, OpenClaw is configured for managed persistence, and no override is present
 
-- [ ] **Deployment-level plaintext control**
-  - [ ] With `BLINDPASS_ALLOW_EXPOSE_PLAINTEXT=false` (default), `request_secret` returns metadata only
-  - [ ] With `BLINDPASS_ALLOW_EXPOSE_PLAINTEXT=true`, `request_secret` returns the decrypted value alongside metadata
-  - [ ] The model cannot override this setting via tool parameters
-  - [ ] `store_secret` never echoes the value back regardless of the plaintext control setting
+- [x] **Deployment-level plaintext control**
+  - [x] With `BLINDPASS_ALLOW_EXPOSE_PLAINTEXT=false` (default), `request_secret` returns metadata only
+  - [x] With `BLINDPASS_ALLOW_EXPOSE_PLAINTEXT=true`, `request_secret` returns the decrypted value alongside metadata
+  - [x] The model cannot override this setting via tool parameters
+  - [x] `store_secret` never echoes the value back regardless of the plaintext control setting
 
-- [ ] **Platform-aware store path resolution**
-  - [ ] On Linux/macOS, convention path resolves to `$HOME/.blindpass/`
-  - [ ] On Windows, convention path resolves to `%LOCALAPPDATA%\blindpass\`
-  - [ ] `BLINDPASS_STORE_PATH` overrides platform detection on all platforms
-  - [ ] Resolver can derive sibling bootstrap files automatically from the selected store path for the default SOPS backend
-  - [ ] Windows support in v1 is scoped to path resolution correctness only — full Windows lifecycle E2E is out of scope
+- [x] **Platform-aware store path resolution**
+  - [x] On Linux/macOS, convention path resolves to `$HOME/.blindpass/`
+  - [x] On Windows, convention path resolves to `%LOCALAPPDATA%\blindpass\`
+  - [x] `BLINDPASS_STORE_PATH` overrides platform detection on all platforms
+  - [x] Resolver can derive sibling bootstrap files automatically from the selected store path for the default SOPS backend
+  - [x] Windows support in v1 is scoped to path resolution correctness only — full Windows lifecycle E2E is out of scope
 
 ## Milestone 3: Resolver and OpenClaw SecretRef Integration
 
-- [ ] **Resolver protocol compliance**
-  - [ ] `blindpass-resolver` accepts exec-provider protocol v1 requests on stdin
-  - [ ] Successful batch lookup returns a `values` object keyed by requested IDs
-  - [ ] Missing, expired, or deleted secrets return `errors` entries without leaking store internals
+- [x] **Resolver protocol compliance**
+  - [x] `blindpass-resolver` accepts exec-provider protocol v1 requests on stdin
+  - [x] Successful batch lookup returns a `values` object keyed by requested IDs
+  - [x] Missing, expired, or deleted secrets return `errors` entries without leaking store internals
 
 - [ ] **OpenClaw activation behavior is correct**
   - [ ] Provision secret → restart gateway → SecretRef resolves successfully
@@ -124,10 +137,10 @@ Current implemented baseline in this repository:
   - [ ] Update existing secret value on disk and verify the old snapshot remains active until reload/restart
 
 - [ ] **TTL and error handling**
-  - [ ] Expired secrets fail closed at resolver time with a deterministic error
+  - [x] Expired secrets fail closed at resolver time with a deterministic error
   - [ ] Corrupt store contents fail closed without emitting plaintext or key material
-  - [ ] Resolver self-imposes a 10-second timeout — exceeding it returns a protocol-safe error
-  - [ ] Malformed stdin input returns a protocol-safe error without hanging
+  - [x] Resolver self-imposes a 10-second timeout — exceeding it returns a protocol-safe error
+  - [x] Malformed stdin input returns a protocol-safe error without hanging
 
 ## Milestone 4: MCP Multi-Agent Support
 

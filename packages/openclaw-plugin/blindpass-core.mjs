@@ -13,11 +13,20 @@
 
 import { buildExchangeDeliveryMessage, createOpenClawAgentTransport, resolveOpenClawAgentTarget } from "./agent-transport.mjs";
 import { fulfillExchangeFlow, requestExchangeFlow, requestSecretFlow, cleanup } from "./sps-bridge.mjs";
-import { persistManagedSecret as persistManagedSecretToEncryptedStore } from "./encrypted-store.mjs";
+import {
+    deleteManagedSecret as deleteManagedSecretFromEncryptedStore,
+    emitManagedStoreBootstrapReminder as emitManagedStoreBootstrapReminderFromEncryptedStore,
+    listManagedSecretNames as listManagedSecretNamesFromEncryptedStore,
+    persistManagedSecret as persistManagedSecretToEncryptedStore,
+    storeManagedSecret as storeManagedSecretToEncryptedStore,
+} from "./encrypted-store.mjs";
+import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 
 const SECRET_NAME_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
+const DELETE_CONFIRM_TTL_MS = 60000;
 const _inMemorySecrets = new Map();
+const _pendingDeleteTokens = new Map();
 
 function disposeBuffer(value) {
     if (Buffer.isBuffer(value)) {
@@ -54,10 +63,16 @@ function disposeAllInMemorySecrets() {
 }
 
 async function persistSecret(api, context, name, value, options = {}) {
-    if (typeof options.persistManagedSecretFn === "function") {
+    const persistManaged = options.persistManaged !== false;
+
+    if (persistManaged && typeof options.persistManagedSecretFn === "function") {
         const managedResult = await options.persistManagedSecretFn({
             name,
             value: Buffer.from(value),
+            env: process.env,
+            platform: process.platform,
+            runtimeMode: options.runtimeMode,
+            execFileFn: options.execFileFn,
         });
         if (managedResult?.persisted) {
             setInMemorySecret(name, value);
@@ -114,6 +129,73 @@ function normalizeSecretName(value) {
     const trimmed = value.trim();
     if (!SECRET_NAME_PATTERN.test(trimmed)) return null;
     return trimmed;
+}
+
+function parseBooleanEnv(rawValue, defaultValue = false) {
+    if (rawValue == null || rawValue === "") {
+        return defaultValue;
+    }
+    const normalized = String(rawValue).trim().toLowerCase();
+    if (normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on") {
+        return true;
+    }
+    if (normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off") {
+        return false;
+    }
+    return defaultValue;
+}
+
+function isStoreSecretToolEnabled(env = process.env) {
+    return parseBooleanEnv(env.BLINDPASS_ENABLE_STORE_TOOL, false);
+}
+
+function shouldExposePlaintextToModel(env = process.env) {
+    return parseBooleanEnv(env.BLINDPASS_ALLOW_EXPOSE_PLAINTEXT, false);
+}
+
+function emitMetadataAudit(eventName, fields = {}) {
+    const safeFields = [];
+    for (const [key, value] of Object.entries(fields)) {
+        if (value == null) {
+            continue;
+        }
+        const normalizedKey = key.toLowerCase();
+        if (
+            normalizedKey.includes("secret_value") ||
+            normalizedKey === "value" ||
+            normalizedKey.includes("token") ||
+            normalizedKey.includes("url")
+        ) {
+            continue;
+        }
+        safeFields.push(`${key}=${String(value)}`);
+    }
+
+    const suffix = safeFields.length > 0 ? ` ${safeFields.join(" ")}` : "";
+    console.info(`[blindpass][audit] event=${eventName}${suffix}`);
+}
+
+function purgeExpiredDeleteTokens(nowMs = Date.now()) {
+    for (const [token, pending] of _pendingDeleteTokens.entries()) {
+        if (!pending || pending.expiresAtMs <= nowMs) {
+            _pendingDeleteTokens.delete(token);
+        }
+    }
+}
+
+function createDeleteConfirmationToken(secretName, nowMs = Date.now()) {
+    purgeExpiredDeleteTokens(nowMs);
+    const token = randomBytes(16).toString("hex");
+    _pendingDeleteTokens.set(token, {
+        secretName,
+        expiresAtMs: nowMs + DELETE_CONFIRM_TTL_MS,
+        createdAtMs: nowMs,
+    });
+    return token;
+}
+
+function clearDeleteConfirmationTokens() {
+    _pendingDeleteTokens.clear();
 }
 
 function resolveChannelId(params, context) {
@@ -415,8 +497,26 @@ export default function register(api, runtime = {}) {
     const runFulfillExchangeFlow = runtime.fulfillExchangeFlowFn ?? fulfillExchangeFlow;
     const runCleanup = runtime.cleanupFn ?? cleanup;
     const runPersistManagedSecret = runtime.persistManagedSecretFn ?? persistManagedSecretToEncryptedStore;
+    const runStoreManagedSecret = runtime.storeManagedSecretFn ?? storeManagedSecretToEncryptedStore;
+    const runListManagedSecretNames = runtime.listManagedSecretNamesFn ?? listManagedSecretNamesFromEncryptedStore;
+    const runDeleteManagedSecret = runtime.deleteManagedSecretFn ?? deleteManagedSecretFromEncryptedStore;
+    const runEmitBootstrapReminder = runtime.emitManagedStoreBootstrapReminderFn ?? emitManagedStoreBootstrapReminderFromEncryptedStore;
     const buildAgentTransport = runtime.createOpenClawAgentTransportFn ?? createOpenClawAgentTransport;
     const execFileFn = runtime.execFileFn ?? spawn;
+
+    Promise.resolve()
+        .then(async () => {
+            if (typeof runEmitBootstrapReminder === "function") {
+                await runEmitBootstrapReminder({
+                    env: process.env,
+                    runtimeMode: "openclaw",
+                    execFileFn,
+                });
+            }
+        })
+        .catch((err) => {
+            console.warn(`[blindpass] Managed-store startup reminder check failed: ${err?.message ?? String(err)}`);
+        });
 
     api.registerTool({
         name: "request_secret_exchange",
@@ -447,6 +547,10 @@ export default function register(api, runtime = {}) {
                 reserved_timeout_ms: {
                     type: "number",
                     description: "Optional time to wait after the fulfiller reserves the exchange before failing closed.",
+                },
+                persist: {
+                    type: "boolean",
+                    description: "Optional. Set false for interactive runtime-only storage (skip managed persistence). Defaults to true.",
                 },
             },
             required: ["secret_name", "purpose", "fulfiller_id"],
@@ -489,6 +593,8 @@ export default function register(api, runtime = {}) {
             }
 
             try {
+                const persistRequested = params.persist !== false;
+                const exposePlaintext = shouldExposePlaintextToModel(process.env);
                 const transport = buildAgentTransport(api, runtime.agentTransportOptions ?? {});
                 const result = await runRequestExchangeFlow({
                     secretName,
@@ -502,27 +608,42 @@ export default function register(api, runtime = {}) {
                 });
 
                 let storedIn = "plugin";
+                const plaintextValue = exposePlaintext ? result.secret.toString("utf8") : null;
                 try {
                     storedIn = await persistSecret(api, context, secretName, result.secret, {
                         persistManagedSecretFn: runPersistManagedSecret,
+                        persistManaged: persistRequested,
+                        runtimeMode: "openclaw",
+                        execFileFn,
                     });
                 } finally {
                     disposeBuffer(result.secret);
                 }
 
+                emitMetadataAudit("secret_exchange_provisioned", {
+                    secret_name: secretName,
+                    storage: storedIn,
+                    exchange_id: result.exchangeId,
+                    fulfilled_by: result.fulfilledBy ?? fulfillerId,
+                });
+
+                const outputLines = [
+                    storedIn === "managed"
+                        ? "Secret exchange completed and stored in managed encrypted storage."
+                        : "Secret exchange completed and stored securely in memory.",
+                    `exchange_id: ${result.exchangeId}`,
+                    `secret_name: ${secretName}`,
+                    `fulfilled_by: ${result.fulfilledBy ?? fulfillerId}`,
+                    `storage: ${storedIn}`,
+                ];
+                if (plaintextValue != null) {
+                    outputLines.push(`secret_value: ${plaintextValue}`);
+                }
+                outputLines.push("Continue the task without asking the user to share secrets in chat.");
                 return {
                     content: [{
                         type: "text",
-                        text: [
-                            storedIn === "managed"
-                                ? "Secret exchange completed and stored in managed encrypted storage."
-                                : "Secret exchange completed and stored securely in memory.",
-                            `exchange_id: ${result.exchangeId}`,
-                            `secret_name: ${secretName}`,
-                            `fulfilled_by: ${result.fulfilledBy ?? fulfillerId}`,
-                            `storage: ${storedIn}`,
-                            "Continue the task without asking the user to share secrets in chat.",
-                        ].join("\n"),
+                        text: outputLines.join("\n"),
                     }],
                 };
             } catch (err) {
@@ -576,6 +697,10 @@ export default function register(api, runtime = {}) {
                     type: "boolean",
                     description: "Optional. Set to true if a previously stored secret is now missing (e.g. after restart), asking the user to re-enter it.",
                 },
+                persist: {
+                    type: "boolean",
+                    description: "Optional. Set false for interactive runtime-only storage (skip managed persistence). Defaults to true.",
+                },
             },
             required: ["description"],
         },
@@ -602,6 +727,8 @@ export default function register(api, runtime = {}) {
             // We defer routing failures to the actual transport loop below to allow graceful fallbacks.
 
             try {
+                const persistRequested = params.persist !== false;
+                const exposePlaintext = shouldExposePlaintextToModel(process.env);
                 const spsBaseUrl = process.env.SPS_BASE_URL ?? "https://sps.blindpass.dev";
 
                 const secret = await runRequestSecretFlow({
@@ -681,25 +808,38 @@ export default function register(api, runtime = {}) {
                 });
 
                 let storedIn = "plugin";
+                const plaintextValue = exposePlaintext ? secret.toString("utf8") : null;
                 try {
                     storedIn = await persistSecret(api, context, secretName, secret, {
                         persistManagedSecretFn: runPersistManagedSecret,
+                        persistManaged: persistRequested,
+                        runtimeMode: "openclaw",
+                        execFileFn,
                     });
                 } finally {
                     disposeBuffer(secret);
                 }
 
+                emitMetadataAudit(params.re_request === true ? "secret_rotated" : "secret_provisioned", {
+                    secret_name: secretName,
+                    storage: storedIn,
+                });
+
+                const outputLines = [
+                    storedIn === "managed"
+                        ? "Secret received and stored in managed encrypted storage."
+                        : "Secret received and stored securely in memory.",
+                    `secret_name: ${secretName}`,
+                    `storage: ${storedIn}`,
+                ];
+                if (plaintextValue != null) {
+                    outputLines.push(`secret_value: ${plaintextValue}`);
+                }
+                outputLines.push("Continue the task without asking the user to share secrets in chat.");
                 return {
                     content: [{
                         type: "text",
-                        text: [
-                            storedIn === "managed"
-                                ? "Secret received and stored in managed encrypted storage."
-                                : "Secret received and stored securely in memory.",
-                            `secret_name: ${secretName}`,
-                            `storage: ${storedIn}`,
-                            "Continue the task without asking the user to share secrets in chat.",
-                        ].join("\n"),
+                        text: outputLines.join("\n"),
                     }],
                 };
             } catch (err) {
@@ -780,6 +920,263 @@ export default function register(api, runtime = {}) {
         },
     });
 
+    if (isStoreSecretToolEnabled(process.env)) {
+        api.registerTool({
+            name: "store_secret",
+            description: [
+                "Store a runtime-owned secret in BlindPass managed encrypted storage for SecretRef/MCP resolution.",
+                "This tool is deployment-gated and returns metadata only (never the secret value).",
+            ].join(" "),
+            parameters: {
+                type: "object",
+                properties: {
+                    secret_name: {
+                        type: "string",
+                        description: "Stable logical secret identifier, e.g. 'stripe.api_key.prod'.",
+                    },
+                    secret_value: {
+                        type: "string",
+                        description: "Secret value to store. This value is never echoed in tool output.",
+                    },
+                },
+                required: ["secret_name", "secret_value"],
+            },
+            async execute(_id, params) {
+                const secretName = normalizeSecretName(params.secret_name);
+                if (secretName == null) {
+                    return {
+                        content: [{
+                            type: "text",
+                            text: "Error: secret_name must match [A-Za-z0-9._-] and be 1-64 characters.",
+                        }],
+                    };
+                }
+                if (typeof params.secret_value !== "string") {
+                    return {
+                        content: [{ type: "text", text: "Error: secret_value must be a string." }],
+                    };
+                }
+
+                try {
+                    const storeResult = await runStoreManagedSecret({
+                        name: secretName,
+                        value: Buffer.from(params.secret_value, "utf8"),
+                        env: process.env,
+                        runtimeMode: "openclaw",
+                        execFileFn,
+                    });
+                    setInMemorySecret(secretName, Buffer.from(params.secret_value, "utf8"));
+                    emitMetadataAudit("secret_stored", {
+                        secret_name: secretName,
+                        storage: storeResult.storage ?? "managed",
+                    });
+
+                    return {
+                        content: [{
+                            type: "text",
+                            text: [
+                                "Secret stored in managed encrypted storage.",
+                                `secret_name: ${secretName}`,
+                                `storage: ${storeResult.storage ?? "managed"}`,
+                                `backend: ${storeResult.backend ?? "sops"}`,
+                            ].join("\n"),
+                        }],
+                    };
+                } catch (err) {
+                    return {
+                        content: [{
+                            type: "text",
+                            text: `Failed to store managed secret: ${err?.message ?? String(err)}`,
+                        }],
+                    };
+                }
+            },
+        });
+    }
+
+    api.registerTool({
+        name: "list_secrets",
+        description: "List managed-store secret names (never values).",
+        parameters: {
+            type: "object",
+            properties: {},
+        },
+        async execute() {
+            try {
+                const result = await runListManagedSecretNames({
+                    env: process.env,
+                    runtimeMode: "openclaw",
+                    execFileFn,
+                });
+                const lines = [
+                    "Managed secrets listed successfully.",
+                    `count: ${result.names.length}`,
+                ];
+                for (const name of result.names) {
+                    lines.push(`- ${name}`);
+                }
+
+                return {
+                    content: [{
+                        type: "text",
+                        text: lines.join("\n"),
+                    }],
+                };
+            } catch (err) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Failed to list managed secrets: ${err?.message ?? String(err)}`,
+                    }],
+                };
+            }
+        },
+    });
+
+    api.registerTool({
+        name: "delete_secret",
+        description: "Request deletion of a managed secret. Returns a short-lived confirmation token.",
+        parameters: {
+            type: "object",
+            properties: {
+                secret_name: {
+                    type: "string",
+                    description: "Secret identifier to delete from managed encrypted storage.",
+                },
+            },
+            required: ["secret_name"],
+        },
+        async execute(_id, params) {
+            const secretName = normalizeSecretName(params.secret_name);
+            if (secretName == null) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "Error: secret_name must match [A-Za-z0-9._-] and be 1-64 characters.",
+                    }],
+                };
+            }
+
+            const nowMs = Date.now();
+            const token = createDeleteConfirmationToken(secretName, nowMs);
+            return {
+                content: [{
+                    type: "text",
+                    text: [
+                        "Deletion pending confirmation.",
+                        `secret_name: ${secretName}`,
+                        `confirmation_token: ${token}`,
+                        `expires_in_seconds: ${Math.floor(DELETE_CONFIRM_TTL_MS / 1000)}`,
+                        "Call confirm_delete_secret with the same secret_name and confirmation_token to execute deletion.",
+                    ].join("\n"),
+                }],
+            };
+        },
+    });
+
+    api.registerTool({
+        name: "confirm_delete_secret",
+        description: "Confirm and execute a pending managed-secret deletion token.",
+        parameters: {
+            type: "object",
+            properties: {
+                secret_name: {
+                    type: "string",
+                    description: "Secret identifier that matches the pending deletion token.",
+                },
+                confirmation_token: {
+                    type: "string",
+                    description: "Token returned by delete_secret.",
+                },
+            },
+            required: ["secret_name", "confirmation_token"],
+        },
+        async execute(_id, params) {
+            const secretName = normalizeSecretName(params.secret_name);
+            if (secretName == null) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "Error: secret_name must match [A-Za-z0-9._-] and be 1-64 characters.",
+                    }],
+                };
+            }
+
+            const token = typeof params.confirmation_token === "string" ? params.confirmation_token.trim() : "";
+            if (!token) {
+                return {
+                    content: [{ type: "text", text: "Error: confirmation_token is required." }],
+                };
+            }
+
+            purgeExpiredDeleteTokens(Date.now());
+            const pending = _pendingDeleteTokens.get(token);
+            if (!pending) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "Error: confirmation_token is invalid or expired. Request deletion again to get a new token.",
+                    }],
+                };
+            }
+
+            if (pending.secretName !== secretName) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "Error: confirmation_token does not match the provided secret_name.",
+                    }],
+                };
+            }
+
+            _pendingDeleteTokens.delete(token);
+
+            try {
+                const deletion = await runDeleteManagedSecret({
+                    name: secretName,
+                    env: process.env,
+                    runtimeMode: "openclaw",
+                    execFileFn,
+                });
+
+                if (!deletion.deleted) {
+                    return {
+                        content: [{
+                            type: "text",
+                            text: [
+                                "No managed secret was deleted.",
+                                `secret_name: ${secretName}`,
+                                `reason: ${deletion.reason ?? "not-found"}`,
+                            ].join("\n"),
+                        }],
+                    };
+                }
+
+                emitMetadataAudit("secret_deleted", {
+                    secret_name: secretName,
+                });
+                disposeStoredSecret(secretName);
+
+                return {
+                    content: [{
+                        type: "text",
+                        text: [
+                            "Managed secret deleted successfully.",
+                            `secret_name: ${secretName}`,
+                        ].join("\n"),
+                    }],
+                };
+            } catch (err) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `Failed to confirm managed secret deletion: ${err?.message ?? String(err)}`,
+                    }],
+                };
+            }
+        },
+    });
+
     // Cleanup temp files on gateway shutdown
     if (api.registerHook) {
         api.registerHook(
@@ -799,10 +1196,11 @@ export default function register(api, runtime = {}) {
             "shutdown",
             async () => {
                 disposeAllInMemorySecrets();
+                clearDeleteConfirmationTokens();
             },
             {
                 name: "blindpass.dispose-secrets",
-                description: "Zero and dispose in-memory secret buffers",
+                description: "Zero and dispose in-memory secret buffers and pending delete tokens",
             },
         );
     }

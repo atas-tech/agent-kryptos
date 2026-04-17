@@ -9,16 +9,17 @@ rm -rf "${DIST_DIR}"
 mkdir -p "${DIST_DIR}/skills"
 
 echo "[blindpass] building workspace dependencies for bundle inputs..."
-npm run build --workspace=packages/gateway --workspace=packages/agent-skill
+(cd "${ROOT_DIR}" && npm run build --workspace=packages/gateway)
+(cd "${ROOT_DIR}" && npm run build --workspace=packages/agent-skill)
 
 echo "[blindpass] bundling plugin entrypoints with esbuild..."
-npx --yes esbuild "${PLUGIN_DIR}/blindpass-core.mjs" \
+(cd "${ROOT_DIR}" && npx --yes esbuild "${PLUGIN_DIR}/blindpass-core.mjs" \
   --bundle \
   --platform=node \
   --format=esm \
   --target=node20 \
   --minify \
-  --outfile="${DIST_DIR}/blindpass.mjs"
+  --outfile="${DIST_DIR}/blindpass.mjs")
 
 {
   echo "#!/usr/bin/env node"
