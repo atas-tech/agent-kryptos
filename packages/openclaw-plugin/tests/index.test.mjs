@@ -1608,6 +1608,48 @@ async function testResolverTimeoutReturnsProtocolSafeError() {
     assert.match(response.errors.__request__.message, /timed out/);
 }
 
+async function testResolverCorruptStoreFailsClosedWithoutLeakage() {
+    const payload = JSON.stringify({
+        protocolVersion: 1,
+        provider: "blindpass",
+        ids: ["stripe.api_key.prod"],
+    });
+
+    const { exitCode, response } = await runResolver({
+        argv: [],
+        stdin: createResolverStdin(payload),
+        readManagedSecretStoreFn: async () => {
+            throw new Error("Unexpected token s in JSON at position 0 while parsing secret_value=sk_live_should_not_leak");
+        },
+    });
+
+    assert.equal(exitCode, 0);
+    assert.equal(response.protocolVersion, 1);
+    assert.equal(response.errors.__request__.message, "Corrupt managed store contents.");
+    assert.ok(!response.errors.__request__.message.includes("sk_live_should_not_leak"));
+}
+
+async function testResolverStoreReadFailureIsSanitized() {
+    const payload = JSON.stringify({
+        protocolVersion: 1,
+        provider: "blindpass",
+        ids: ["stripe.api_key.prod"],
+    });
+
+    const { exitCode, response } = await runResolver({
+        argv: [],
+        stdin: createResolverStdin(payload),
+        readManagedSecretStoreFn: async () => {
+            throw new Error("exit=1 stderr=sops: failed with AGE-SECRET-KEY-1SENSITIVE");
+        },
+    });
+
+    assert.equal(exitCode, 0);
+    assert.equal(response.protocolVersion, 1);
+    assert.equal(response.errors.__request__.message, "Managed store read failed.");
+    assert.ok(!response.errors.__request__.message.includes("AGE-SECRET-KEY"));
+}
+
 async function testManagedStoreAutoBootstrapCreatesArtifacts() {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), "blindpass-managed-store-"));
     const storePath = path.join(tempRoot, "blindpass", "secrets.enc.json");
@@ -2072,6 +2114,14 @@ const tests = [
     {
         name: "blindpass-resolver enforces timeout with protocol-safe error output",
         run: testResolverTimeoutReturnsProtocolSafeError,
+    },
+    {
+        name: "blindpass-resolver fails closed on corrupt managed store without leaking content",
+        run: testResolverCorruptStoreFailsClosedWithoutLeakage,
+    },
+    {
+        name: "blindpass-resolver sanitizes managed-store read failures",
+        run: testResolverStoreReadFailureIsSanitized,
     },
     {
         name: "managed store auto-bootstrap creates artifacts and pending-backup metadata",

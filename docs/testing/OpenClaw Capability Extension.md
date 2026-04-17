@@ -138,7 +138,7 @@ Current implemented baseline in this repository:
 
 - [ ] **TTL and error handling**
   - [x] Expired secrets fail closed at resolver time with a deterministic error
-  - [ ] Corrupt store contents fail closed without emitting plaintext or key material
+  - [x] Corrupt store contents fail closed without emitting plaintext or key material
   - [x] Resolver self-imposes a 10-second timeout — exceeding it returns a protocol-safe error
   - [x] Malformed stdin input returns a protocol-safe error without hanging
 

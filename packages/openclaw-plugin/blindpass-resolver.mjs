@@ -78,6 +78,40 @@ function requestError(message) {
     });
 }
 
+function normalizeResolverErrorMessage(err) {
+    const message = err?.message ?? String(err);
+    const normalized = String(message).trim();
+    const lower = normalized.toLowerCase();
+
+    if (
+        normalized.startsWith("Missing exec-provider request payload on stdin.") ||
+        normalized.startsWith("Invalid JSON payload.") ||
+        normalized.startsWith("Request payload must be a JSON object.") ||
+        normalized.startsWith("Unsupported protocolVersion") ||
+        normalized.startsWith("Request payload must include an `ids` array.") ||
+        normalized.startsWith("Each entry in `ids` must be a string.") ||
+        normalized.startsWith("Secret IDs cannot be empty.") ||
+        normalized.startsWith("Input exceeds ")
+    ) {
+        return normalized;
+    }
+
+    if (normalized.startsWith("Resolver timed out after ")) {
+        return normalized;
+    }
+
+    if (
+        lower.includes("unexpected token") ||
+        lower.includes("unterminated string") ||
+        lower.includes("unexpected end of json") ||
+        lower.includes("json at position")
+    ) {
+        return "Corrupt managed store contents.";
+    }
+
+    return "Managed store read failed.";
+}
+
 export function parseProtocolRequest(rawInput) {
     if (typeof rawInput !== "string" || rawInput.trim() === "") {
         throw new Error("Missing exec-provider request payload on stdin.");
@@ -225,7 +259,7 @@ export async function runResolver(options = {}) {
 
         return { exitCode: 0, response };
     } catch (err) {
-        const message = err?.message ?? String(err);
+        const message = normalizeResolverErrorMessage(err);
         return {
             exitCode: 0,
             response: requestError(message),
