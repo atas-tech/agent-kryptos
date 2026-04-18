@@ -13,6 +13,7 @@ import register, {
 } from "../index.mjs";
 import { cleanup as cleanupBridge, requestSecretFlow } from "../sps-bridge.mjs";
 import { parseProtocolRequest, resolveSecretEntries, runResolver } from "../blindpass-resolver.mjs";
+import { createMcpServer, handleMcpRpcRequest } from "../mcp-server.mjs";
 import {
     deriveSopsCommandEnv,
     emitManagedStoreBootstrapReminder,
@@ -281,7 +282,7 @@ async function testRequestSecretUsesManagedPersistenceWhenConfigured() {
 
     const result = await getTool(api, "request_secret").execute(
         "managed-ok",
-        { description: "Managed store path", secret_name: "managed_ok", channel_id: "telegram:111" },
+        { description: "Managed store path", secret_name: "managed_ok", channel_id: "telegram:111", persist: true },
         { sendText: async (message) => outbound.push(message) },
     );
 
@@ -1103,6 +1104,44 @@ async function testRequestSecretPersistFalseSkipsManagedPersistence() {
     disposeStoredSecret("interactive.secret");
 }
 
+async function testRequestSecretRejectsPersistTrueWithoutSecretName() {
+    const api = createMockApi();
+    register(api, {
+        cleanupFn: async () => { },
+    });
+
+    const result = await getTool(api, "request_secret").execute(
+        "persist-validate-1",
+        {
+            description: "Managed request",
+            persist: true,
+            channel_id: "telegram:123",
+        },
+        { sendText: async () => { } },
+    );
+    const output = result?.content?.[0]?.text ?? "";
+    assert.match(output, /secret_name is required when persist=true/);
+}
+
+async function testRequestSecretExchangeRejectsPersistTrueWithoutSecretName() {
+    const api = createMockApi();
+    register(api, {
+        cleanupFn: async () => { },
+    });
+
+    const result = await getTool(api, "request_secret_exchange").execute(
+        "persist-validate-2",
+        {
+            purpose: "charge-order",
+            fulfiller_id: "agent:payments",
+            persist: true,
+        },
+        {},
+    );
+    const output = result?.content?.[0]?.text ?? "";
+    assert.match(output, /secret_name is required when persist=true/);
+}
+
 async function testRequestSecretManagedModeMetadataOnlyByDefault() {
     const api = createMockApi();
     const managedCalls = [];
@@ -1124,6 +1163,7 @@ async function testRequestSecretManagedModeMetadataOnlyByDefault() {
         {
             description: "Managed default flow",
             secret_name: "managed.default.secret",
+            persist: true,
             channel_id: "telegram:123",
         },
         { sendText: async () => { } },
@@ -1158,6 +1198,7 @@ async function testRequestSecretPlaintextExposureControlledByEnvOnly() {
                 {
                     description: "No plaintext exposure",
                     secret_name: "plaintext.off.secret",
+                    persist: true,
                     channel_id: "telegram:123",
                     expose_plaintext: true,
                 },
@@ -1189,6 +1230,7 @@ async function testRequestSecretPlaintextExposureControlledByEnvOnly() {
                 {
                     description: "Allow plaintext exposure",
                     secret_name: "plaintext.on.secret",
+                    persist: true,
                     channel_id: "telegram:123",
                 },
                 { sendText: async () => { } },
@@ -1475,6 +1517,236 @@ async function testAuditLogsAreMetadataOnly() {
         console.info = originalInfo;
         disposeStoredSecret("audit.secret");
     }
+}
+
+async function testMcpServerInitializeAndListTools() {
+    const server = createMcpServer({
+        runtime: {
+            emitManagedStoreBootstrapReminderFn: async () => ({ emitted: false }),
+        },
+    });
+
+    const initResponse = await handleMcpRpcRequest(server, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {},
+    });
+    assert.equal(initResponse.result.serverInfo.name, "blindpass");
+    assert.ok(initResponse.result.capabilities.tools);
+
+    const listResponse = await handleMcpRpcRequest(server, {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/list",
+        params: {},
+    });
+    const toolNames = listResponse.result.tools.map((tool) => tool.name);
+    assert.ok(toolNames.includes("request_secret"));
+    assert.ok(toolNames.includes("request_secret_exchange"));
+    assert.ok(toolNames.includes("fulfill_secret_exchange"));
+    assert.ok(toolNames.includes("list_secrets"));
+    assert.ok(toolNames.includes("delete_secret"));
+    assert.ok(toolNames.includes("confirm_delete_secret"));
+    assert.equal(toolNames.includes("store_secret"), false, "store_secret should be hidden unless explicitly enabled");
+}
+
+async function testMcpServerStoreSecretToolGating() {
+    await withEnv(
+        {
+            BLINDPASS_ENABLE_STORE_TOOL: "true",
+        },
+        async () => {
+            const server = createMcpServer({
+                runtime: {
+                    emitManagedStoreBootstrapReminderFn: async () => ({ emitted: false }),
+                },
+            });
+
+            const listResponse = await handleMcpRpcRequest(server, {
+                jsonrpc: "2.0",
+                id: 3,
+                method: "tools/list",
+                params: {},
+            });
+            const toolNames = listResponse.result.tools.map((tool) => tool.name);
+            assert.ok(toolNames.includes("store_secret"));
+        },
+    );
+}
+
+async function testMcpServerToolsCallDelegatesToCoreTools() {
+    const server = createMcpServer({
+        runtime: {
+            emitManagedStoreBootstrapReminderFn: async () => ({ emitted: false }),
+            listManagedSecretNamesFn: async () => ({
+                names: ["alpha.secret", "beta.secret"],
+            }),
+        },
+    });
+
+    const callResponse = await handleMcpRpcRequest(server, {
+        jsonrpc: "2.0",
+        id: 4,
+        method: "tools/call",
+        params: {
+            name: "list_secrets",
+            arguments: {},
+        },
+    });
+
+    assert.equal(callResponse.error, undefined);
+    const text = callResponse.result?.content?.[0]?.text ?? "";
+    assert.match(text, /Managed secrets listed successfully/);
+    assert.match(text, /alpha\.secret/);
+    assert.match(text, /beta\.secret/);
+}
+
+async function testMcpServerUnknownMethodsAndTools() {
+    const server = createMcpServer({
+        runtime: {
+            emitManagedStoreBootstrapReminderFn: async () => ({ emitted: false }),
+        },
+    });
+
+    const unknownMethod = await handleMcpRpcRequest(server, {
+        jsonrpc: "2.0",
+        id: 5,
+        method: "unknown/method",
+        params: {},
+    });
+    assert.equal(unknownMethod.error.code, -32601);
+
+    const unknownTool = await handleMcpRpcRequest(server, {
+        jsonrpc: "2.0",
+        id: 6,
+        method: "tools/call",
+        params: {
+            name: "not_a_real_tool",
+            arguments: {},
+        },
+    });
+    assert.equal(unknownTool.error, undefined);
+    assert.equal(unknownTool.result?.isError, true);
+    assert.match(unknownTool.result?.content?.[0]?.text ?? "", /Unknown tool/);
+}
+
+async function testMcpManagedModeResponsesRemainMetadataOnly() {
+    await withEnv(
+        {
+            BLINDPASS_ALLOW_EXPOSE_PLAINTEXT: "false",
+        },
+        async () => {
+            const capturedLogs = [];
+            const originalInfo = console.info;
+            console.info = (...args) => {
+                capturedLogs.push(args.join(" "));
+            };
+
+            try {
+                const server = createMcpServer({
+                    runtime: {
+                        emitManagedStoreBootstrapReminderFn: async () => ({ emitted: false }),
+                        requestSecretFlowFn: async ({ onSecretLink }) => {
+                            await onSecretLink("https://secrets.example/r/mcp-managed", "CODE-MCP");
+                            return Buffer.from("mcp-managed-secret-value", "utf8");
+                        },
+                        requestExchangeFlowFn: async ({ secretName, fulfillerId }) => ({
+                            exchangeId: "mcp-ex-1",
+                            fulfilledBy: fulfillerId,
+                            secret: Buffer.from(`exchange-${secretName}-value`, "utf8"),
+                        }),
+                        persistManagedSecretFn: async () => ({ persisted: true, storage: "managed" }),
+                    },
+                });
+
+                const requestSecretResponse = await handleMcpRpcRequest(server, {
+                    jsonrpc: "2.0",
+                    id: 7,
+                    method: "tools/call",
+                    params: {
+                        name: "request_secret",
+                        arguments: {
+                            description: "MCP managed flow",
+                            secret_name: "mcp.secret",
+                            persist: true,
+                            channel_id: "telegram:123",
+                        },
+                        context: {
+                            sendText: async () => { },
+                        },
+                    },
+                });
+                const requestSecretText = requestSecretResponse.result?.content?.[0]?.text ?? "";
+                assert.match(requestSecretText, /managed encrypted storage/);
+                assert.ok(!requestSecretText.includes("mcp-managed-secret-value"));
+
+                const requestExchangeResponse = await handleMcpRpcRequest(server, {
+                    jsonrpc: "2.0",
+                    id: 8,
+                    method: "tools/call",
+                    params: {
+                        name: "request_secret_exchange",
+                        arguments: {
+                            secret_name: "mcp.exchange.secret",
+                            purpose: "exchange flow",
+                            fulfiller_id: "agent:payments",
+                            persist: true,
+                        },
+                    },
+                });
+                const requestExchangeText = requestExchangeResponse.result?.content?.[0]?.text ?? "";
+                assert.match(requestExchangeText, /managed encrypted storage/);
+                assert.ok(!requestExchangeText.includes("exchange-mcp.exchange.secret-value"));
+
+                assert.ok(capturedLogs.some((line) => line.includes("[blindpass][audit]")));
+                assert.ok(capturedLogs.every((line) => !line.includes("mcp-managed-secret-value")));
+                assert.ok(capturedLogs.every((line) => !line.includes("exchange-mcp.exchange.secret-value")));
+            } finally {
+                console.info = originalInfo;
+            }
+        },
+    );
+}
+
+async function testMcpToolsEnforcePersistValidationInHandlers() {
+    const server = createMcpServer({
+        runtime: {
+            emitManagedStoreBootstrapReminderFn: async () => ({ emitted: false }),
+        },
+    });
+
+    const requestSecretResponse = await handleMcpRpcRequest(server, {
+        jsonrpc: "2.0",
+        id: 9,
+        method: "tools/call",
+        params: {
+            name: "request_secret",
+            arguments: {
+                description: "Missing name",
+                persist: true,
+            },
+            context: {
+                sendText: async () => { },
+            },
+        },
+    });
+    assert.match(requestSecretResponse.result?.content?.[0]?.text ?? "", /secret_name is required when persist=true/);
+
+    const requestExchangeResponse = await handleMcpRpcRequest(server, {
+        jsonrpc: "2.0",
+        id: 10,
+        method: "tools/call",
+        params: {
+            name: "request_secret_exchange",
+            arguments: {
+                purpose: "Missing name",
+                fulfiller_id: "agent:payments",
+                persist: true,
+            },
+        },
+    });
+    assert.match(requestExchangeResponse.result?.content?.[0]?.text ?? "", /secret_name is required when persist=true/);
 }
 
 function createResolverStdin(payload) {
@@ -2056,6 +2328,14 @@ const tests = [
         run: testRequestSecretPersistFalseSkipsManagedPersistence,
     },
     {
+        name: "request_secret rejects persist=true when secret_name is missing",
+        run: testRequestSecretRejectsPersistTrueWithoutSecretName,
+    },
+    {
+        name: "request_secret_exchange rejects persist=true when secret_name is missing",
+        run: testRequestSecretExchangeRejectsPersistTrueWithoutSecretName,
+    },
+    {
         name: "request_secret managed mode returns metadata only by default",
         run: testRequestSecretManagedModeMetadataOnlyByDefault,
     },
@@ -2090,6 +2370,30 @@ const tests = [
     {
         name: "audit logging remains metadata-only without secret leakage",
         run: testAuditLogsAreMetadataOnly,
+    },
+    {
+        name: "mcp-server initialize and tools/list expose the expected default toolset",
+        run: testMcpServerInitializeAndListTools,
+    },
+    {
+        name: "mcp-server tools/list includes store_secret only when explicitly enabled",
+        run: testMcpServerStoreSecretToolGating,
+    },
+    {
+        name: "mcp-server tools/call delegates to blindpass-core handlers",
+        run: testMcpServerToolsCallDelegatesToCoreTools,
+    },
+    {
+        name: "mcp-server returns expected responses for unknown methods and tools",
+        run: testMcpServerUnknownMethodsAndTools,
+    },
+    {
+        name: "mcp managed-mode tool responses and logs remain metadata-only",
+        run: testMcpManagedModeResponsesRemainMetadataOnly,
+    },
+    {
+        name: "mcp tools enforce handler-side persist validation",
+        run: testMcpToolsEnforcePersistValidationInHandlers,
     },
     {
         name: "blindpass-resolver parses protocol request payloads",

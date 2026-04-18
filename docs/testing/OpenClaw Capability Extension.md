@@ -38,6 +38,11 @@ Current implemented baseline in this repository:
   - `blindpass-resolver.mjs` now implements exec-provider protocol v1 over stdin/stdout
   - batch ID resolution returns `values` + per-ID `errors` without leaking plaintext through logs
   - resolver timeout (`BLINDPASS_RESOLVER_TIMEOUT_MS`, default 10s) and malformed-input protocol-safe error responses are covered by unit tests
+- Phase 4 initial MCP slice is in place:
+  - `mcp-server.mjs` now implements MCP JSON-RPC request handling for `initialize`, `tools/list`, and `tools/call`
+  - MCP tools are registered from the shared `blindpass-core.mjs` implementation to preserve OpenClaw/MCP parity
+  - `store_secret` remains deployment-gated (`BLINDPASS_ENABLE_STORE_TOOL=true`) in MCP the same way as OpenClaw
+  - managed-mode MCP responses are metadata-only by default and handler-side `persist=true` validation is enforced in core handlers
 - Remaining Phase 2/3/4/5 items below are still authoritative and mostly pending.
 
 ## Milestone 1: Build, Bundle, and Package Boundaries
@@ -144,30 +149,30 @@ Current implemented baseline in this repository:
 
 ## Milestone 4: MCP Multi-Agent Support
 
-- [ ] **Tool parity across OpenClaw and MCP**
-  - [ ] MCP server exposes `request_secret`
-  - [ ] MCP server exposes `request_secret_exchange`
-  - [ ] MCP server exposes `fulfill_secret_exchange`
-  - [ ] MCP server exposes `store_secret` only when `BLINDPASS_ENABLE_STORE_TOOL=true`
-  - [ ] MCP server exposes `list_secrets`
-  - [ ] MCP server exposes `delete_secret`
-  - [ ] MCP server exposes `confirm_delete_secret`
+- [x] **Tool parity across OpenClaw and MCP**
+  - [x] MCP server exposes `request_secret`
+  - [x] MCP server exposes `request_secret_exchange`
+  - [x] MCP server exposes `fulfill_secret_exchange`
+  - [x] MCP server exposes `store_secret` only when `BLINDPASS_ENABLE_STORE_TOOL=true`
+  - [x] MCP server exposes `list_secrets`
+  - [x] MCP server exposes `delete_secret`
+  - [x] MCP server exposes `confirm_delete_secret`
 
-- [ ] **Managed mode remains metadata-only over MCP**
-  - [ ] `request_secret` in managed mode returns storage metadata and reload guidance, not plaintext
-  - [ ] `request_secret_exchange` in managed mode behaves the same way
-  - [ ] Logs and MCP responses never echo secret values
-  - [ ] `secret_name` is required whenever persistence is requested
+- [x] **Managed mode remains metadata-only over MCP**
+  - [x] `request_secret` in managed mode returns storage metadata and reload guidance, not plaintext
+  - [x] `request_secret_exchange` in managed mode behaves the same way
+  - [x] Logs and MCP responses never echo secret values
+  - [x] `secret_name` is required whenever persistence is requested
 
 - [ ] **Agent compatibility smoke coverage**
   - [ ] Claude Code config launches the MCP server successfully
   - [ ] Codex/OpenAI agent config launches the MCP server successfully
   - [ ] Antigravity/Gemini config launches the MCP server successfully
-  - [ ] Shared skill instructions remain consistent with the actual tool contracts
+  - [x] Shared skill instructions remain consistent with the actual tool contracts
 
-- [ ] **Handler-side validation is authoritative**
-  - [ ] `request_secret` with `persist=true` and no `secret_name` fails with a clear error from the handler, regardless of client-side schema enforcement
-  - [ ] `request_secret_exchange` applies the same handler-side validation for `secret_name` when `persist=true`
+- [x] **Handler-side validation is authoritative**
+  - [x] `request_secret` with `persist=true` and no `secret_name` fails with a clear error from the handler, regardless of client-side schema enforcement
+  - [x] `request_secret_exchange` applies the same handler-side validation for `secret_name` when `persist=true`
 
 ## Milestone 5: Distribution and Operational Readiness
 

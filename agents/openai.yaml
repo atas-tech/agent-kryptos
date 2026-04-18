@@ -1,0 +1,7 @@
+interface:
+  display_name: "BlindPass"
+  short_description: "Secure secret provisioning through MCP without chat plaintext"
+  default_prompt: "Use BlindPass MCP tools for secrets. If persist=true, require secret_name and avoid exposing plaintext unless deployment policy permits it."
+
+policy:
+  allow_implicit_invocation: true

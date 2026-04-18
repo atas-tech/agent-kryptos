@@ -153,6 +153,20 @@ function shouldExposePlaintextToModel(env = process.env) {
     return parseBooleanEnv(env.BLINDPASS_ALLOW_EXPOSE_PLAINTEXT, false);
 }
 
+function isManagedPersistenceRequested(persistParam, env = process.env) {
+    if (persistParam === true) {
+        return true;
+    }
+    if (persistParam === false) {
+        return false;
+    }
+    return parseBooleanEnv(env.BLINDPASS_AUTO_PERSIST, false);
+}
+
+function hasExplicitSecretName(secretNameParam) {
+    return typeof secretNameParam === "string" && secretNameParam.trim() !== "";
+}
+
 function emitMetadataAudit(eventName, fields = {}) {
     const safeFields = [];
     for (const [key, value] of Object.entries(fields)) {
@@ -557,6 +571,16 @@ export default function register(api, runtime = {}) {
         },
 
         async execute(_id, params, context) {
+            const persistRequested = isManagedPersistenceRequested(params.persist, process.env);
+            if (persistRequested && !hasExplicitSecretName(params.secret_name)) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "Error: secret_name is required when persist=true (managed persistence mode).",
+                    }],
+                };
+            }
+
             const secretName = normalizeSecretName(params.secret_name);
             if (secretName == null) {
                 return {
@@ -593,7 +617,6 @@ export default function register(api, runtime = {}) {
             }
 
             try {
-                const persistRequested = params.persist !== false;
                 const exposePlaintext = shouldExposePlaintextToModel(process.env);
                 const transport = buildAgentTransport(api, runtime.agentTransportOptions ?? {});
                 const result = await runRequestExchangeFlow({
@@ -706,6 +729,16 @@ export default function register(api, runtime = {}) {
         },
 
         async execute(_id, params, context) {
+            const persistRequested = isManagedPersistenceRequested(params.persist, process.env);
+            if (persistRequested && !hasExplicitSecretName(params.secret_name)) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: "Error: secret_name is required when persist=true (managed persistence mode).",
+                    }],
+                };
+            }
+
             const description = params.description?.trim();
             if (!description) {
                 return {
@@ -727,7 +760,6 @@ export default function register(api, runtime = {}) {
             // We defer routing failures to the actual transport loop below to allow graceful fallbacks.
 
             try {
-                const persistRequested = params.persist !== false;
                 const exposePlaintext = shouldExposePlaintextToModel(process.env);
                 const spsBaseUrl = process.env.SPS_BASE_URL ?? "https://sps.blindpass.dev";
 
