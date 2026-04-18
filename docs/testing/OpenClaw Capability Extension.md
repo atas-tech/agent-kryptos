@@ -54,6 +54,9 @@ Current implemented baseline in this repository:
 - Phase 1 audience-packaging slice is in place:
   - `scripts/tests/audience_packaging.test.mjs` exercises ClawHub dry-run validation, npm packaging/runtime handshake, and dist-repo installer fallback
   - `npm pack --dry-run` is validated from staged release output to ensure MCP server and resolver binaries are present
+- Phase 3 activation-behavior slice is in place:
+  - `scripts/tests/openclaw_activation.test.mjs` validates resolver-backed gateway snapshot semantics for restart/reload flows
+  - provisioning and rotation are verified to remain snapshot-bound until an explicit restart or `openclaw secrets reload`
 - Remaining Phase 2/3/4/5 items below are still authoritative and mostly pending.
 
 ## Milestone 1: Build, Bundle, and Package Boundaries
@@ -146,13 +149,13 @@ Current implemented baseline in this repository:
   - [x] Successful batch lookup returns a `values` object keyed by requested IDs
   - [x] Missing, expired, or deleted secrets return `errors` entries without leaking store internals
 
-- [ ] **OpenClaw activation behavior is correct**
-  - [ ] Provision secret → restart gateway → SecretRef resolves successfully
-  - [ ] Provision secret → run `openclaw secrets reload` → SecretRef resolves successfully
-  - [ ] Provision secret without reload or restart does not update already-materialized SecretRef consumers
-  - [ ] Update existing secret value on disk and verify the old snapshot remains active until reload/restart
+- [x] **OpenClaw activation behavior is correct**
+  - [x] Provision secret → restart gateway → SecretRef resolves successfully
+  - [x] Provision secret → run `openclaw secrets reload` → SecretRef resolves successfully
+  - [x] Provision secret without reload or restart does not update already-materialized SecretRef consumers
+  - [x] Update existing secret value on disk and verify the old snapshot remains active until reload/restart
 
-- [ ] **TTL and error handling**
+- [x] **TTL and error handling**
   - [x] Expired secrets fail closed at resolver time with a deterministic error
   - [x] Corrupt store contents fail closed without emitting plaintext or key material
   - [x] Resolver self-imposes a 10-second timeout — exceeding it returns a protocol-safe error
