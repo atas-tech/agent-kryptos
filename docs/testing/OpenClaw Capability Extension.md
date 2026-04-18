@@ -12,7 +12,7 @@ This plan covers:
 - MCP server support for Codex, Claude Code, Antigravity, and other MCP-compatible agents
 - Dist-repo and npm release integrity
 
-## Implementation Snapshot (April 17, 2026)
+## Implementation Snapshot (April 18, 2026)
 
 Current implemented baseline in this repository:
 
@@ -47,6 +47,10 @@ Current implemented baseline in this repository:
 - Phase 5 installer integrity slice is in place:
   - `scripts/tests/install_skill.test.mjs` validates global installer behavior for `codex`, `claude`, `antigravity`, and `all`
   - the installer tests verify backup-on-replace behavior and confirmation prompts when `--yes` is not provided
+- Phase 1 release metadata hardening slice is in place:
+  - `scripts/tests/release_metadata.test.mjs` validates SKILL/manifest version sync and staged npm metadata (`name`, `bin`, and required `files`)
+  - `scripts/publish_dist.sh` now fails fast if `SKILL.md` and `openclaw.plugin.json` versions drift
+  - ClawHub frontmatter metadata continues to assert no required backend binaries (`metadata.openclaw.requires.bins: []`)
 - Remaining Phase 2/3/4/5 items below are still authoritative and mostly pending.
 
 ## Milestone 1: Build, Bundle, and Package Boundaries
@@ -56,10 +60,10 @@ Current implemented baseline in this repository:
   - [x] Published bundle output contains no monorepo-relative import paths such as `packages/gateway/dist` or `packages/agent-skill/dist`
   - [x] Bundle output contains no `.env` files, private keys, workspace paths, or local SPS URLs
 
-- [ ] **Release metadata stays synchronized**
-  - [ ] `SKILL.md`, `openclaw.plugin.json`, and dist `package.json` report the same release version
-  - [ ] ClawHub-facing metadata includes the expected OpenClaw installable skill metadata without incorrectly forcing optional backends
-  - [ ] npm package metadata correctly exposes the MCP server and resolver entry points
+- [x] **Release metadata stays synchronized**
+  - [x] `SKILL.md`, `openclaw.plugin.json`, and dist `package.json` report the same release version
+  - [x] ClawHub-facing metadata includes the expected OpenClaw installable skill metadata without incorrectly forcing optional backends
+  - [x] npm package metadata correctly exposes the MCP server and resolver entry points
 
 - [ ] **Audience-specific packaging works**
   - [ ] OpenClaw users can install via ClawHub without needing the MCP-only packaging path

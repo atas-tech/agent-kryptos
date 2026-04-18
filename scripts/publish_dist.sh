@@ -150,6 +150,27 @@ read_skill_version() {
 
 skill_version="$(read_skill_version)"
 
+read_plugin_manifest_version() {
+  node -e '
+    const fs = require("fs");
+    const manifestPath = process.argv[1];
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    if (!manifest.version || typeof manifest.version !== "string") {
+      process.exit(1);
+    }
+    process.stdout.write(manifest.version);
+  ' "$PLUGIN_MANIFEST_JSON"
+}
+
+plugin_manifest_version="$(read_plugin_manifest_version)"
+if [[ "$skill_version" != "$plugin_manifest_version" ]]; then
+  echo "[blindpass] version mismatch detected:" >&2
+  echo "  SKILL.md version:          $skill_version" >&2
+  echo "  openclaw.plugin.json:      $plugin_manifest_version" >&2
+  echo "[blindpass] keep release metadata synchronized before publishing." >&2
+  exit 1
+fi
+
 ensure_dist_artifacts() {
   local required=(
     "${DIST_DIR}/blindpass.mjs"
