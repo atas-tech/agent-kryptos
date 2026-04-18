@@ -555,6 +555,9 @@ Each agent needs instructions that reference the MCP tools:
 | `AGENTS.md` | Codex / Antigravity | Markdown skill instructions |
 | `CLAUDE.md` | Claude Code | Markdown (imported via `@` directive) |
 | `agents/openai.yaml` | OpenAI Codex | YAML agent definition |
+| `agents/claude_desktop_config.json` | Claude Code | MCP config template |
+| `agents/codex_mcp_config.json` | Codex/OpenAI | MCP config template |
+| `agents/antigravity_settings.json` | Antigravity/Gemini | MCP config template |
 
 All files share the same core instructions but differ in:
 - How to reference the tools (native plugin vs MCP)

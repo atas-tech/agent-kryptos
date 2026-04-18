@@ -43,6 +43,7 @@ Current implemented baseline in this repository:
   - MCP tools are registered from the shared `blindpass-core.mjs` implementation to preserve OpenClaw/MCP parity
   - `store_secret` remains deployment-gated (`BLINDPASS_ENABLE_STORE_TOOL=true`) in MCP the same way as OpenClaw
   - managed-mode MCP responses are metadata-only by default and handler-side `persist=true` validation is enforced in core handlers
+  - profile config fixtures now exist for Claude/Codex/Antigravity and process-level launch smoke tests validate MCP stdio `initialize` handshakes
 - Remaining Phase 2/3/4/5 items below are still authoritative and mostly pending.
 
 ## Milestone 1: Build, Bundle, and Package Boundaries
@@ -164,10 +165,10 @@ Current implemented baseline in this repository:
   - [x] Logs and MCP responses never echo secret values
   - [x] `secret_name` is required whenever persistence is requested
 
-- [ ] **Agent compatibility smoke coverage**
-  - [ ] Claude Code config launches the MCP server successfully
-  - [ ] Codex/OpenAI agent config launches the MCP server successfully
-  - [ ] Antigravity/Gemini config launches the MCP server successfully
+- [x] **Agent compatibility smoke coverage**
+  - [x] Claude Code config launches the MCP server successfully
+  - [x] Codex/OpenAI agent config launches the MCP server successfully
+  - [x] Antigravity/Gemini config launches the MCP server successfully
   - [x] Shared skill instructions remain consistent with the actual tool contracts
 
 - [x] **Handler-side validation is authoritative**

@@ -251,12 +251,7 @@ prepare_stage_layout() {
   # Optional agent-specific instructions/configs are copied when present.
   copy_if_exists "$ROOT_DIR/AGENTS.md" "$stage/AGENTS.md"
   copy_if_exists "$ROOT_DIR/CLAUDE.md" "$stage/CLAUDE.md"
-  if [[ -f "$ROOT_DIR/agents/openai.yaml" ]]; then
-    mkdir -p "$stage/agents"
-    cp "$ROOT_DIR/agents/openai.yaml" "$stage/agents/openai.yaml"
-  else
-    echo "[blindpass] warning: optional file missing, skipped: $ROOT_DIR/agents/openai.yaml"
-  fi
+  copy_if_exists "$ROOT_DIR/agents" "$stage/agents"
   copy_if_exists "$ROOT_DIR/README.md" "$stage/README.md"
 
   generate_dist_package_json "$stage/package.json"

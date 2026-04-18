@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "blindpass": {
+      "command": "node",
+      "args": ["~/.claude/skills/blindpass/dist/mcp-server.mjs"],
+      "env": {
+        "SPS_BASE_URL": "https://sps.blindpass.dev",
+        "BLINDPASS_API_KEY": "your-api-key"
+      }
+    }
+  }
+}

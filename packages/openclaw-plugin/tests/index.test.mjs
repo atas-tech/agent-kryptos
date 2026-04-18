@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
+import { spawn } from "node:child_process";
+import { EventEmitter, once } from "node:events";
 import { mkdtemp, readFile as readFileFs, rm, writeFile as writeFileFs } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
+import { fileURLToPath } from "node:url";
 import register, {
     buildExchangeDeliveryMessage,
     createOpenClawAgentTransport,
@@ -23,6 +25,15 @@ import {
     storeManagedSecret,
     listManagedSecretNames,
 } from "../encrypted-store.mjs";
+
+const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(TEST_DIR, "..", "..", "..");
+const MCP_SERVER_ENTRY = path.resolve(TEST_DIR, "..", "mcp-server.mjs");
+const AGENT_CONFIG_FIXTURES = {
+    claude: path.join(REPO_ROOT, "agents", "claude_desktop_config.json"),
+    codex: path.join(REPO_ROOT, "agents", "codex_mcp_config.json"),
+    antigravity: path.join(REPO_ROOT, "agents", "antigravity_settings.json"),
+};
 
 function createMockApi() {
     const state = {
@@ -196,6 +207,152 @@ async function withDateNow(nowMs, fn) {
         await fn();
     } finally {
         Date.now = originalNow;
+    }
+}
+
+function encodeMcpFrame(payload) {
+    const body = JSON.stringify(payload);
+    const length = Buffer.byteLength(body, "utf8");
+    return `Content-Length: ${length}\r\n\r\n${body}`;
+}
+
+function parseMcpFrame(buffer) {
+    const headerEnd = buffer.indexOf("\r\n\r\n");
+    if (headerEnd === -1) return null;
+
+    const headerText = buffer.slice(0, headerEnd).toString("utf8");
+    const lengthMatch = headerText.match(/content-length:\s*(\d+)/i);
+    if (!lengthMatch) {
+        throw new Error("MCP response is missing Content-Length header.");
+    }
+
+    const contentLength = Number.parseInt(lengthMatch[1], 10);
+    const bodyStart = headerEnd + 4;
+    const bodyEnd = bodyStart + contentLength;
+    if (buffer.length < bodyEnd) return null;
+
+    const body = buffer.slice(bodyStart, bodyEnd).toString("utf8");
+    return {
+        message: JSON.parse(body),
+        remainder: buffer.slice(bodyEnd),
+    };
+}
+
+async function readOneMcpResponse(stream, timeoutMs = 5000) {
+    let buffer = Buffer.alloc(0);
+    const onData = (chunk) => {
+        buffer = Buffer.concat([buffer, Buffer.from(chunk)]);
+        const parsed = parseMcpFrame(buffer);
+        if (parsed) {
+            cleanup();
+            resolve(parsed.message);
+        }
+    };
+    const onError = (err) => {
+        cleanup();
+        reject(err);
+    };
+    const onEnd = () => {
+        cleanup();
+        reject(new Error("MCP process ended before sending a response."));
+    };
+
+    let timer = null;
+    let resolve;
+    let reject;
+
+    const cleanup = () => {
+        stream.off("data", onData);
+        stream.off("error", onError);
+        stream.off("end", onEnd);
+        if (timer) {
+            clearTimeout(timer);
+            timer = null;
+        }
+    };
+
+    const waitPromise = new Promise((res, rej) => {
+        resolve = res;
+        reject = rej;
+    });
+
+    stream.on("data", onData);
+    stream.on("error", onError);
+    stream.on("end", onEnd);
+    timer = setTimeout(() => {
+        cleanup();
+        reject(new Error(`Timed out waiting for MCP response after ${timeoutMs}ms.`));
+    }, timeoutMs);
+
+    return waitPromise;
+}
+
+function remapMcpArgForFixture(arg) {
+    if (typeof arg !== "string") {
+        return arg;
+    }
+    if (arg.endsWith("/dist/mcp-server.mjs") || arg.endsWith("\\dist\\mcp-server.mjs")) {
+        return MCP_SERVER_ENTRY;
+    }
+    return arg;
+}
+
+async function stopProcess(child) {
+    if (child.exitCode != null) {
+        return;
+    }
+
+    child.kill("SIGTERM");
+    const graceful = await Promise.race([
+        once(child, "exit").then(() => true),
+        new Promise((resolve) => setTimeout(() => resolve(false), 1500)),
+    ]);
+
+    if (!graceful && child.exitCode == null) {
+        child.kill("SIGKILL");
+        await once(child, "exit");
+    }
+}
+
+async function runMcpLaunchSmokeFromConfig(configPath) {
+    const raw = await readFileFs(configPath, "utf8");
+    const parsed = JSON.parse(raw);
+    const mcp = parsed?.mcpServers?.blindpass;
+
+    assert.ok(mcp, `blindpass MCP config missing in ${configPath}`);
+    assert.equal(typeof mcp.command, "string");
+    assert.ok(Array.isArray(mcp.args), `blindpass args should be an array in ${configPath}`);
+
+    const command = mcp.command;
+    const args = mcp.args.map((entry) => remapMcpArgForFixture(entry));
+    const child = spawn(command, args, {
+        stdio: ["pipe", "pipe", "pipe"],
+        env: {
+            ...process.env,
+            ...(mcp.env ?? {}),
+            BLINDPASS_AUTO_PERSIST: "false",
+        },
+    });
+
+    let stderrText = "";
+    child.stderr.on("data", (chunk) => {
+        stderrText += chunk.toString("utf8");
+    });
+
+    try {
+        child.stdin.write(
+            encodeMcpFrame({
+                jsonrpc: "2.0",
+                id: 1,
+                method: "initialize",
+                params: {},
+            }),
+        );
+        const response = await readOneMcpResponse(child.stdout);
+        assert.equal(response?.result?.serverInfo?.name, "blindpass");
+        assert.equal(child.exitCode, null, `MCP process exited early: ${stderrText}`);
+    } finally {
+        await stopProcess(child);
     }
 }
 
@@ -1749,6 +1906,18 @@ async function testMcpToolsEnforcePersistValidationInHandlers() {
     assert.match(requestExchangeResponse.result?.content?.[0]?.text ?? "", /secret_name is required when persist=true/);
 }
 
+async function testClaudeConfigLaunchesMcpServer() {
+    await runMcpLaunchSmokeFromConfig(AGENT_CONFIG_FIXTURES.claude);
+}
+
+async function testCodexConfigLaunchesMcpServer() {
+    await runMcpLaunchSmokeFromConfig(AGENT_CONFIG_FIXTURES.codex);
+}
+
+async function testAntigravityConfigLaunchesMcpServer() {
+    await runMcpLaunchSmokeFromConfig(AGENT_CONFIG_FIXTURES.antigravity);
+}
+
 function createResolverStdin(payload) {
     const stream = new PassThrough();
     stream.end(payload);
@@ -2394,6 +2563,18 @@ const tests = [
     {
         name: "mcp tools enforce handler-side persist validation",
         run: testMcpToolsEnforcePersistValidationInHandlers,
+    },
+    {
+        name: "Claude profile MCP config launches the server",
+        run: testClaudeConfigLaunchesMcpServer,
+    },
+    {
+        name: "Codex/OpenAI profile MCP config launches the server",
+        run: testCodexConfigLaunchesMcpServer,
+    },
+    {
+        name: "Antigravity/Gemini profile MCP config launches the server",
+        run: testAntigravityConfigLaunchesMcpServer,
     },
     {
         name: "blindpass-resolver parses protocol request payloads",
