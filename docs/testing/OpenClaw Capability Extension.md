@@ -44,6 +44,9 @@ Current implemented baseline in this repository:
   - `store_secret` remains deployment-gated (`BLINDPASS_ENABLE_STORE_TOOL=true`) in MCP the same way as OpenClaw
   - managed-mode MCP responses are metadata-only by default and handler-side `persist=true` validation is enforced in core handlers
   - profile config fixtures now exist for Claude/Codex/Antigravity and process-level launch smoke tests validate MCP stdio `initialize` handshakes
+- Phase 5 installer integrity slice is in place:
+  - `scripts/tests/install_skill.test.mjs` validates global installer behavior for `codex`, `claude`, `antigravity`, and `all`
+  - the installer tests verify backup-on-replace behavior and confirmation prompts when `--yes` is not provided
 - Remaining Phase 2/3/4/5 items below are still authoritative and mostly pending.
 
 ## Milestone 1: Build, Bundle, and Package Boundaries
@@ -182,11 +185,11 @@ Current implemented baseline in this repository:
   - [ ] npm publish path succeeds for `@blindpass/mcp-server`
   - [ ] Published tarballs contain only intended release artifacts
 
-- [ ] **Installer and dist-repo integrity**
-  - [ ] `scripts/install_skill.sh --mode global --agent codex` installs the expected files
-  - [ ] `scripts/install_skill.sh --mode global --agent claude` installs the expected files
-  - [ ] `scripts/install_skill.sh --mode global --agent antigravity` installs the expected files
-  - [ ] `scripts/install_skill.sh --mode global --agent all` does not overwrite unrelated user config without confirmation or backup
+- [x] **Installer and dist-repo integrity**
+  - [x] `scripts/install_skill.sh --mode global --agent codex` installs the expected files
+  - [x] `scripts/install_skill.sh --mode global --agent claude` installs the expected files
+  - [x] `scripts/install_skill.sh --mode global --agent antigravity` installs the expected files
+  - [x] `scripts/install_skill.sh --mode global --agent all` does not overwrite unrelated user config without confirmation or backup
 
 - [ ] **End-to-end managed secret lifecycle**
   - [ ] Request from human via SPS → persist to store → reload OpenClaw secrets → SecretRef consumer resolves
