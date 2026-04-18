@@ -1,4 +1,5 @@
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { readManagedSecretStore } from "./encrypted-store.mjs";
 
 const PROTOCOL_VERSION = 1;
@@ -282,7 +283,17 @@ export async function main() {
     }
 }
 
-const currentEntryHref = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
-if (import.meta.url === currentEntryHref) {
+function normalizedEntryHref(entryPath) {
+    if (!entryPath) return "";
+    try {
+        return pathToFileURL(realpathSync(entryPath)).href;
+    } catch {
+        return pathToFileURL(entryPath).href;
+    }
+}
+
+const currentEntryHref = normalizedEntryHref(process.argv[1]);
+const moduleEntryHref = normalizedEntryHref(fileURLToPath(import.meta.url));
+if (moduleEntryHref === currentEntryHref) {
     await main();
 }

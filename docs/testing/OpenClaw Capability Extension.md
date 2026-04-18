@@ -51,6 +51,9 @@ Current implemented baseline in this repository:
   - `scripts/tests/release_metadata.test.mjs` validates SKILL/manifest version sync and staged npm metadata (`name`, `bin`, and required `files`)
   - `scripts/publish_dist.sh` now fails fast if `SKILL.md` and `openclaw.plugin.json` versions drift
   - ClawHub frontmatter metadata continues to assert no required backend binaries (`metadata.openclaw.requires.bins: []`)
+- Phase 1 audience-packaging slice is in place:
+  - `scripts/tests/audience_packaging.test.mjs` exercises ClawHub dry-run validation, npm packaging/runtime handshake, and dist-repo installer fallback
+  - `npm pack --dry-run` is validated from staged release output to ensure MCP server and resolver binaries are present
 - Remaining Phase 2/3/4/5 items below are still authoritative and mostly pending.
 
 ## Milestone 1: Build, Bundle, and Package Boundaries
@@ -65,10 +68,10 @@ Current implemented baseline in this repository:
   - [x] ClawHub-facing metadata includes the expected OpenClaw installable skill metadata without incorrectly forcing optional backends
   - [x] npm package metadata correctly exposes the MCP server and resolver entry points
 
-- [ ] **Audience-specific packaging works**
-  - [ ] OpenClaw users can install via ClawHub without needing the MCP-only packaging path
-  - [ ] MCP users can install via npm or run via `npx` without needing OpenClaw-specific config files
-  - [ ] Git dist-repo installer remains a functional fallback for manual or offline installs
+- [x] **Audience-specific packaging works**
+  - [x] OpenClaw users can install via ClawHub without needing the MCP-only packaging path
+  - [x] MCP users can install via npm or run via `npx` without needing OpenClaw-specific config files
+  - [x] Git dist-repo installer remains a functional fallback for manual or offline installs
 
 ## Milestone 2: Managed Secret Storage
 

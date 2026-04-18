@@ -22,8 +22,17 @@ USAGE
 }
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PLUGIN_DIR="${ROOT_DIR}/packages/openclaw-plugin"
-DIST_DIR="${PLUGIN_DIR}/dist"
+
+if [[ -d "${ROOT_DIR}/packages/openclaw-plugin/dist" ]]; then
+  INSTALL_LAYOUT="source"
+  DIST_DIR="${ROOT_DIR}/packages/openclaw-plugin/dist"
+elif [[ -d "${ROOT_DIR}/dist" ]]; then
+  INSTALL_LAYOUT="dist-repo"
+  DIST_DIR="${ROOT_DIR}/dist"
+else
+  INSTALL_LAYOUT="unknown"
+  DIST_DIR="${ROOT_DIR}/packages/openclaw-plugin/dist"
+fi
 
 MODE="project"
 AGENT="all"
@@ -219,7 +228,14 @@ install_clawhub() {
 }
 
 if [[ "$SKIP_BUILD" -eq 0 ]]; then
-  npm run build:skill
+  if [[ "$INSTALL_LAYOUT" == "source" ]]; then
+    npm run build:skill
+  elif [[ "$INSTALL_LAYOUT" == "dist-repo" ]]; then
+    echo "[blindpass] dist-repo layout detected; skipping build step (prebuilt dist artifacts expected)."
+  else
+    echo "[blindpass] unable to determine install layout from ROOT_DIR: $ROOT_DIR" >&2
+    exit 1
+  fi
 fi
 
 ensure_dist_artifacts
